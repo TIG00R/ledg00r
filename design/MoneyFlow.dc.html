@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+    a { color: #00A32E; } a:hover { color: #007A22; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(20,18,14,0.04), 0 4px 12px rgba(20,18,14,0.06); }
+    .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; }
+    .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+    .seg { font-family: inherit; font-size: 13px; font-weight: 500; padding: 8px 15px; border-radius: 8px;
+           border: 1px solid rgba(20,18,14,0.14); background: #FFFFFF; color: #6B665C; cursor: pointer; }
+  </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Money flow</h1>
+    <span class="chip" style="background: rgba(20,18,14,0.06); color: #6B665C;">September 2026</span>
+    <div style="margin-left: auto; display: flex; gap: 8px;">
+      <button class="seg" style="background: #1A1815; color: #FFFFFF; border-color: #1A1815;">This month</button>
+      <button class="seg">Last 3 months</button>
+      <button class="seg">Year to date</button>
+      <button class="seg">Since the snapshot</button>
+    </div>
+  </div>
+
+  <section class="panel" style="padding: 26px;">
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; margin-bottom: 26px;">
+      <div><div class="ov">Came in</div><div class="mono" style="font-size: 22px; font-weight: 500; margin-top: 5px; color: #00A32E;">+280,083</div></div>
+      <div><div class="ov">Went out</div><div class="mono" style="font-size: 22px; font-weight: 500; margin-top: 5px; color: #E00000;">−61,240</div></div>
+      <div><div class="ov">Moved between accounts</div><div class="mono" style="font-size: 22px; font-weight: 500; margin-top: 5px;">51,433</div></div>
+      <div><div class="ov">Lost in the moving</div><div class="mono" style="font-size: 22px; font-weight: 500; margin-top: 5px; color: #E00000;">−481</div></div>
+      <div><div class="ov">Kept</div><div class="mono" style="font-size: 22px; font-weight: 500; margin-top: 5px; color: #00A32E;">+218,843</div><div style="font-size: 11px; color: #97907F;">78.1% of income</div></div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; margin-bottom: 26px; padding: 16px 18px; border-radius: 12px; background: #F4F2EE; border: 1px solid rgba(20,18,14,0.08);">
+      <div><div class="ov">Since the snapshot · 4.03 months</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px; color: #00A32E;">+1,129,670</div><div style="font-size: 11px; color: #97907F;">income accrued</div></div>
+      <div><div class="ov">Spent</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px; color: #E00000;">−40,684</div><div style="font-size: 11px; color: #97907F;">10,017 logged, rest estimated</div></div>
+      <div><div class="ov">Into equity</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">550,585</div><div style="font-size: 11px; color: #97907F;">3 installments paid</div></div>
+      <div><div class="ov">Given</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px; color: #E00000;">−20,000</div><div style="font-size: 11px; color: #97907F;">1 charity record</div></div>
+      <div><div class="ov">Cash today</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">4,258,830</div><div style="font-size: 11px; color: #97907F;">from 3,740,429 at the snapshot</div></div>
+    </div>
+
+    <svg viewBox="0 0 1300 700" width="100%" role="img" aria-label="Money flow for September 2026 by account. Salary 254,621 and car rental 25,462 arrive in HSBC Egypt USD savings, where 228,650 stays. 51,433 moves internally to the EGP current account, arriving as 50,952. From there 50,742 clears as a Palm Hills installment cheque and 10,017 goes to expenses.">
+<defs><linearGradient id="g0" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00A32E" stop-opacity="0.07"></stop><stop offset="55%" stop-color="#00A32E" stop-opacity="0.26"></stop><stop offset="100%" stop-color="#00A32E" stop-opacity="0.50"></stop></linearGradient><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#00A32E" stop-opacity="0.07"></stop><stop offset="55%" stop-color="#00A32E" stop-opacity="0.26"></stop><stop offset="100%" stop-color="#00A32E" stop-opacity="0.50"></stop></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#B37E00" stop-opacity="0.07"></stop><stop offset="55%" stop-color="#B37E00" stop-opacity="0.26"></stop><stop offset="100%" stop-color="#B37E00" stop-opacity="0.50"></stop></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#E00000" stop-opacity="0.07"></stop><stop offset="55%" stop-color="#E00000" stop-opacity="0.26"></stop><stop offset="100%" stop-color="#E00000" stop-opacity="0.50"></stop></linearGradient><linearGradient id="gv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B37E00" stop-opacity="0.07"></stop><stop offset="55%" stop-color="#B37E00" stop-opacity="0.26"></stop><stop offset="100%" stop-color="#B37E00" stop-opacity="0.50"></stop></linearGradient><filter id="cardShadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#14120E" flood-opacity="0.10"></feDropShadow><feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#14120E" flood-opacity="0.05"></feDropShadow></filter></defs>
+      <path d="M 290,169.6 C 396.0,169.6 396.0,168.0 502,168.0 L 502,224.0 C 396.0,224.0 396.0,200.4 290,200.4 Z" fill="url(#g0)" stroke="#00A32E" stroke-opacity="0.26" stroke-width="1"></path>
+      <path d="M 290,372.525 C 396.0,372.525 396.0,257.5 502,257.5 L 502,266.5 C 396.0,266.5 396.0,377.475 290,377.475 Z" fill="url(#g1)" stroke="#00A32E" stroke-opacity="0.26" stroke-width="1"></path>
+      <path d="M 645.6,294 C 645.6,372.0 642.0,372.0 642.0,450 L 658.0,450 C 658.0,372.0 654.4,372.0 654.4,294 Z" fill="url(#gv)" stroke="#B37E00" stroke-opacity="0.26" stroke-width="1"></path>
+      <path d="M 798,501.7 C 909.0,501.7 909.0,254.0 1020,254.0 L 1020,266.0 C 909.0,266.0 909.0,508.3 798,508.3 Z" fill="url(#g2)" stroke="#B37E00" stroke-opacity="0.26" stroke-width="1"></path>
+      <path d="M 798,553.525 C 909.0,553.525 909.0,525.5 1020,525.5 L 1020,534.5 C 909.0,534.5 909.0,558.475 798,558.475 Z" fill="url(#g3)" stroke="#E00000" stroke-opacity="0.26" stroke-width="1"></path>
+      <text x="40" y="52" font-size="11" font-weight="600" letter-spacing="1.2" fill="#97907F">CAME IN</text>
+      <text x="478" y="52" font-size="11" font-weight="600" letter-spacing="1.2" fill="#97907F">MY ACCOUNTS</text>
+      <text x="1280" y="52" text-anchor="end" font-size="11" font-weight="600" letter-spacing="1.2" fill="#97907F">WHERE IT WENT</text>
+      <line x1="40" y1="64" x2="1280" y2="64" stroke="rgba(20,18,14,0.09)"></line>
+      <rect x="478" y="86" width="344" height="560" rx="16" fill="rgba(20,18,14,0.02)" stroke="rgba(20,18,14,0.10)" stroke-dasharray="5 4"></rect><image href="s_bank_hsbc.png" x="496" y="98" width="72" height="18" preserveAspectRatio="xMidYMid meet"></image><text x="580" y="112" font-size="11" font-weight="600" letter-spacing="0.8" fill="#97907F">HSBC EGYPT · two of its accounts</text>
+      <text x="396" y="180" text-anchor="middle" font-size="11" font-weight="600" fill="#00A32E" font-family="JetBrains Mono, ui-monospace, monospace">254,621</text>
+      <text x="396" y="194" text-anchor="middle" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">1 movement</text>
+      <text x="396" y="312" text-anchor="middle" font-size="11" font-weight="600" fill="#00A32E" font-family="JetBrains Mono, ui-monospace, monospace">25,462</text>
+      <text x="396" y="326" text-anchor="middle" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">1 movement</text>
+      <text x="676" y="352" text-anchor="start" font-size="11" font-weight="600" fill="#B37E00" font-family="JetBrains Mono, ui-monospace, monospace">51,433</text>
+      <text x="676" y="366" text-anchor="start" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">exchanged at 50.85</text>
+      <text x="676" y="384" text-anchor="start" font-size="11" font-weight="600" fill="#B37E00" font-family="JetBrains Mono, ui-monospace, monospace">50,952 arrives</text>
+      <text x="676" y="398" text-anchor="start" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">481 kept by the bank</text>
+      <text x="676" y="412" text-anchor="start" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">same bank, other account</text>
+      <text x="909" y="340" text-anchor="middle" font-size="11" font-weight="600" fill="#B37E00" font-family="JetBrains Mono, ui-monospace, monospace">50,742</text>
+      <text x="909" y="354" text-anchor="middle" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">1 cheque · yours either way</text>
+      <text x="909" y="566" text-anchor="middle" font-size="11" font-weight="600" fill="#E00000" font-family="JetBrains Mono, ui-monospace, monospace">10,017</text>
+      <text x="909" y="580" text-anchor="middle" font-size="9" font-weight="500" fill="#97907F" font-family="inherit">1 movement</text>
+      <g filter="url(#cardShadow)">
+      <rect x="40" y="110" width="250" height="150" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="58" y="128" width="44" height="36" rx="8" fill="rgba(0,163,46,0.10)" stroke="rgba(20,18,14,0.06)"></rect><g transform="translate(80,146)" fill="none" stroke="#00A32E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="-7" y="-5" width="14" height="10" rx="2"></rect><circle cx="0" cy="0" r="2"></circle></g>
+      <text x="112" y="144" font-size="14" font-weight="600" fill="#1A1815">Salary</text>
+      <text x="112" y="161" font-size="11" fill="#97907F">$5,000 · 1 movement</text>
+      <line x1="58" y1="178" x2="272" y2="178" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="58" y="202" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">THIS MONTH</text><text x="272" y="204" text-anchor="end" font-size="19" font-weight="500" fill="#00A32E" font-family="JetBrains Mono, ui-monospace, monospace">+254,621</text><text x="58" y="230" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">SINCE THE SNAPSHOT</text><text x="272" y="232" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">1,027,000</text></g>
+      <g filter="url(#cardShadow)">
+      <rect x="40" y="300" width="250" height="150" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="58" y="318" width="44" height="36" rx="8" fill="rgba(0,163,46,0.10)" stroke="rgba(20,18,14,0.06)"></rect><g transform="translate(80,336)" fill="none" stroke="#00A32E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M-6 2l1.2-4h9.6L6 2"></path><rect x="-7" y="2" width="14" height="3.5" rx="1"></rect></g>
+      <text x="112" y="334" font-size="14" font-weight="600" fill="#1A1815">Car rental</text>
+      <text x="112" y="351" font-size="11" fill="#97907F">$500 · 1 movement</text>
+      <line x1="58" y1="368" x2="272" y2="368" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="58" y="392" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">THIS MONTH</text><text x="272" y="394" text-anchor="end" font-size="19" font-weight="500" fill="#00A32E" font-family="JetBrains Mono, ui-monospace, monospace">+25,462</text><text x="58" y="420" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">SINCE THE SNAPSHOT</text><text x="272" y="422" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">102,670</text></g>
+      <g filter="url(#cardShadow)">
+      <rect x="502" y="126" width="296" height="168" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="520" y="144" width="44" height="36" rx="8" fill="#F4F2EE" stroke="rgba(20,18,14,0.08)"></rect><image href="small_cur_usd.jpg" x="520" y="144" width="44" height="36" preserveAspectRatio="xMidYMid meet"></image>
+      <text x="574" y="160" font-size="14" font-weight="600" fill="#1A1815">USD savings</text>
+      <text x="574" y="177" font-size="11" fill="#97907F">HSBC Egypt · US dollar</text>
+      <line x1="520" y1="194" x2="780" y2="194" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="520" y="218" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">CAME IN</text><text x="780" y="220" text-anchor="end" font-size="19" font-weight="500" fill="#1A1815" font-family="JetBrains Mono, ui-monospace, monospace">280,083</text><text x="520" y="246" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">STAYED HERE</text><text x="780" y="248" text-anchor="end" font-size="16" font-weight="500" fill="#00A32E" font-family="JetBrains Mono, ui-monospace, monospace">228,650</text><text x="520" y="274" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">BALANCE NOW</text><text x="780" y="276" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">$58,000</text></g>
+      <g filter="url(#cardShadow)">
+      <rect x="502" y="450" width="296" height="168" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="520" y="468" width="44" height="36" rx="8" fill="#F4F2EE" stroke="rgba(20,18,14,0.08)"></rect><image href="small_cur_egp.jpg" x="520" y="468" width="44" height="36" preserveAspectRatio="xMidYMid meet"></image>
+      <text x="574" y="484" font-size="14" font-weight="600" fill="#1A1815">EGP current</text>
+      <text x="574" y="501" font-size="11" fill="#97907F">HSBC Egypt · cheques clear here</text>
+      <line x1="520" y1="518" x2="780" y2="518" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="520" y="542" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">CAME IN</text><text x="780" y="544" text-anchor="end" font-size="19" font-weight="500" fill="#1A1815" font-family="JetBrains Mono, ui-monospace, monospace">50,952</text><text x="520" y="570" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">FROM ITS OWN BALANCE</text><text x="780" y="572" text-anchor="end" font-size="16" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">9,807</text><text x="520" y="598" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">BALANCE NOW</text><text x="780" y="600" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">180,077</text></g>
+      <g filter="url(#cardShadow)">
+      <rect x="1020" y="170" width="260" height="180" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="1038" y="188" width="44" height="36" rx="8" fill="#F4F2EE" stroke="rgba(20,18,14,0.08)"></rect><image href="s_dev_palmhills.png" x="1038" y="188" width="44" height="36" preserveAspectRatio="xMidYMid meet"></image>
+      <text x="1092" y="204" font-size="14" font-weight="600" fill="#1A1815">Palm Hills</text>
+      <text x="1092" y="221" font-size="11" fill="#97907F">equity · 1 cheque cleared</text>
+      <line x1="1038" y1="238" x2="1262" y2="238" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="1038" y="262" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">THIS MONTH</text><text x="1262" y="264" text-anchor="end" font-size="19" font-weight="500" fill="#B37E00" font-family="JetBrains Mono, ui-monospace, monospace">+50,742</text><text x="1038" y="290" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">EQUITY NOW</text><text x="1262" y="292" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">1,046,414</text><text x="1038" y="322" font-size="10" fill="#97907F">still owed 11,131,673 · 8.6% paid</text></g>
+      <g filter="url(#cardShadow)">
+      <rect x="1020" y="430" width="260" height="200" rx="12" fill="#FFFFFF" stroke="rgba(20,18,14,0.09)"></rect>
+      <rect x="1038" y="448" width="44" height="36" rx="8" fill="rgba(224,0,0,0.08)" stroke="rgba(20,18,14,0.06)"></rect><g transform="translate(1060,466)" fill="none" stroke="#E00000" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="-3" cy="5" r="1.6"></circle><circle cx="4" cy="5" r="1.6"></circle><path d="M-7-5h2l1.6 8h7.6l1.8-6h-10"></path></g>
+      <text x="1092" y="464" font-size="14" font-weight="600" fill="#1A1815">Expenses</text>
+      <text x="1092" y="481" font-size="11" fill="#97907F">1 movement · Travel</text>
+      <line x1="1038" y1="498" x2="1262" y2="498" stroke="rgba(20,18,14,0.08)"></line>
+      <text x="1038" y="522" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">THIS MONTH</text><text x="1262" y="524" text-anchor="end" font-size="19" font-weight="500" fill="#E00000" font-family="JetBrains Mono, ui-monospace, monospace">−10,017</text><text x="1038" y="550" font-size="10" font-weight="600" letter-spacing="0.8" fill="#97907F">SINCE THE SNAPSHOT</text><text x="1262" y="552" text-anchor="end" font-size="14" font-weight="500" fill="#6B665C" font-family="JetBrains Mono, ui-monospace, monospace">40,684</text><rect x="1038" y="568" width="224" height="7" rx="3.5" fill="rgba(20,18,14,0.07)"></rect><rect x="1038" y="568" width="55" height="7" rx="3.5" fill="#E00000" opacity="0.7"></rect><text x="1038" y="592" font-size="10" fill="#6B665C">logged 10,017</text><text x="1262" y="592" text-anchor="end" font-size="10" fill="#97907F">estimated 30,667</text></g>
+    </svg>
+
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(20,18,14,0.07);">
+      <span style="display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6B665C;"><span style="width: 22px; height: 8px; border-radius: 4px; background: #00A32E; opacity: 0.5;"></span>Money arriving</span>
+      <span style="display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6B665C;"><span style="width: 22px; height: 8px; border-radius: 4px; background: #B37E00; opacity: 0.5;"></span>Moving between things you own</span>
+      <span style="display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6B665C;"><span style="width: 22px; height: 8px; border-radius: 4px; background: #E00000; opacity: 0.45;"></span>Actually spent</span>
+      <span style="margin-left: auto; font-size: 12px; color: #6B665C;">Each band widens and deepens toward where the money went — that is the direction, no arrowheads needed. Width is proportional to the amount. The installment is amber, not red: the money became your equity.</span>
+    </div>
+
+    <div style="display: flex; align-items: stretch; gap: 20px; margin-top: 16px; padding: 18px; border-radius: 12px; background: #F4F2EE; border: 1px solid rgba(20,18,14,0.08);">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span style="width: 46px; height: 26px; border-radius: 999px; background: #00A32E; position: relative; flex: 0 0 46px;">
+            <span style="position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 999px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,18,14,0.20);"></span>
+          </span>
+          <div>
+            <div style="font-size: 14px; font-weight: 600;">Combine movements between the same two things</div>
+            <div style="font-size: 12px; color: #6B665C; margin-top: 2px;">On — one ribbon per pair, with the number of movements on it</div>
+          </div>
+        </div>
+        <p style="margin: 0; font-size: 12px; color: #6B665C; line-height: 1.55; max-width: 540px;">
+          Leave it on. Forty movements in a month drawn as forty ribbons is a hairball — the picture stops telling you anything at exactly the point you have enough data for it to matter. Turn it off for a quiet month, or when you are hunting one specific payment; otherwise read the shape here and the rows in the money log.
+        </p>
+      </div>
+      <div style="display: flex; gap: 16px; align-items: flex-start;">
+        <div style="text-align: center;">
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.8px; color: #97907F; margin-bottom: 6px;">COMBINED</div>
+          <div style="padding: 8px; background: #FFFFFF; border-radius: 10px; border: 1px solid rgba(0,163,46,0.32);"><svg viewBox="0 0 292 96" width="292" height="96" aria-hidden="true"><rect x="4" y="30" width="56" height="44" rx="8" fill="#FFFFFF" stroke="rgba(20,18,14,0.12)"></rect><text x="32" y="56" text-anchor="middle" font-size="9" fill="#6B665C">EGP current</text><path d="M 60,44 C 130,44 130,44 200,44 L 200,60 C 130,60 130,60 60,60 Z" fill="#B37E00" opacity="0.30" stroke="#B37E00" stroke-opacity="0.32" stroke-width="1"></path><text x="130" y="38" text-anchor="middle" font-size="10" font-weight="600" fill="#B37E00" font-family="JetBrains Mono, monospace">550,585</text><text x="130" y="76" text-anchor="middle" font-size="9" fill="#97907F">3 movements</text></svg></div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.8px; color: #97907F; margin-bottom: 6px;">SEPARATE</div>
+          <div style="padding: 8px; background: #FFFFFF; border-radius: 10px; border: 1px solid rgba(20,18,14,0.10);"><svg viewBox="0 0 292 96" width="292" height="96" aria-hidden="true"><rect x="4" y="30" width="56" height="44" rx="8" fill="#FFFFFF" stroke="rgba(20,18,14,0.12)"></rect><text x="32" y="56" text-anchor="middle" font-size="9" fill="#6B665C">EGP current</text><path d="M 60,30 C 130,30 130,30 200,30 L 200,35 C 130,35 130,35 60,35 Z" fill="#B37E00" opacity="0.32" stroke="#B37E00" stroke-opacity="0.30" stroke-width="0.8"></path><text x="210" y="37" font-size="9" fill="#6B665C" font-family="JetBrains Mono, monospace">50,742</text><path d="M 60,52 C 130,52 130,52 200,52 L 200,57 C 130,57 130,57 60,57 Z" fill="#B37E00" opacity="0.32" stroke="#B37E00" stroke-opacity="0.30" stroke-width="0.8"></path><text x="210" y="59" font-size="9" fill="#6B665C" font-family="JetBrains Mono, monospace">199,150</text><path d="M 60,74 C 130,74 130,74 200,74 L 200,79 C 130,79 130,79 60,79 Z" fill="#B37E00" opacity="0.32" stroke="#B37E00" stroke-opacity="0.30" stroke-width="0.8"></path><text x="210" y="81" font-size="9" fill="#6B665C" font-family="JetBrains Mono, monospace">300,693</text></svg></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <section class="panel" style="padding: 24px;">
+      <h2 style="margin: 0 0 4px; font-size: 15px; font-weight: 600;">The only real losses</h2>
+      <p style="margin: 0 0 18px; font-size: 12px; color: #6B665C;">Everything else either stayed yours or changed shape. These are the amounts that left without becoming something.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: baseline; font-size: 13px;"><span>Living expenses</span><span class="mono" style="margin-left: auto; font-weight: 500;">10,017</span></div>
+            <div style="height: 6px; border-radius: 999px; background: rgba(20,18,14,0.07); margin-top: 6px;"><span style="display: block; width: 95.4%; height: 100%; border-radius: 999px; background: #B37E00;"></span></div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: baseline; font-size: 13px;"><span>Exchange spread and fees</span><span class="mono" style="margin-left: auto; font-weight: 500;">481</span></div>
+            <div style="height: 6px; border-radius: 999px; background: rgba(20,18,14,0.07); margin-top: 6px;"><span style="display: block; width: 4.6%; height: 100%; border-radius: 999px; background: #E00000;"></span></div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: baseline; font-size: 13px; font-weight: 500; padding-top: 10px; border-top: 1px solid rgba(20,18,14,0.07);"><span>Total gone</span><span class="mono" style="margin-left: auto; font-size: 16px;">10,498</span></div>
+      </div>
+      <p style="font-size: 12px; color: #6B665C; margin: 16px 0 0;">Against 280,083 of income, that is <strong style="color: #1A1815; font-weight: 600;">3.7%</strong>. The installment is not in this list — it bought equity.</p>
+    </section>
+
+    <section class="panel" style="padding: 24px;">
+      <h2 style="margin: 0 0 4px; font-size: 15px; font-weight: 600;">Where value sits after the month</h2>
+      <p style="margin: 0 0 18px; font-size: 12px; color: #6B665C;">The same month seen as a balance sheet rather than a flow.</p>
+      <div style="display: flex; flex-direction: column; gap: 11px;">
+        <div style="display: flex; align-items: baseline; font-size: 13px;"><span style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #00A32E;"></span>Cash</span><span class="mono" style="margin-left: auto; color: #00A32E;">+218,843</span></div>
+        <div style="display: flex; align-items: baseline; font-size: 13px;"><span style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #E00000;"></span>Palm Hills equity</span><span class="mono" style="margin-left: auto; color: #00A32E;">+50,742</span></div>
+        <div style="display: flex; align-items: baseline; font-size: 13px;"><span style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #E00000;"></span>Palm Hills owed</span><span class="mono" style="margin-left: auto; color: #00A32E;">−50,742</span></div>
+        <div style="display: flex; align-items: baseline; font-size: 13px;"><span style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #B37E00;"></span>Spent and lost</span><span class="mono" style="margin-left: auto; color: #E00000;">−10,498</span></div>
+        <div style="height: 1px; background: rgba(20,18,14,0.07); margin: 4px 0;"></div>
+        <div style="display: flex; align-items: baseline; font-size: 14px; font-weight: 500;"><span>Net worth moved by</span><span class="mono" style="margin-left: auto; font-size: 17px; color: #00A32E;">+208,345</span></div>
+      </div>
+      <p style="font-size: 12px; color: #6B665C; margin: 16px 0 0;">Income less what was spent and lost. Paying the installment nets to zero here — equity up, debt down by the same amount.</p>
+    </section>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

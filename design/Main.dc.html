@@ -1,0 +1,224 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+ <style>
+  body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+  a { color: #5CFF5C; } a:hover { color: #00FF00; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .nav { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 8px; color: #A8A296; font-size: 14px; font-weight: 500; }
+  .nav-on { background: #1E1C18; color: #F3F1EC; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  .card { background: #171613; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05); }
+  .panel { background: #171613; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+       box-shadow: 0 1px 2px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05); }
+  .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E6860; }
+  .tk { display: flex; flex-direction: column; gap: 3px; padding: 12px 20px; border-right: 1px solid rgba(255,255,255,0.06); min-width: 148px; }
+  .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+  .acc { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: #1E1C18; border: 1px solid rgba(255,255,255,0.06); flex: 1; }
+ </style>
+</helmet>
+
+<div style="background: #0F0E0C; color: #F3F1EC; min-height: 100%; display: flex;">
+
+ <nav aria-label="Sections" style="width: 232px; flex: 0 0 232px; background: #121110; border-right: 1px solid rgba(255,255,255,0.08); padding: 20px 16px; display: flex; flex-direction: column; gap: 28px;">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+   <div style="width: 26px; height: 26px; border-radius: 8px; background: #00FF00; display: flex; align-items: center; justify-content: center;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F0E0C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"></path><path d="M4 15l5-5 4 4 7-7"></path></svg>
+   </div>
+   <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Ledger</span>
+   <button aria-label="Collapse sidebar" style="margin-left: auto; background: transparent; border: none; cursor: pointer; padding: 4px; border-radius: 8px;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6860" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>
+   </button>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px;">
+   <div class="nav nav-on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l6 3"></path></svg>Portfolio</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4z"></path><path d="M4 11h16"></path></svg>Assets</div>
+      <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle></svg>Cash</div>
+      <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Real Estate</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l4-4h8l4 4-8 12z"></path><path d="M8 4l4 16 4-16"></path></svg>Gold</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-8"></path><path d="M17 6h4v4"></path></svg>Stocks</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.5-7 9-7 9z"></path></svg>Charity</div>
+      <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8h14M7 8l-2.5 5a3 3 0 0 0 5 0zM17 8l-2.5 5a3 3 0 0 0 5 0z"></path></svg>Zakat</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>Expenses</div>
+   <div class="nav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"></path><path d="M12 3a6 6 0 0 0-4 10.5V15h8v-1.5A6 6 0 0 0 12 3z"></path></svg>Brainstorm</div>
+  </div>
+
+  <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: #1E1C18; border: 1px solid rgba(255,255,255,0.06);">
+   <div class="ov">Snapshot</div>
+   <div style="font-size: 13px; color: #A8A296; line-height: 1.5;">Rolled forward from <strong style="color: #F3F1EC; font-weight: 600;">May 2026</strong> — 4.03 months elapsed.</div>
+   <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: transparent; color: #5CFF5C; border: 1px solid rgba(0,255,0,0.32); border-radius: 8px; padding: 7px 12px; cursor: pointer;">View as of a date…</button>
+  </div>
+ </nav>
+
+ <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+  <header style="position: sticky; top: 0; background: rgba(15,14,12,0.86); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 32px; display: flex; align-items: center; gap: 16px; z-index: 10;">
+   <h1 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em;">Portfolio</h1>
+   <span class="chip" style="background: rgba(255,255,255,0.10); color: #5CFF5C; display: inline-flex; align-items: center; gap: 6px;">
+    <span style="width: 6px; height: 6px; border-radius: 999px; background: #00FF00; display: inline-block; "></span>LIVE
+   </span>
+   <div style="margin-left: auto; display: flex; align-items: center; gap: 20px;">
+    <div style="text-align: right;">
+     <div class="mono" style="font-size: 13px; font-weight: 500;">14:35:12</div>
+     <div style="font-size: 11px; color: #6E6860;">Wednesday, 2 September 2026</div>
+    </div>
+    <div style="text-align: right;">
+     <div style="font-size: 12px; color: #5CFF5C;">Prices live · 10 quoted 11:35</div>
+     <div style="font-size: 11px; color: #6E6860;">Rate and gold live</div>
+    </div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #1E1C18; color: #F3F1EC; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; padding: 8px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);">
+     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 5v6h-6"></path></svg>Refresh
+    </button>
+   </div>
+  </header>
+
+  <div style="display: flex; overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.08); background: #121110;">
+   <div class="tk"><span class="ov">USD / EGP</span><span class="mono" style="font-size: 17px; font-weight: 500;">50.9242</span><span style="font-size: 11px; color: #5CFF5C;">Live · 11:35</span></div>
+   <div class="tk"><span class="ov">Gold / gram</span><span class="mono" style="font-size: 17px; font-weight: 500;">7,046</span><span style="font-size: 11px; color: #5CFF5C;">24k · iSagha</span></div>
+   <div class="tk"><span class="ov">$ / troy oz</span><span class="mono" style="font-size: 17px; font-weight: 500;">4,304</span><span style="font-size: 11px; color: #6E6860;">Spot · GC=F</span></div>
+   <div class="tk"><span class="ov">My gold · 318.3 g</span><span class="mono" style="font-size: 17px; font-weight: 500;">2,242,662</span><span style="font-size: 11px; color: #6E6860;">$44,039</span></div>
+   <div class="tk"><span class="ov">Net worth</span><span class="mono" style="font-size: 17px; font-weight: 500;">11.65M</span><span style="font-size: 11px; color: #6E6860;">$228,694</span></div>
+   <div class="tk"><span class="ov">Monthly income</span><span class="mono" style="font-size: 17px; font-weight: 500;">280,083</span><span style="font-size: 11px; color: #6E6860;">$5,500</span></div>
+   <div class="tk" style="border-right: none;"><span class="ov">Est. savings / mo</span><span class="mono" style="font-size: 17px; font-weight: 500;">219,341</span><span style="font-size: 11px; color: #6E6860;">$4,308</span></div>
+  </div>
+
+  <main style="padding: 32px; display: flex; flex-direction: column; gap: 24px; max-width: 1180px; width: 100%; box-sizing: border-box; margin: 0 auto;">
+
+   <section class="panel" style="padding: 28px 32px; display: flex; align-items: flex-start; gap: 40px;">
+    <div style="flex: 1;">
+     <div class="ov">Total net worth · Wed 2 Sep 2026</div>
+     <div class="mono" style="font-size: 46px; font-weight: 500; letter-spacing: -0.03em; margin: 8px 0 4px; line-height: 1;">11,646,079 <span style="font-size: 20px; color: #6E6860;">EGP</span></div>
+     <div style="font-size: 14px; color: #A8A296;">≈ $228,694 at 50.9242</div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; flex: 1.6;">
+     <div><div class="ov">Cash</div><div class="mono" style="font-size: 20px; font-weight: 500; margin-top: 6px;">4.26M</div><div style="font-size: 12px; color: #6E6860;">$83,632</div></div>
+     <div><div class="ov">Gold</div><div class="mono" style="font-size: 20px; font-weight: 500; margin-top: 6px;">2.24M</div><div style="font-size: 12px; color: #6E6860;">$44,039</div></div>
+     <div><div class="ov">Real estate</div><div class="mono" style="font-size: 20px; font-weight: 500; margin-top: 6px;">3.56M</div><div style="font-size: 12px; color: #6E6860;">$69,866</div></div>
+     <div>
+      <div class="ov">Next payment</div>
+      <div class="mono" style="font-size: 20px; font-weight: 500; margin-top: 6px; color: #FF4040;">−50,742</div>
+      <div style="font-size: 12px; color: #6E6860;">$996 · 30 Sep (29d)</div>
+     </div>
+    </div>
+   </section>
+
+   <section class="panel" style="padding: 24px;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px;">
+     <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Live since snapshot</h2>
+     <span style="font-size: 12px; color: #6E6860;">Live as of 2 Sep 2026, 11:35 · auto-rolled from the May 2026 snapshot</span>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: stretch;">
+     <div class="acc"><span class="ov">Snapshot base</span><span class="mono" style="font-size: 18px; font-weight: 500;">3,740,429</span></div>
+     <div class="acc"><span class="ov">Income accrued</span><span class="mono" style="font-size: 18px; font-weight: 500; color: #5CFF5C;">+1,129,670</span><span style="font-size: 11px; color: #6E6860;">4.03 mo × $5,500</span></div>
+     <div class="acc"><span class="ov">Living burn</span><span class="mono" style="font-size: 18px; font-weight: 500; color: #FF4040;">−40,684</span><span style="font-size: 11px; color: #6E6860;">logged + baseline</span></div>
+     <div class="acc"><span class="ov">Installments paid</span><span class="mono" style="font-size: 18px; font-weight: 500; color: #FF4040;">−550,585</span><span style="font-size: 11px; color: #6E6860;">3 due dates passed</span></div>
+     <div class="acc"><span class="ov">Charity + RE costs</span><span class="mono" style="font-size: 18px; font-weight: 500; color: #FF4040;">−20,000</span><span style="font-size: 11px; color: #6E6860;">1 record</span></div>
+     <div class="acc" style="background: rgba(255,255,255,0.06); border-color: rgba(0,255,0,0.34); "><span class="ov" style="color: #5CFF5C;">Cash today</span><span class="mono" style="font-size: 18px; font-weight: 500;">4,258,830</span></div>
+    </div>
+   </section>
+
+   <div style="display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px;">
+
+    <section class="panel" style="padding: 24px;">
+     <h2 style="margin: 0 0 20px; font-size: 15px; font-weight: 600;">Allocation</h2>
+     <div style="display: flex; align-items: center; gap: 28px;">
+      <div style="position: relative; width: 176px; height: 176px; flex: 0 0 176px;">
+       <svg width="176" height="176" viewBox="0 0 176 176" role="img" aria-label="Allocation: cash 36.6%, real estate 30.5%, gold 19.3%, car 8.7%, stocks 4.9%">
+        <g transform="rotate(-90 88 88)" fill="none" stroke-width="22">
+         <circle cx="88" cy="88" r="70" stroke="#00B33C" stroke-dasharray="160.9 278.9" stroke-dashoffset="0"></circle>
+         <circle cx="88" cy="88" r="70" stroke="#FFD400" stroke-dasharray="84.9 354.9" stroke-dashoffset="-160.9"></circle>
+         <circle cx="88" cy="88" r="70" stroke="#FF0000" stroke-dasharray="134.1 305.7" stroke-dashoffset="-245.8"></circle>
+         <circle cx="88" cy="88" r="70" stroke="#00E5FF" stroke-dasharray="38.3 401.5" stroke-dashoffset="-379.9"></circle>
+         <circle cx="88" cy="88" r="70" stroke="#A020FF" stroke-dasharray="21.6 418.2" stroke-dashoffset="-418.2"></circle>
+        </g>
+       </svg>
+       <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+        <span class="mono" style="font-size: 22px; font-weight: 500;">11.65M</span>
+        <span style="font-size: 11px; color: #6E6860;">EGP total</span>
+       </div>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+       <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #00B33C;"></span>Cash<span class="mono" style="margin-left: auto; color: #A8A296;">36.6%</span></div>
+       <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #FF0000;"></span>Real estate<span class="mono" style="margin-left: auto; color: #A8A296;">30.5%</span></div>
+       <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #FFD400;"></span>Gold<span class="mono" style="margin-left: auto; color: #A8A296;">19.3%</span></div>
+       <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #00E5FF;"></span>Car<span class="mono" style="margin-left: auto; color: #A8A296;">8.7%</span></div>
+       <div style="display: flex; align-items: center; gap: 10px; font-size: 13px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #A020FF;"></span>Stocks<span class="mono" style="margin-left: auto; color: #A8A296;">4.9%</span></div>
+      </div>
+     </div>
+    </section>
+
+    <section class="panel" style="padding: 24px;">
+     <h2 style="margin: 0 0 16px; font-size: 15px; font-weight: 600;">Assets</h2>
+     <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="card" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.03);">
+       <span style="width: 34px; height: 34px; border-radius: 8px; background: rgba(0,179,60,0.18); display: flex; align-items: center; justify-content: center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00B33C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle></svg></span>
+       <div><div style="font-size: 14px; font-weight: 500;">Cash</div><div style="display: flex; gap: 6px; margin-top: 5px;"><span class="chip mono" style="background: rgba(63,125,79,0.28); color: #7FC091;">USD 70,000</span><span class="chip mono" style="background: rgba(160,122,51,0.30); color: #D4A85A;">EGP 600,977</span><span class="chip mono" style="background: rgba(107,78,158,0.34); color: #A98BD9;">GBP 5,700</span></div></div>
+       <div class="mono" style="margin-left: auto; text-align: right;"><div style="font-size: 15px; font-weight: 500;">4,258,830</div></div>
+       <span class="chip mono" style="background: rgba(0,179,60,0.20); color: #3FD973;">36.6%</span>
+      </div>
+      <div class="card" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; background: rgba(255,212,0,0.05);">
+       <span style="width: 34px; height: 34px; border-radius: 8px; background: rgba(255,212,0,0.16); display: flex; align-items: center; justify-content: center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFD400" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l4-4h8l4 4-8 12z"></path></svg></span>
+       <div><div style="font-size: 14px; font-weight: 500;">Gold</div><div style="font-size: 11px; color: #6E6860;">318.3 g · $44,039</div></div>
+       <div class="mono" style="margin-left: auto; text-align: right;"><div style="font-size: 15px; font-weight: 500;">2,242,662</div></div>
+       <span class="chip mono" style="background: rgba(255,212,0,0.16); color: #FFE95C;">19.3%</span>
+      </div>
+      <div class="card" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; background: rgba(255,0,0,0.05);">
+       <span style="width: 34px; height: 34px; border-radius: 8px; background: rgba(255,0,0,0.16); display: flex; align-items: center; justify-content: center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FF0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path></svg></span>
+       <div><div style="font-size: 14px; font-weight: 500;">Real estate</div><div style="font-size: 11px; color: #6E6860;">$69,866 · equity paid</div></div>
+       <div class="mono" style="margin-left: auto; text-align: right;"><div style="font-size: 15px; font-weight: 500;">3,557,874</div></div>
+       <span class="chip mono" style="background: rgba(255,0,0,0.16); color: #FF4040;">30.5%</span>
+      </div>
+      <div class="card" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; background: rgba(0,229,255,0.05);">
+       <span style="width: 34px; height: 34px; border-radius: 8px; background: rgba(0,229,255,0.16); display: flex; align-items: center; justify-content: center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16l1.5-5h11L19 16"></path><rect x="3" y="16" width="18" height="4" rx="1"></rect></svg></span>
+       <div><div style="font-size: 14px; font-weight: 500;">Car</div><div style="font-size: 11px; color: #6E6860;">$20,000 at 50.9242</div></div>
+       <div class="mono" style="margin-left: auto; text-align: right;"><div style="font-size: 15px; font-weight: 500;">1,018,485</div></div>
+       <span class="chip mono" style="background: rgba(0,229,255,0.16); color: #5CF0FF;">8.7%</span>
+      </div>
+      <div class="card" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; background: rgba(160,32,255,0.05);">
+       <span style="width: 34px; height: 34px; border-radius: 8px; background: rgba(160,32,255,0.16); display: flex; align-items: center; justify-content: center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#A020FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-8"></path></svg></span>
+       <div><div style="font-size: 14px; font-weight: 500;">Stocks</div><div style="font-size: 11px; color: #6E6860;">$11,158 · 4 positions</div></div>
+       <div class="mono" style="margin-left: auto; text-align: right;"><div style="font-size: 15px; font-weight: 500;">568,228</div></div>
+       <span class="chip mono" style="background: rgba(160,32,255,0.16); color: #C46BFF;">4.9%</span>
+      </div>
+     </div>
+    </section>
+   </div>
+
+   <section class="panel" style="padding: 24px;">
+    <h2 style="margin: 0 0 20px; font-size: 15px; font-weight: 600;">Monthly cash flow</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+     <div>
+      <div class="ov" style="margin-bottom: 12px;">Income</div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+       <div style="display: flex; align-items: baseline; gap: 12px; font-size: 14px;"><span>Salary</span><span style="font-size: 12px; color: #6E6860;">$5,000</span><span class="mono" style="margin-left: auto; color: #5CFF5C;">+254,621</span></div>
+       <div style="display: flex; align-items: baseline; gap: 12px; font-size: 14px;"><span>Car rental</span><span style="font-size: 12px; color: #6E6860;">$500</span><span class="mono" style="margin-left: auto; color: #5CFF5C;">+25,462</span></div>
+       <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;"></div>
+       <div style="display: flex; align-items: baseline; font-size: 14px; font-weight: 500;"><span>Total in</span><span class="mono" style="margin-left: auto; font-size: 17px;">280,083</span></div>
+      </div>
+     </div>
+     <div>
+      <div class="ov" style="margin-bottom: 12px;">Outflows (Sep 2026)</div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+       <div style="display: flex; align-items: baseline; gap: 12px; font-size: 14px;"><span>Palm Hills</span><span style="font-size: 12px; color: #6E6860;">30 Sep</span><span class="mono" style="margin-left: auto; color: #FF4040;">−50,742</span></div>
+       <div style="display: flex; align-items: baseline; gap: 12px; font-size: 14px;"><span>Living budget</span><span style="font-size: 12px; color: #6E6860;">baseline</span><span class="mono" style="margin-left: auto; color: #FF4040;">−10,000</span></div>
+       <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;"></div>
+       <div style="display: flex; align-items: baseline; font-size: 14px; font-weight: 500;"><span>Est. savings</span><span class="mono" style="margin-left: auto; font-size: 17px; color: #5CFF5C;">219,341</span></div>
+      </div>
+     </div>
+    </div>
+   </section>
+
+  </main>
+ </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# The whole thing in one container — the bundle, the API, the MCP server and a SQLite file
+# on a volume. One process, one port, one thing to back up.
+#
+# The data lives in the `ledger-data` volume, not in the container. Replacing the image
+# leaves it untouched; `docker compose down -v` destroys it.
+
+services:
+  ledger:
+    build: .
+    image: ledg00r:latest
+    ports:
+      - "${LEDGER_PORT:-8080}:8080"
+    volumes:
+      - ledger-data:/data
+    environment:
+      TZ: ${TZ:-Africa/Cairo}
+    restart: unless-stopped
+
+volumes:
+  ledger-data:

@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+ <style>
+  body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+  a { color: #00A32E; } a:hover { color: #00A32E; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .panel { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px;
+       box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.55); }
+  .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; }
+  .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+  .mo { border: 1px solid rgba(20,18,14,0.09); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: #FFFFFF; }
+  th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #97907F; padding: 0 0 10px; }
+  td { font-size: 13px; padding: 11px 0; border-top: 1px solid rgba(20,18,14,0.07); }
+ </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+ <div style="display: flex; align-items: center; gap: 14px;">
+  <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Real Estate</h1>
+  <span class="chip" style="background: rgba(0,0,0,0.55); color: #6B665C;">2 contracts · 68 installments to Dec 2036</span>
+  <span class="mono" style="margin-left: auto; font-size: 13px; color: #6B665C;">Next 12 months · 1,796,406 EGP</span>
+ </div>
+
+ <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+  <section class="panel" style="padding: 24px; display: flex; gap: 24px; align-items: center;">
+   <div style="position: relative; width: 118px; height: 118px; flex: 0 0 118px;">
+    <svg width="118" height="118" viewBox="0 0 118 118" role="img" aria-label="Palm Hills 8.6 percent paid">
+     <circle cx="59" cy="59" r="44" fill="none" stroke="rgba(20,18,14,0.07)" stroke-width="10"></circle>
+     <circle cx="59" cy="59" r="44" fill="none" stroke="#E00000" stroke-width="10" stroke-linecap="round"
+         stroke-dasharray="23.8 252.7" transform="rotate(-90 59 59)"></circle>
+    </svg>
+    <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+     <span class="mono" style="font-size: 20px; font-weight: 500;">8.6%</span>
+     <span style="font-size: 10px; color: #97907F;">paid</span>
+    </div>
+   </div>
+   <div style="flex: 1; min-width: 0;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+     <span style="width: 10px; height: 10px; border-radius: 3px; background: #E00000;"></span>
+     <h2 style="margin: 0; font-size: 17px; font-weight: 600;">Palm Hills</h2>
+    </div>
+    <div style="font-size: 12px; color: #97907F; margin: 4px 0 14px;">Contract 12,178,087 EGP · ends Dec 2036</div>
+    <div style="display: flex; gap: 24px;">
+     <div><div class="ov">Paid</div><div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 3px;">1.05M</div></div>
+     <div><div class="ov">Remaining</div><div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 3px;">11.13M</div></div>
+    </div>
+    <div style="margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: rgba(224,0,0,0.07); border: 1px solid rgba(224,0,0,0.18);">
+     <div class="ov" style="color: #C41818;">Next payment</div>
+     <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 4px;">
+      <span class="mono" style="font-size: 17px; font-weight: 500; color: #C41818;">−50,742</span>
+      <span style="font-size: 12px; color: #6B665C;">$996 · 30 Sep 2026 · 29d</span>
+     </div>
+    </div>
+   </div>
+  </section>
+
+  <section class="panel" style="padding: 24px; display: flex; gap: 24px; align-items: center;">
+   <div style="position: relative; width: 118px; height: 118px; flex: 0 0 118px;">
+    <svg width="118" height="118" viewBox="0 0 118 118" role="img" aria-label="Taj Misr 37.5 percent paid">
+     <circle cx="59" cy="59" r="44" fill="none" stroke="rgba(20,18,14,0.07)" stroke-width="10"></circle>
+     <circle cx="59" cy="59" r="44" fill="none" stroke="#B37E00" stroke-width="10" stroke-linecap="round"
+         stroke-dasharray="103.7 172.8" transform="rotate(-90 59 59)"></circle>
+    </svg>
+    <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+     <span class="mono" style="font-size: 20px; font-weight: 500;">37.5%</span>
+     <span style="font-size: 10px; color: #97907F;">paid</span>
+    </div>
+   </div>
+   <div style="flex: 1; min-width: 0;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+     <span style="width: 10px; height: 10px; border-radius: 3px; background: #B37E00;"></span>
+     <h2 style="margin: 0; font-size: 17px; font-weight: 600;">Taj Misr</h2>
+    </div>
+    <div style="font-size: 12px; color: #97907F; margin: 4px 0 14px;">Contract 6,693,610 EGP · ends Dec 2031</div>
+    <div style="display: flex; gap: 24px;">
+     <div><div class="ov">Paid</div><div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 3px;">2.51M</div></div>
+     <div><div class="ov">Remaining</div><div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 3px;">4.18M</div></div>
+    </div>
+    <div style="margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: rgba(179,126,0,0.08); border: 1px solid rgba(179,126,0,0.20);">
+     <div class="ov" style="color: #8A6100;">Next payment</div>
+     <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 4px;">
+      <span class="mono" style="font-size: 17px; font-weight: 500; color: #8A6100;">−199,150</span>
+      <span style="font-size: 12px; color: #6B665C;">$3,911 · 11 Oct 2026 · 40d</span>
+     </div>
+    </div>
+   </div>
+  </section>
+ </div>
+
+ <section class="panel" style="padding: 24px;">
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px;">
+   <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Installment calendar</h2>
+   <span style="font-size: 12px; color: #97907F;">Coverage simulated against cash, gold, car, stocks and salary accrued to 30 Jun 2028</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px;">
+
+   <div class="mo" style="border-color: rgba(0,163,46,0.35); box-shadow: 0 0 0 1px rgba(20,18,14,0.14);">
+    <div style="display: flex; align-items: baseline; gap: 8px;">
+     <span style="font-size: 13px; font-weight: 600;">Sep 2026</span>
+     <span class="chip" style="background: rgba(20,18,14,0.14); color: #00A32E; margin-left: auto;">NOW</span>
+    </div>
+    <div style="padding: 10px 12px; border-radius: 8px; background: rgba(224,0,0,0.07);">
+     <div style="display: flex; align-items: baseline; gap: 8px;">
+      <span style="font-size: 11px; color: #6B665C;">Due in 29d</span>
+      <span class="chip" style="background: rgba(20,18,14,0.14); color: #00A32E; margin-left: auto;">covered</span>
+     </div>
+     <div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 4px; color: #C41818;">−50,742</div>
+     <div style="font-size: 11px; color: #97907F;">Palm Hills · 30 Sep</div>
+     <div class="mono" style="font-size: 11px; color: #97907F; margin-top: 6px;">Resources after · 8.09M</div>
+    </div>
+   </div>
+
+   <div class="mo">
+    <div style="font-size: 13px; font-weight: 600;">Oct 2026</div>
+    <div style="padding: 10px 12px; border-radius: 8px; background: rgba(179,126,0,0.08);">
+     <div style="display: flex; align-items: baseline; gap: 8px;">
+      <span style="font-size: 11px; color: #6B665C;">Due in 40d</span>
+      <span class="chip" style="background: rgba(20,18,14,0.14); color: #00A32E; margin-left: auto;">covered</span>
+     </div>
+     <div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 4px; color: #8A6100;">−199,150</div>
+     <div style="font-size: 11px; color: #97907F;">Taj Misr · 11 Oct · quarterly</div>
+     <div class="mono" style="font-size: 11px; color: #97907F; margin-top: 6px;">Resources after · 7.89M</div>
+    </div>
+   </div>
+
+   <div class="mo">
+    <div style="font-size: 13px; font-weight: 600;">Nov 2026</div>
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 18px 0; border-radius: 8px; background: rgba(20,18,14,0.03);">
+     <span style="font-size: 12px; color: #97907F;">No payment</span>
+    </div>
+   </div>
+
+   <div class="mo">
+    <div style="font-size: 13px; font-weight: 600;">Dec 2026</div>
+    <div style="padding: 10px 12px; border-radius: 8px; background: rgba(224,0,0,0.07);">
+     <div style="display: flex; align-items: baseline; gap: 8px;">
+      <span style="font-size: 11px; color: #6B665C;">Due in 120d</span>
+      <span class="chip" style="background: rgba(20,18,14,0.14); color: #00A32E; margin-left: auto;">covered</span>
+     </div>
+     <div class="mono" style="font-size: 15px; font-weight: 500; margin-top: 4px; color: #C41818;">−521,515</div>
+     <div style="font-size: 11px; color: #97907F;">Palm Hills · 31 Dec</div>
+     <div style="font-size: 11px; color: #6B665C; margin-top: 4px;">Annual balloon — buys equity</div>
+    </div>
+   </div>
+  </div>
+ </section>
+
+ <section class="panel" style="padding: 24px;">
+  <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 4px;">
+   <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Extra apartment expenses</h2>
+   <div style="display: flex; gap: 20px; margin-left: 24px;">
+    <div><span class="ov">Palm Hills</span> <span class="mono" style="font-size: 14px; font-weight: 500; margin-left: 8px;">0</span></div>
+    <div><span class="ov">Taj Misr</span> <span class="mono" style="font-size: 14px; font-weight: 500; margin-left: 8px;">0</span></div>
+   </div>
+   <button style="margin-left: auto; font-family: inherit; font-size: 13px; font-weight: 500; background: #00A32E; color: #FFFFFF; border: none; box-shadow: 0 1px 2px rgba(20,18,14,0.10); border-radius: 8px; padding: 9px 16px; cursor: pointer;">+ Add expense</button>
+  </div>
+  <div style="border: 1px dashed rgba(20,18,14,0.14); border-radius: 12px; padding: 40px; text-align: center; margin-top: 16px;">
+   <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">No extra expenses logged</div>
+   <div style="font-size: 13px; color: #6B665C;">Finishing, furniture, appliances, renovation and fees are recorded here and subtracted from cash on the date they are paid.</div>
+  </div>
+ </section>
+
+</div>
+</x-dc>
+</body>
+</html>

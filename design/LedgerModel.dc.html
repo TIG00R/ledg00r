@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+    a { color: #00A32E; } a:hover { color: #007A22; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(20,18,14,0.04), 0 4px 12px rgba(20,18,14,0.06); }
+    .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; }
+    .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+    .node { border-radius: 12px; padding: 13px 15px; border: 1px solid; }
+  </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; min-height: 100%; padding: 40px; display: flex; flex-direction: column; gap: 32px;">
+
+  <div>
+    <h1 style="margin: 0 0 8px; font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">One ledger, four kinds of node</h1>
+    <p style="margin: 0; font-size: 14px; color: #6B665C; max-width: 860px; line-height: 1.6;">
+      Cash accounts, gold, a car, a property, a brokerage book and an installment balance are all the same thing: somewhere value sits.
+      Model them as one typed list of nodes, and every event in the app — an exchange, an expense, a gold purchase, an installment payment —
+      becomes the same shape: value leaving one node and arriving at another. That single shape replaces four separate mechanisms in the old app.
+    </p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+    <div class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28);">
+      <div class="ov" style="color: #00A32E;">Cash node</div>
+      <div style="font-size: 14px; font-weight: 500; margin: 6px 0 6px;">A bank sub-account</div>
+      <div style="font-size: 12px; color: #6B665C; line-height: 1.5;">One currency, one purpose. HSBC Egypt · EGP current · EGP. Balance is opening plus every movement.</div>
+    </div>
+    <div class="node" style="background: rgba(179,126,0,0.07); border-color: rgba(179,126,0,0.30);">
+      <div class="ov" style="color: #8A6100;">Asset node</div>
+      <div style="font-size: 14px; font-weight: 500; margin: 6px 0 6px;">Something you own</div>
+      <div style="font-size: 12px; color: #6B665C; line-height: 1.5;">Gold in grams, a car, property equity, a brokerage book. Valued live, in its own unit.</div>
+    </div>
+    <div class="node" style="background: rgba(224,0,0,0.06); border-color: rgba(224,0,0,0.26);">
+      <div class="ov" style="color: #E00000;">Liability node</div>
+      <div style="font-size: 14px; font-weight: 500; margin: 6px 0 6px;">Something you owe</div>
+      <div style="font-size: 12px; color: #6B665C; line-height: 1.5;">The unpaid balance of an installment plan. Falls as payments land.</div>
+    </div>
+    <div class="node" style="background: rgba(20,18,14,0.04); border-color: rgba(20,18,14,0.12);">
+      <div class="ov">External node</div>
+      <div style="font-size: 14px; font-weight: 500; margin: 6px 0 6px;">Outside your books</div>
+      <div style="font-size: 12px; color: #6B665C; line-height: 1.5;">Salary, an expense category, a dealer, a friend. Where value comes from and goes to.</div>
+    </div>
+  </div>
+
+  <div class="panel" style="padding: 28px;">
+    <h2 style="margin: 0 0 6px; font-size: 17px; font-weight: 600;">Every event is a transaction with one or more legs</h2>
+    <p style="margin: 0 0 24px; font-size: 13px; color: #6B665C; max-width: 820px;">A leg moves value from one node to another. A transaction groups the legs that happened together, so a chain like “convert dollars, then pay the installment” is one entry in the log with two legs — not two unrelated rows you have to mentally join.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 22px;">
+
+      <div>
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;">
+          <span class="chip" style="background: rgba(122,0,224,0.12); color: #7A00E0;">2 legs</span>
+          <span style="font-size: 14px; font-weight: 500;">Pay the September Palm Hills installment out of dollars</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28); font-size: 13px;">HSBC Egypt · USD savings<br><span class="mono" style="font-size: 12px; color: #E00000;">−$1,000.00</span></span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <span class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28); font-size: 13px;">HSBC Egypt · EGP current<br><span class="mono" style="font-size: 12px; color: #00A32E;">+50,850</span></span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <span class="node" style="background: rgba(179,126,0,0.07); border-color: rgba(179,126,0,0.30); font-size: 13px;">Palm Hills · equity<br><span class="mono" style="font-size: 12px; color: #00A32E;">+50,742</span></span>
+          <span style="font-size: 12px; color: #6B665C;">and</span>
+          <span class="node" style="background: rgba(224,0,0,0.06); border-color: rgba(224,0,0,0.26); font-size: 13px;">Palm Hills · owed<br><span class="mono" style="font-size: 12px; color: #00A32E;">−50,742</span></span>
+        </div>
+        <div style="font-size: 12px; color: #6B665C; margin-top: 10px;">Net worth falls by 1,185 — the exchange spread and fee. The installment itself moves value sideways: cash out, equity in, debt down. 108 EGP of change stays in the current account.</div>
+      </div>
+
+      <div style="height: 1px; background: rgba(20,18,14,0.07);"></div>
+
+      <div>
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;">
+          <span class="chip" style="background: rgba(122,0,224,0.12); color: #7A00E0;">2 legs</span>
+          <span style="font-size: 14px; font-weight: 500;">Move $250 into the brokerage book</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28); font-size: 13px;">HSBC Egypt · USD savings<br><span class="mono" style="font-size: 12px; color: #E00000;">−$250.00</span></span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <span class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28); font-size: 13px;">HSBC Egypt · EGP current<br><span class="mono" style="font-size: 12px; color: #00A32E;">+12,712</span></span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <span class="node" style="background: rgba(179,126,0,0.07); border-color: rgba(179,126,0,0.30); font-size: 13px;">Brokerage · cash<br><span class="mono" style="font-size: 12px; color: #00A32E;">+12,712</span></span>
+        </div>
+        <div style="font-size: 12px; color: #6B665C; margin-top: 10px;">A later BUY order is a third movement, brokerage cash into the position — which is exactly what <span class="mono">computedPositions</span> already derives from the order log today.</div>
+      </div>
+
+      <div style="height: 1px; background: rgba(20,18,14,0.07);"></div>
+
+      <div>
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;">
+          <span class="chip" style="background: rgba(20,18,14,0.06); color: #6B665C;">1 leg</span>
+          <span style="font-size: 14px; font-weight: 500;">Buy 40 g of gold, and sell 25 g back later</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span class="node" style="background: rgba(0,163,46,0.06); border-color: rgba(0,163,46,0.28); font-size: 13px;">HSBC US · USD account<br><span class="mono" style="font-size: 12px; color: #E00000;">−$5,535</span></span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <span class="node" style="background: rgba(179,126,0,0.07); border-color: rgba(179,126,0,0.30); font-size: 13px;">Gold · 24k<br><span class="mono" style="font-size: 12px; color: #00A32E;">+40.0 g</span></span>
+          <span style="font-size: 12px; color: #6B665C; margin-left: 8px;">the same leg, reversed, is a sale</span>
+        </div>
+        <div style="font-size: 12px; color: #6B665C; margin-top: 10px;">The asset node carries its own unit — grams, shares, one car — and its EGP value is derived from the live price, never stored.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="panel" style="padding: 24px;">
+      <h2 style="margin: 0 0 12px; font-size: 15px; font-weight: 600;">What this replaces</h2>
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #6B665C; line-height: 1.5;">
+        <div><strong style="color: #1A1815; font-weight: 600;">Four bespoke mechanisms become one.</strong> Gold purchases, the installment array, the order log and the expense list are all movement rows today, each with its own shape, its own date parser and its own arithmetic in <span class="mono">accrue()</span>.</div>
+        <div><strong style="color: #1A1815; font-weight: 600;">Net worth becomes one rule.</strong> Sum the asset nodes, subtract the liability nodes. No special case for cash, none for gold, none for the car.</div>
+        <div><strong style="color: #1A1815; font-weight: 600;">The property ring falls out for free.</strong> Equity node over equity plus liability — no <span class="mono">ph_paid</span> / <span class="mono">ph_total</span> pair to keep in step.</div>
+      </div>
+    </div>
+    <div class="panel" style="padding: 24px; border-color: rgba(179,126,0,0.30);">
+      <h2 style="margin: 0 0 12px; font-size: 15px; font-weight: 600;">What it costs</h2>
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #6B665C; line-height: 1.5;">
+        <div><strong style="color: #1A1815; font-weight: 600;">It is a bigger rebuild.</strong> This is no longer a port of the dashboard — it is a different core with the dashboard's behaviour proved on top of it.</div>
+        <div><strong style="color: #1A1815; font-weight: 600;">Rule zero still binds.</strong> Every <span class="mono">F-###</span> must still produce the same number. The model has to reproduce the snapshot accrual, not replace it, until Q24 is decided.</div>
+        <div><strong style="color: #1A1815; font-weight: 600;">Today's figures do survive it.</strong> Equity-only and asset-minus-liability give the same net worth: 12,178,087 owned less 11,131,673 owed is the 1,046,414 Palm Hills equity the app already shows.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

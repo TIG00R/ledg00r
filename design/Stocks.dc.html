@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+ <style>
+  body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+  a { color: #5CFF5C; } a:hover { color: #00FF00; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .panel { background: #171613; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+       box-shadow: 0 1px 2px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05); }
+  .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E6860; }
+  .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+  .tab { font-family: inherit; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: none; background: transparent; color: #A8A296; cursor: pointer; }
+  .tab-on { background: #1E1C18; color: #F3F1EC; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  th { text-align: right; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #6E6860; padding: 0 0 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; font-size: 13px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.07); }
+ </style>
+</helmet>
+
+<div style="background: #0F0E0C; color: #F3F1EC; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+ <div style="display: flex; align-items: center; gap: 14px;">
+  <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Stocks</h1>
+  <span class="chip" style="background: rgba(255,255,255,0.07); color: #A8A296;">EGX · 4 positions · 30 orders</span>
+  <span style="margin-left: auto; font-size: 12px; color: #6E6860;">Prices live · 10 quoted 11:35 · Mubasher</span>
+ </div>
+
+ <section class="panel" style="padding: 28px; display: flex; gap: 40px; align-items: center;">
+  <div style="position: relative; width: 224px; height: 224px; flex: 0 0 224px;">
+   <svg width="224" height="224" viewBox="0 0 224 224" role="img" aria-label="Portfolio by market value and entry cost">
+    <g transform="rotate(-90 112 112)" fill="none">
+     <g stroke-width="20">
+      <circle cx="112" cy="112" r="86" stroke="#00FF00" stroke-dasharray="158.65 381.70" stroke-dashoffset="0"></circle>
+      <circle cx="112" cy="112" r="86" stroke="#00E5FF" stroke-dasharray="136.05 404.30" stroke-dashoffset="-158.65"></circle>
+      <circle cx="112" cy="112" r="86" stroke="#FFD400" stroke-dasharray="45.62 494.73" stroke-dashoffset="-294.70"></circle>
+      <circle cx="112" cy="112" r="86" stroke="#A020FF" stroke-dasharray="34.51 505.84" stroke-dashoffset="-340.32"></circle>
+      <circle cx="112" cy="112" r="86" stroke="#4A453D" stroke-dasharray="165.53 374.82" stroke-dashoffset="-374.83"></circle>
+     </g>
+     <g stroke-width="14" opacity="0.55">
+      <circle cx="112" cy="112" r="60" stroke="#00FF00" stroke-dasharray="98.47 278.52" stroke-dashoffset="0"></circle>
+      <circle cx="112" cy="112" r="60" stroke="#00E5FF" stroke-dasharray="92.87 284.12" stroke-dashoffset="-98.47"></circle>
+      <circle cx="112" cy="112" r="60" stroke="#FFD400" stroke-dasharray="31.48 345.51" stroke-dashoffset="-191.34"></circle>
+      <circle cx="112" cy="112" r="60" stroke="#A020FF" stroke-dasharray="25.99 351.00" stroke-dashoffset="-222.82"></circle>
+      <circle cx="112" cy="112" r="60" stroke="#4A453D" stroke-dasharray="128.23 248.76" stroke-dashoffset="-248.81"></circle>
+     </g>
+    </g>
+   </svg>
+   <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+    <span class="mono" style="font-size: 22px; font-weight: 500;">568,228</span>
+    <span style="font-size: 10px; color: #6E6860;">total portfolio</span>
+    <span class="mono" style="font-size: 13px; color: #5CFF5C; margin-top: 4px;">+56,228 · +11.0%</span>
+    <span class="mono" style="font-size: 10px; color: #6E6860;">entry 512,000</span>
+   </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; gap: 20px;">
+   <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px;">
+    <div><div class="ov">Deployed</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">337,927</div></div>
+    <div><div class="ov">Value now</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">394,155</div></div>
+    <div><div class="ov">Unrealized</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px; color: #5CFF5C;">+56,228</div></div>
+    <div><div class="ov">Brokerage cash</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">174,073</div></div>
+    <div><div class="ov">Book total</div><div class="mono" style="font-size: 18px; font-weight: 500; margin-top: 5px;">568,228</div></div>
+   </div>
+   <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A8A296;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #00FF00;"></span>ETEL 29.4%</div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A8A296;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #00E5FF;"></span>ABUK 25.2%</div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A8A296;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #FFD400;"></span>ALCN 8.4%</div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A8A296;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #A020FF;"></span>EAST 6.4%</div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #A8A296;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #4A453D;"></span>Cash 30.6%</div>
+    <span style="font-size: 12px; color: #6E6860;">Outer ring market value · inner ring entry cost</span>
+   </div>
+  </div>
+ </section>
+
+ <section class="panel" style="padding: 24px;">
+  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 20px;">
+   <button class="tab tab-on">Positions</button>
+   <button class="tab">Orders log</button>
+   <button class="tab">Stock diary</button>
+   <button style="margin-left: auto; font-family: inherit; font-size: 13px; font-weight: 500; background: #00FF00; color: #002B00; border: none; border-radius: 8px; padding: 9px 16px; cursor: pointer;">+ Log order</button>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse;">
+   <thead>
+    <tr><th>Ticker</th><th>Shares</th><th>Avg buy</th><th>Cost EGP</th><th>Price now</th><th>Day</th><th>Value EGP</th><th>P&amp;L EGP</th><th>P&amp;L %</th><th>% book</th></tr>
+   </thead>
+   <tbody>
+    <tr>
+     <td><span style="font-weight: 600;">ETEL</span> <span style="font-size: 11px; color: #6E6860; margin-left: 6px;">Telecom Egypt</span></td>
+     <td class="mono">1,442</td><td class="mono">92.75</td><td class="mono">133,746</td><td class="mono">115.69</td>
+     <td class="mono" style="color: #5CFF5C;">+0.62%</td><td class="mono">166,825</td>
+     <td class="mono" style="color: #5CFF5C;">+33,079</td><td class="mono" style="color: #5CFF5C;">+24.7%</td><td class="mono" style="color: #A8A296;">29.4%</td>
+    </tr>
+    <tr>
+     <td><span style="font-weight: 600;">ABUK</span> <span style="font-size: 11px; color: #6E6860; margin-left: 6px;">Abu Qir Fertilizers</span></td>
+     <td class="mono">1,605</td><td class="mono">78.59</td><td class="mono">126,131</td><td class="mono">89.14</td>
+     <td class="mono" style="color: #5CFF5C;">+1.30%</td><td class="mono">143,070</td>
+     <td class="mono" style="color: #5CFF5C;">+16,939</td><td class="mono" style="color: #5CFF5C;">+13.4%</td><td class="mono" style="color: #A8A296;">25.2%</td>
+    </tr>
+    <tr>
+     <td><span style="font-weight: 600;">ALCN</span> <span style="font-size: 11px; color: #6E6860; margin-left: 6px;">Alexandria Containers</span></td>
+     <td class="mono">1,500</td><td class="mono">28.50</td><td class="mono">42,750</td><td class="mono">31.98</td>
+     <td class="mono" style="color: #5CFF5C;">+3.53%</td><td class="mono">47,970</td>
+     <td class="mono" style="color: #5CFF5C;">+5,220</td><td class="mono" style="color: #5CFF5C;">+12.2%</td><td class="mono" style="color: #A8A296;">8.4%</td>
+    </tr>
+    <tr>
+     <td><span style="font-weight: 600;">EAST</span> <span style="font-size: 11px; color: #6E6860; margin-left: 6px;">Eastern Company</span></td>
+     <td class="mono">1,000</td><td class="mono">35.30</td><td class="mono">35,300</td><td class="mono">36.29</td>
+     <td class="mono" style="color: #5CFF5C;">+0.33%</td><td class="mono">36,290</td>
+     <td class="mono" style="color: #5CFF5C;">+990</td><td class="mono" style="color: #5CFF5C;">+2.8%</td><td class="mono" style="color: #A8A296;">6.4%</td>
+    </tr>
+   </tbody>
+  </table>
+  <p style="font-size: 12px; color: #6E6860; margin: 18px 0 0;">Positions derive from executed orders only, average-cost, in the order the orders were logged. Prices from Mubasher, falling back to Yahoo.</p>
+ </section>
+
+</div>
+</x-dc>
+</body>
+</html>

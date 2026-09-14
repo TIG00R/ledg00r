@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+ <style>
+  body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+  a { color: #00A32E; } a:hover { color: #00A32E; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; }
+  .card { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 12px; padding: 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.55); }
+  .rail { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; color: #A8A296; }
+  .sk { background: linear-gradient(90deg, rgba(0,0,0,0.55), rgba(20,18,14,0.14), rgba(0,0,0,0.55)); border-radius: 6px; }
+ </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; min-height: 100%; padding: 40px; display: flex; flex-direction: column; gap: 36px;">
+
+ <div>
+  <h1 style="margin: 0 0 6px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em;">States and edges</h1>
+  <p style="margin: 0; font-size: 14px; color: #6B665C; max-width: 700px;">The screens the old app never drew. Every one of these is reachable today — it just showed a blank space, a browser alert, or nothing at all.</p>
+ </div>
+
+ <div style="display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start;">
+  <div>
+   <p class="ov" style="margin: 0 0 14px;">Collapsed rail</p>
+   <div style="width: 72px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.55);">
+    <div style="width: 26px; height: 26px; border-radius: 8px; background: #00A32E; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F0E0C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"></path><path d="M4 15l5-5 4 4 7-7"></path></svg>
+    </div>
+    <div class="rail" style="background: #F4F2EE; color: #1A1815;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l6 3"></path></svg></div>
+    <div class="rail"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg></div>
+    <div class="rail"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l4-4h8l4 4-8 12z"></path></svg></div>
+    <div class="rail"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-8"></path><path d="M17 6h4v4"></path></svg></div>
+    <div class="rail"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.5-7 9-7 9z"></path></svg></div>
+   </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px;">
+
+   <div style="display: flex; align-items: flex-start; gap: 14px; padding: 16px 20px; border-radius: 12px; background: rgba(122,0,224,0.09); border: 1px solid rgba(122,0,224,0.28);">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E00B0" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 18px; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+    <div style="flex: 1;">
+     <div style="font-size: 14px; font-weight: 500;">Simulated view — 14 March 2027, read-only</div>
+     <div style="font-size: 13px; color: #6B665C; margin-top: 2px;">Every figure is recomputed for that date. Nothing you change here is saved.</div>
+    </div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #FFFFFF; color: #1A1815; border: 1px solid rgba(20,18,14,0.14); border-radius: 8px; padding: 8px 14px; cursor: pointer;">Back to today</button>
+   </div>
+
+   <div style="display: flex; align-items: flex-start; gap: 14px; padding: 16px 20px; border-radius: 12px; background: rgba(179,126,0,0.10); border: 1px solid rgba(179,126,0,0.30);">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A6100" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 18px; margin-top: 1px;"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+    <div style="flex: 1;">
+     <div style="font-size: 14px; font-weight: 500;">Showing cached prices from 2 Sep, 08:35</div>
+     <div style="font-size: 13px; color: #6B665C; margin-top: 2px;">Mubasher returned a page we could not read — the field layout changed. Yahoo covered 6 of 10 symbols. Net worth uses the last good quotes.</div>
+    </div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #FFFFFF; color: #1A1815; border: 1px solid rgba(20,18,14,0.14); border-radius: 8px; padding: 8px 14px; cursor: pointer;">Retry</button>
+   </div>
+
+   <div style="display: flex; align-items: flex-start; gap: 14px; padding: 16px 20px; border-radius: 12px; background: rgba(224,0,0,0.09); border: 1px solid rgba(224,0,0,0.28);">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C41818" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 18px; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+    <div style="flex: 1;">
+     <div style="font-size: 14px; font-weight: 500;">This order changed in another tab</div>
+     <div style="font-size: 13px; color: #6B665C; margin-top: 2px;">Your edit was not saved, so nothing was overwritten. Reload the order to see the current version, then reapply your change.</div>
+    </div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #00A32E; color: #FFFFFF; border: none; box-shadow: 0 1px 2px rgba(20,18,14,0.10), 0 0 0 1px rgba(0,163,46,0.20); border-radius: 8px; padding: 8px 14px; cursor: pointer;">Reload order</button>
+   </div>
+  </div>
+ </div>
+
+ <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+
+  <div class="card">
+   <p class="ov" style="margin: 0 0 14px;">Loading</p>
+   <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div class="sk" style="height: 12px; width: 45%;"></div>
+    <div class="sk" style="height: 30px; width: 78%;"></div>
+    <div class="sk" style="height: 12px; width: 32%;"></div>
+    <div style="height: 8px;"></div>
+    <div class="sk" style="height: 40px;"></div>
+    <div class="sk" style="height: 40px; width: 88%;"></div>
+   </div>
+   <div style="font-size: 12px; color: #97907F; margin-top: 14px;">Fetching rate, then gold and quotes…</div>
+  </div>
+
+  <div class="card" style="display: flex; flex-direction: column;">
+   <p class="ov" style="margin: 0 0 14px;">Empty — no matches</p>
+   <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; padding: 24px 8px;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#B9B2A2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+    <div style="font-size: 14px; font-weight: 500;">No expenses match “visa”</div>
+    <div style="font-size: 13px; color: #6B665C;">One record is hidden by the current filter.</div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: transparent; color: #00A32E; border: 1px solid rgba(0,163,46,0.36); border-radius: 8px; padding: 8px 14px; cursor: pointer; margin-top: 4px;">Clear filters</button>
+   </div>
+  </div>
+
+  <div class="card" style="display: flex; flex-direction: column;">
+   <p class="ov" style="margin: 0 0 14px;">Empty — nothing logged</p>
+   <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; padding: 24px 8px;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#B9B2A2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+    <div style="font-size: 14px; font-weight: 500;">No expenses logged yet</div>
+    <div style="font-size: 13px; color: #6B665C;">Until you log one, each month falls back to the 10,000 EGP budget baseline.</div>
+    <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #00A32E; color: #FFFFFF; border: none; box-shadow: 0 1px 2px rgba(20,18,14,0.10), 0 0 0 1px rgba(0,163,46,0.20); border-radius: 8px; padding: 8px 14px; cursor: pointer; margin-top: 4px;">+ Add expense</button>
+   </div>
+  </div>
+ </div>
+
+ <div>
+  <p class="ov" style="margin: 0 0 14px;">Two numbers that change on purpose</p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+   <div class="card">
+    <div style="font-size: 14px; font-weight: 500; margin-bottom: 10px;">Amounts under one million</div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+     <div><div class="ov" style="color: #B9B2A2;">Old</div><div class="mono" style="font-size: 18px; text-decoration: line-through; color: #B9B2A2;">995,672K</div></div>
+     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+     <div><div class="ov">New</div><div class="mono" style="font-size: 18px; font-weight: 500;">996K</div></div>
+    </div>
+    <div style="font-size: 12px; color: #6B665C; margin-top: 10px;">The thousands division was never applied. Display only — nothing downstream reads the string.</div>
+   </div>
+   <div class="card">
+    <div style="font-size: 14px; font-weight: 500; margin-bottom: 10px;">Gold profit and loss</div>
+    <div style="font-size: 13px; color: #6B665C; line-height: 1.55;">Now measured against the <strong style="color: #1A1815; font-weight: 600;">accrued</strong> gram count, matching the rest of the tab. Identical today at 318.3 g — the two diverge the moment gold is bought after a snapshot.</div>
+   </div>
+  </div>
+ </div>
+
+</div>
+</x-dc>
+</body>
+</html>

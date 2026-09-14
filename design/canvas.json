@@ -1,0 +1,197 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Screens"
+    },
+    {
+      "id": "page-2",
+      "name": "Managing data"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1210,
+      "title": "Portfolio \u2014 dark",
+      "page": "page-1"
+    },
+    {
+      "file": "RealEstate.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1400,
+      "h": 1180,
+      "title": "Real Estate \u2014 light",
+      "page": "page-1"
+    },
+    {
+      "file": "Gold.dc.html",
+      "x": 0,
+      "y": 1360,
+      "w": 1440,
+      "h": 1240,
+      "title": "Gold \u2014 dark",
+      "page": "page-1"
+    },
+    {
+      "file": "Stocks.dc.html",
+      "x": 1560,
+      "y": 1360,
+      "w": 1400,
+      "h": 1000,
+      "title": "Stocks \u2014 dark",
+      "page": "page-1"
+    },
+    {
+      "file": "Foundations.dc.html",
+      "x": 0,
+      "y": 2740,
+      "w": 1180,
+      "h": 1560,
+      "title": "Foundations",
+      "page": "page-1"
+    },
+    {
+      "file": "States.dc.html",
+      "x": 1300,
+      "y": 2740,
+      "w": 1180,
+      "h": 1160,
+      "title": "States and edges \u2014 light",
+      "page": "page-1"
+    },
+    {
+      "file": "PortfolioMobile.dc.html",
+      "x": 2600,
+      "y": 2740,
+      "w": 390,
+      "h": 1120,
+      "title": "Portfolio \u2014 mobile",
+      "page": "page-1"
+    },
+    {
+      "file": "LedgerModel.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1400,
+      "h": 1180,
+      "title": "The model",
+      "page": "page-2"
+    },
+    {
+      "file": "AssetManager.dc.html",
+      "x": 1520,
+      "y": 0,
+      "w": 1400,
+      "h": 1780,
+      "title": "Assets",
+      "page": "page-2"
+    },
+    {
+      "file": "MoveMoney.dc.html",
+      "x": 1520,
+      "y": 1900,
+      "w": 1400,
+      "h": 820,
+      "title": "Move money",
+      "page": "page-2"
+    },
+    {
+      "file": "MoneyLog.dc.html",
+      "x": 1520,
+      "y": 2840,
+      "w": 1400,
+      "h": 980,
+      "title": "Money log",
+      "page": "page-2"
+    },
+    {
+      "file": "GoldEntry.dc.html",
+      "x": 0,
+      "y": 4260,
+      "w": 1400,
+      "h": 900,
+      "title": "Gold \u2014 add and subtract",
+      "page": "page-2"
+    },
+    {
+      "file": "PropertyPlan.dc.html",
+      "x": 1520,
+      "y": 3940,
+      "w": 1400,
+      "h": 1440,
+      "title": "Add a property and its plan",
+      "page": "page-2"
+    },
+    {
+      "file": "Zakat.dc.html",
+      "x": 0,
+      "y": 5280,
+      "w": 1400,
+      "h": 2260,
+      "title": "Zakat calculator",
+      "page": "page-2"
+    },
+    {
+      "file": "MoneyFlow.dc.html",
+      "x": 0,
+      "y": 2820,
+      "w": 1400,
+      "h": 1300,
+      "title": "Money flow",
+      "page": "page-2"
+    },
+    {
+      "file": "Accounts.dc.html",
+      "x": 0,
+      "y": 1300,
+      "w": 1400,
+      "h": 1420,
+      "title": "Accounts",
+      "page": "page-2"
+    },
+    {
+      "file": "IncomeSources.dc.html",
+      "x": 1520,
+      "y": 5460,
+      "w": 1400,
+      "h": 1360,
+      "title": "Income sources",
+      "page": "page-2"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -200,
+      "w": 640,
+      "page": "page-1",
+      "text": "Ledger \u2014 design canvas\n\nWarm neutral chrome in both themes, per the brief. The saturation is in the data:\ngreen #00FF00, red #FF0000, gold #FFD400, cyan #00E5FF, violet #A020FF on dark \u2014\nthe same hues dropped in lightness on light. No glow: the colours carry themselves.\n\nReal figures throughout, taken from data.json at 2 Sep 2026.\nStatic mockups, not a clickable prototype."
+    },
+    {
+      "id": "themes",
+      "x": 1560,
+      "y": -200,
+      "w": 640,
+      "page": "page-1",
+      "text": "Both themes shown on real screens: Portfolio, Gold and Stocks in dark;\nReal Estate and the states board in light."
+    },
+    {
+      "id": "newscope",
+      "x": 0,
+      "y": -230,
+      "w": 900,
+      "page": "page-2",
+      "text": "A BETTER STRUCTURE \u2014 read \"The model\" first\n\nCash accounts, gold, a car, a property and a brokerage book are all the same thing:\nsomewhere value sits. One typed list of nodes \u2014 cash, asset, liability, external \u2014\nand every event becomes a transaction whose legs move value between them.\n\nThat covers an exchange, an expense, a gold purchase, a stock funding and an\ninstallment payment with one mechanism instead of four, and net worth becomes\none rule: assets minus liabilities.\n\nIt is a bigger rebuild than a port, and rule zero still binds \u2014 every F-### must\nstill produce the same number. ARCHITECTURE.md \u00a710 has the schema and the cost."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-2"
+  }
+}

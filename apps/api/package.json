@@ -1,0 +1,22 @@
+{
+  "name": "@ledger/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@ledger/contracts": "*",
+    "@ledger/db": "*",
+    "@ledger/domain": "*",
+    "@ledger/engine": "*",
+    "drizzle-orm": "^0.45.2",
+    "tsx": "^4.23.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1"
+  }
+}

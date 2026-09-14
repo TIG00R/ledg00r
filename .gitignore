@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# coverage reports
+coverage/
+apps/web/coverage/
+.nyc_output/
+
+# the ledger itself: someone's actual money, never in the repository.
+# anchored: an unanchored `data/` also swallows apps/web/src/data, which the build needs.
+/data/
+*.db
+*.db-shm
+*.db-wal
+# except the demonstration ledger, which is invented money and ships with the repository
+!dummy.db
+
+# the test suite: run locally, not carried in the repository. what ships instead is
+# dummy.db, built from the fixture by tests/make-dummy.ts.
+/tests/
+apps/web/test/
+apps/web/vitest.config.ts
+
+# working notes: the port inventory, the decision log, the plan. Mine, not the project's.
+notes/
+
+# claude code: shared config tracked, local overrides not
+.claude/settings.local.json
+*.tsbuildinfo

@@ -1,0 +1,30 @@
+{
+  "name": "ledger",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @ledger/web",
+    "dev:api": "npx tsx apps/api/src/main.ts",
+    "build": "npm run build --workspace @ledger/web",
+    "start": "npm run build && npx tsx apps/api/src/main.ts",
+    "mcp": "npx tsx apps/mcp/src/stdio.ts",
+    "typecheck": "tsc -b packages/engine && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p packages/domain/tsconfig.json && tsc --noEmit -p packages/db/tsconfig.json && tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
+    "test": "npm run test:node && npm run test:web",
+    "test:node": "npx tsx --test 'tests/**/*.test.ts'",
+    "test:node:coverage": "npx c8 --reporter=text --reporter=html --all --src packages/engine/src --src packages/domain/src --src packages/db/src --src packages/contracts/src --src packages/client/src --src apps/api/src npx tsx --test 'tests/**/*.test.ts'",
+    "test:web": "npm run test --workspace @ledger/web",
+    "test:watch": "npx tsx --test --watch 'tests/**/*.test.ts'",
+    "test:web:coverage": "npm run test:coverage --workspace @ledger/web",
+    "test:coverage": "npm run test:node:coverage && npm run test:web:coverage"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  },
+  "devDependencies": {
+    "c8": "^10.1.3"
+  }
+}

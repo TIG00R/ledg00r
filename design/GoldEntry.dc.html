@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+    a { color: #00FF00; } a:hover { color: #5CFF5C; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: #171613; border: 1px solid rgba(255,255,255,0.10); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05); }
+    .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E6860; }
+    .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+    .fld { display: flex; flex-direction: column; gap: 6px; }
+    .lbl { font-size: 12px; font-weight: 500; color: #A8A296; }
+    .inp { border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); padding: 10px 12px; font-family: inherit;
+           font-size: 14px; background: #0F0E0C; color: #F3F1EC; }
+    .btn { font-family: inherit; font-size: 13px; font-weight: 500; border-radius: 8px; padding: 10px 16px; border: none; cursor: pointer; }
+    .seg { font-family: inherit; font-size: 13px; font-weight: 500; padding: 9px 18px; border-radius: 8px;
+           border: 1px solid rgba(255,255,255,0.12); background: transparent; color: #A8A296; cursor: pointer; }
+    th { text-align: right; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #6E6860; padding: 0 0 12px; }
+    th:first-child, td:first-child { text-align: left; }
+    td { text-align: right; font-size: 13px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.07); }
+  </style>
+</helmet>
+
+<div style="background: #0F0E0C; color: #F3F1EC; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Gold — record a movement</h1>
+    <span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">318.3 g held</span>
+    <span style="margin-left: auto; font-size: 12px; color: #6E6860;">24k · 7,046 EGP/g · iSagha dealer buy</span>
+  </div>
+
+  <section class="panel" style="padding: 24px;">
+    <div style="display: flex; gap: 8px; margin-bottom: 24px;">
+      <button class="seg" style="background: rgba(255,212,0,0.16); color: #FFD400; border-color: rgba(255,212,0,0.40);">Buy — add grams</button>
+      <button class="seg">Sell — subtract grams</button>
+      <button class="seg">Hold for someone else</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+      <label class="fld"><span class="lbl">Date</span><input class="inp mono" value="2026-09-02"></label>
+      <label class="fld"><span class="lbl">Grams</span><input class="inp mono" value="40.0"></label>
+      <label class="fld"><span class="lbl">Price per gram (EGP)</span><input class="inp mono" value="7,046"></label>
+      <label class="fld"><span class="lbl">Total EGP</span>
+        <input class="inp mono" value="281,840" style="color: #A8A296;">
+        <span style="font-size: 11px; color: #6E6860;">Computed — override if the dealer rounded</span>
+      </label>
+      <label class="fld"><span class="lbl">USD rate at purchase</span><input class="inp mono" value="50.9242"></label>
+      <label class="fld"><span class="lbl">USD paid</span><input class="inp mono" value="5,535" style="color: #A8A296;"></label>
+      <label class="fld"><span class="lbl">Paid from</span>
+        <select class="inp"><option>USD — Main dollar stack</option></select>
+      </label>
+      <label class="fld"><span class="lbl">Karat</span>
+        <select class="inp"><option>24k</option></select>
+      </label>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 20px; margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+      <div style="display: flex; gap: 32px;">
+        <div><div class="ov">Holdings after</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 4px; color: #FFD400;">358.3 g</div></div>
+        <div><div class="ov">Value after</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 4px;">2,524,502</div></div>
+        <div><div class="ov">Cash after</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 4px;">3,976,990</div></div>
+        <div><div class="ov">Net worth</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 4px; color: #A8A296;">11,646,079 · unchanged</div></div>
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <button class="btn" style="background: #1E1C18; color: #F3F1EC; border: 1px solid rgba(255,255,255,0.12);">Cancel</button>
+        <button class="btn" style="background: #FFD400; color: #0F0E0C;">Record purchase</button>
+      </div>
+    </div>
+    <p style="font-size: 12px; color: #6E6860; margin: 14px 0 0;">A purchase moves value between assets, so net worth does not change — only the split between cash and gold does. A sale works the same way in reverse and credits the account you name.</p>
+  </section>
+
+  <section class="panel" style="padding: 24px;">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px;">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Movement ledger</h2>
+      <span style="font-size: 12px; color: #6E6860;">Running balance, oldest first — the order lots were acquired is what average cost depends on</span>
+    </div>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr><th>Date</th><th>Movement</th><th>Grams</th><th>Price / g</th><th>EGP</th><th>USD</th><th>Running grams</th><th>For</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>23 Oct 2025</td><td style="text-align: right;"><span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">Buy</span></td>
+          <td class="mono" style="color: #FFD400;">+147.2</td><td class="mono">6,458</td><td class="mono">950,600</td><td class="mono">$20,000</td>
+          <td class="mono" style="font-weight: 500;">147.2</td><td style="text-align: right; color: #6E6860;">Me</td>
+        </tr>
+        <tr>
+          <td>25 Feb 2026</td><td style="text-align: right;"><span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">Buy</span></td>
+          <td class="mono" style="color: #FFD400;">+50.0</td><td class="mono">8,075</td><td class="mono">403,750</td><td class="mono">$8,627</td>
+          <td class="mono" style="font-weight: 500;">197.2</td><td style="text-align: right; color: #6E6860;">Me</td>
+        </tr>
+        <tr>
+          <td>Feb 2026 <span style="font-size: 11px; color: #6E6860;">· mid-month</span></td><td style="text-align: right;"><span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">Buy</span></td>
+          <td class="mono" style="color: #FFD400;">+121.1</td><td class="mono">8,537</td><td class="mono">1,033,830</td><td class="mono">$22,000</td>
+          <td class="mono" style="font-weight: 500;">318.3</td><td style="text-align: right; color: #6E6860;">Me</td>
+        </tr>
+        <tr style="opacity: 0.65;">
+          <td>Feb 2026 <span style="font-size: 11px; color: #6E6860;">· mid-month</span></td><td style="text-align: right;"><span class="chip" style="background: rgba(255,255,255,0.08); color: #A8A296;">Held</span></td>
+          <td class="mono">62.2</td><td class="mono">8,537</td><td class="mono">531,000</td><td class="mono">$11,298</td>
+          <td class="mono" style="color: #6E6860;">— not mine</td>
+          <td style="text-align: right;"><span class="chip" style="background: rgba(255,255,255,0.08); color: #A8A296;">Friend</span></td>
+        </tr>
+        <tr style="background: rgba(255,212,0,0.05);">
+          <td style="color: #A8A296;">2 Sep 2026</td><td style="text-align: right;"><span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">Buy · draft</span></td>
+          <td class="mono" style="color: #FFD400;">+40.0</td><td class="mono">7,046</td><td class="mono">281,840</td><td class="mono">$5,535</td>
+          <td class="mono" style="font-weight: 500;">358.3</td><td style="text-align: right; color: #6E6860;">Me</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>

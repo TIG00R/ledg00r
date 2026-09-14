@@ -1,0 +1,221 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+ <style>
+  body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+  a { color: #00A32E; } a:hover { color: #00A32E; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .sec-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; margin: 0 0 16px; }
+  .sw { border-radius: 8px; height: 56px; border: 1px solid rgba(20,18,14,0.09); display: flex; align-items: flex-end; padding: 8px; }
+  .sw-name { font-size: 10px; font-weight: 500; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .card { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 12px; padding: 24px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.55); }
+  .btn { font-family: inherit; font-size: 14px; font-weight: 500; border-radius: 8px; padding: 10px 18px; border: 1px solid transparent; cursor: pointer; }
+  .chip { border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 500; }
+  .input { border-radius: 8px; border: 1px solid rgba(20,18,14,0.14); padding: 10px 12px; font-family: inherit; font-size: 14px; background: #FFFFFF; color: #1A1815; width: 200px; }
+ </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; padding: 48px; display: flex; flex-direction: column; gap: 48px;">
+
+ <div style="display: flex; flex-direction: column; gap: 8px;">
+  <div style="display: flex; align-items: center; gap: 12px;">
+   <div style="width: 28px; height: 28px; border-radius: 8px; background: #00A32E; display: flex; align-items: center; justify-content: center;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FAF9F7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"></path><path d="M4 15l5-5 4 4 7-7"></path></svg>
+   </div>
+   <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em;">Ledger — foundations</h1>
+  </div>
+  <p style="margin: 0; font-size: 14px; color: #6B665C; max-width: 640px;">Near-black ground with a green cast, one acid accent that emits light, hairline borders tinted to match. Depth comes from shadow and bloom, never from a strong outline.</p>
+ </div>
+
+ <div>
+  <p class="sec-label">Surfaces — light</p>
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;">
+   <div class="sw" style="background: #FAF9F7;"><span class="sw-name mono" style="color: #6B665C;">canvas #FAF9F7</span></div>
+   <div class="sw" style="background: #FFFFFF;"><span class="sw-name mono" style="color: #6B665C;">surface #FFFFFF</span></div>
+   <div class="sw" style="background: #F4F2EE;"><span class="sw-name mono" style="color: #6B665C;">raised #F4F2EE</span></div>
+   <div class="sw" style="background: #1A1815;"><span class="sw-name mono" style="color: #C9C4B8;">text #1A1815</span></div>
+   <div class="sw" style="background: #6B665C;"><span class="sw-name mono" style="color: #F4F2EE;">muted #6B665C</span></div>
+   <div class="sw" style="background: #97907F;"><span class="sw-name mono" style="color: #FAF9F7;">faint #97907F</span></div>
+  </div>
+ </div>
+
+ <div>
+  <p class="sec-label">Surfaces — dark</p>
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;">
+   <div class="sw" style="background: #0F0E0C; border-color: rgba(255,255,255,0.10);"><span class="sw-name mono" style="color: #A8A296;">canvas #0F0E0C</span></div>
+   <div class="sw" style="background: #121110; border-color: rgba(255,255,255,0.10);"><span class="sw-name mono" style="color: #A8A296;">rail #121110</span></div>
+   <div class="sw" style="background: #171613; border-color: rgba(255,255,255,0.10);"><span class="sw-name mono" style="color: #A8A296;">surface #171613</span></div>
+   <div class="sw" style="background: #1E1C18; border-color: rgba(255,255,255,0.10);"><span class="sw-name mono" style="color: #A8A296;">raised #1E1C18</span></div>
+   <div class="sw" style="background: #F3F1EC;"><span class="sw-name mono" style="color: #4A453D;">text #F3F1EC</span></div>
+   <div class="sw" style="background: #6E6860;"><span class="sw-name mono" style="color: #F3F1EC;">faint #6E6860</span></div>
+  </div>
+ </div>
+
+ <div>
+  <p class="sec-label">Signal colours — on dark / on light</p>
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;">
+   <div>
+    <div class="sw" style="background: #00FF00; border-radius: 8px 8px 0 0; "><span class="sw-name mono" style="color: #002B00;">#00FF00</span></div>
+    <div class="sw" style="background: #00A32E; border-radius: 0 0 8px 8px; border-top: none;"><span class="sw-name mono" style="color: #FFFFFF;">#00A32E</span></div>
+    <div style="font-size: 11px; color: #6B665C; margin-top: 6px;">Positive, accent</div>
+   </div>
+   <div>
+    <div class="sw" style="background: #FF0000; border-radius: 8px 8px 0 0; "><span class="sw-name mono" style="color: #2B0000;">#FF0000</span></div>
+    <div class="sw" style="background: #E00000; border-radius: 0 0 8px 8px; border-top: none;"><span class="sw-name mono" style="color: #FFFFFF;">#E00000</span></div>
+    <div style="font-size: 11px; color: #6B665C; margin-top: 6px;">Negative, Palm Hills</div>
+   </div>
+   <div>
+    <div class="sw" style="background: #FFD400; border-radius: 8px 8px 0 0; "><span class="sw-name mono" style="color: #2B2200;">#FFD400</span></div>
+    <div class="sw" style="background: #B37E00; border-radius: 0 0 8px 8px; border-top: none;"><span class="sw-name mono" style="color: #FFFFFF;">#B37E00</span></div>
+    <div style="font-size: 11px; color: #6B665C; margin-top: 6px;">Gold, Taj Misr</div>
+   </div>
+   <div>
+    <div class="sw" style="background: #00E5FF; border-radius: 8px 8px 0 0; "><span class="sw-name mono" style="color: #00232B;">#00E5FF</span></div>
+    <div class="sw" style="background: #0086A8; border-radius: 0 0 8px 8px; border-top: none;"><span class="sw-name mono" style="color: #FFFFFF;">#0086A8</span></div>
+    <div style="font-size: 11px; color: #6B665C; margin-top: 6px;">Car</div>
+   </div>
+   <div>
+    <div class="sw" style="background: #A020FF; border-radius: 8px 8px 0 0; "><span class="sw-name mono" style="color: #FFFFFF;">#A020FF</span></div>
+    <div class="sw" style="background: #7A00E0; border-radius: 0 0 8px 8px; border-top: none;"><span class="sw-name mono" style="color: #FFFFFF;">#7A00E0</span></div>
+    <div style="font-size: 11px; color: #6B665C; margin-top: 6px;">Stocks</div>
+   </div>
+  </div>
+  <p style="font-size: 12px; color: #6B665C; margin: 12px 0 0; max-width: 720px;">Top swatch is the value used on the dark theme, bottom the same hue dropped in lightness for the light theme. The hue never changes, so a colour means the same thing in both. Cash is a darker green than the accent on purpose — the accent means "act on this", cash means "this is money you hold", and they should not read as the same signal.</p>
+ </div>
+
+ <div>
+    <p class="sec-label">Currency marks — the note itself where a free image exists</p>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <span style="width: 44px; height: 28px; border-radius: 4px; overflow: hidden; flex: 0 0 44px; display: block; border: 1px solid rgba(20,18,14,0.12); background: #F4F2EE;"><img src="small_cur_usd.jpg" alt="US one dollar note" style="width: 100%; height: 100%; object-fit: cover; display: block;"></span>
+        <div><div style="font-size: 13px; font-weight: 600;">USD</div><div class="mono" style="font-size: 11px; color: #6B665C;">#3F7D4F</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <span style="width: 44px; height: 28px; border-radius: 4px; overflow: hidden; flex: 0 0 44px; display: block; border: 1px solid rgba(20,18,14,0.12); background: #F4F2EE;"><img src="small_cur_egp.jpg" alt="Egyptian pound note" style="width: 100%; height: 100%; object-fit: cover; display: block;"></span>
+        <div><div style="font-size: 13px; font-weight: 600;">EGP</div><div class="mono" style="font-size: 11px; color: #6B665C;">#A07A33</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <span style="width: 44px; height: 28px; border-radius: 4px; overflow: hidden; flex: 0 0 44px; display: block; border: 1px solid rgba(20,18,14,0.12); background: #F4F2EE;"><img src="small_cur_eur.jpg" alt="Five euro note, ECB specimen" style="width: 100%; height: 100%; object-fit: cover; display: block;"></span>
+        <div><div style="font-size: 13px; font-weight: 600;">EUR</div><div class="mono" style="font-size: 11px; color: #6B665C;">#2B5FA5</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <span style="width: 44px; height: 28px; border-radius: 4px; overflow: hidden; flex: 0 0 44px; display: block; border: 1px solid rgba(20,18,14,0.12); background: #F4F2EE;"><img src="small_cur_sar.png" alt="Saudi riyal coin" style="width: 100%; height: 100%; object-fit: cover; display: block;"></span>
+        <div><div style="font-size: 13px; font-weight: 600;">SAR</div><div class="mono" style="font-size: 11px; color: #6B665C;">#0F6B3C</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <svg width="44" height="28" viewBox="0 0 44 28" role="img" aria-label="Pound sterling note" style="flex: 0 0 44px;"><rect x="0.5" y="0.5" width="43" height="27" rx="4" fill="#6B4E9E" stroke="rgba(255,255,255,0.22)"></rect><rect x="3" y="3" width="38" height="22" rx="2.5" fill="none" stroke="rgba(255,255,255,0.30)" stroke-width="0.8"></rect><circle cx="13" cy="14" r="6.2" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.42)" stroke-width="0.8"></circle><path d="M13 10.6a2.1 2.1 0 1 1 0 4.2 2.1 2.1 0 0 1 0-4.2z" fill="rgba(255,255,255,0.55)"></path><path d="M9.2 19.1c0.7-2.1 2.1-3.2 3.8-3.2s3.1 1.1 3.8 3.2z" fill="rgba(255,255,255,0.55)"></path><path d="M23 8.5h14M23 19.5h14" stroke="rgba(255,255,255,0.28)" stroke-width="0.8" stroke-linecap="round"></path><text x="30" y="17.6" text-anchor="middle" font-family="Schibsted Grotesk, Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="600" fill="#FFFFFF">£</text></svg>
+        <div><div style="font-size: 13px; font-weight: 600;">GBP</div><div class="mono" style="font-size: 11px; color: #6B665C;">#6B4E9E</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09);">
+        <span style="width: 44px; height: 28px; border-radius: 4px; overflow: hidden; flex: 0 0 44px; display: block; border: 1px solid rgba(20,18,14,0.12); background: #F4F2EE;"><img src="small_cur_aed.jpg" alt="UAE dirham coins" style="width: 100%; height: 100%; object-fit: cover; display: block;"></span>
+        <div><div style="font-size: 13px; font-weight: 600;">AED</div><div class="mono" style="font-size: 11px; color: #6B665C;">#8C3B48</div></div>
+      </div>
+    </div>
+    <p style="font-size: 12px; color: #6B665C; margin: 12px 0 0; max-width: 760px;">Where a freely-licensed image of the currency exists it is used directly, embedded in the page. Where none does — GBP here — the mark falls back to a drawn note tinted to the account's colour, which is also what any currency added later will get. Sources: US dollar and generic sterling public domain; Egyptian pound CC BY-SA 4.0; UAE dirham and Saudi riyal CC0; the euro note is the ECB's own specimen image, reproduced well under the 75% size limit its terms set. These marks are account identity, not signal — they never mean positive or negative.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px;">
+  <div>
+   <p class="sec-label">Type scale — Schibsted Grotesk</p>
+   <div style="display: flex; flex-direction: column; gap: 14px;">
+    <div style="font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05;">11.65M <span style="font-size: 18px; font-weight: 500; color: #6B665C;">EGP</span></div>
+    <div style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em;">Section heading 28/600</div>
+    <div style="font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Card title 20/600</div>
+    <div style="font-size: 15px; font-weight: 500;">Body emphasis 15/500</div>
+    <div style="font-size: 14px; color: #6B665C; line-height: 1.55; max-width: 460px;">Body 14/400 at 1.55. Long-form note text sits here — the accrual footnote, the FX explanation sentence, a stock diary entry.</div>
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F;">Overline 11/600 · 0.08em</div>
+    <div class="mono" style="font-size: 14px; font-weight: 500;">4,258,830 · 318.3g · 50.9242 — JetBrains Mono, tabular</div>
+   </div>
+  </div>
+  <div>
+   <p class="sec-label">Radii and elevation</p>
+   <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="row"><div style="width: 64px; height: 40px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 8px;"></div><span style="font-size: 13px; color: #6B665C;">8px — buttons, inputs, small controls</span></div>
+    <div class="row"><div style="width: 64px; height: 40px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 12px;"></div><span style="font-size: 13px; color: #6B665C;">12px — cards</span></div>
+    <div class="row"><div style="width: 64px; height: 40px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px;"></div><span style="font-size: 13px; color: #6B665C;">16px — panels</span></div>
+    <div class="row"><div style="width: 64px; height: 40px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 20px;"></div><span style="font-size: 13px; color: #6B665C;">20px — modals</span></div>
+    <div class="row"><div style="width: 64px; height: 28px; background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 999px;"></div><span style="font-size: 13px; color: #6B665C;">full — chips, tags</span></div>
+   </div>
+   <div style="display: flex; gap: 16px; margin-top: 24px;">
+    <div style="flex: 1; height: 72px; background: #FFFFFF; border-radius: 12px; border: 1px solid rgba(20,18,14,0.09); box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #6B665C;">shadow-sm · rest</div>
+    <div style="flex: 1; height: 72px; background: #FFFFFF; border-radius: 12px; border: 1px solid rgba(20,18,14,0.09); box-shadow: 0 2px 4px rgba(0,0,0,0.55), 0 12px 32px rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #6B665C;">shadow-lg · hover</div>
+   </div>
+  </div>
+ </div>
+
+ <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+  <div>
+   <p class="sec-label">Controls — light</p>
+   <div style="display: flex; flex-direction: column; gap: 20px;">
+    <div class="row" style="gap: 12px;">
+     <button class="btn" style="background: #00A32E; color: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.55);">Save record</button>
+     <button class="btn" style="background: #00A32E; color: #FFFFFF; box-shadow: 0 0 0 1px rgba(0,163,46,0.30), 0 2px 6px rgba(20,18,14,0.12);">Hover</button>
+     <button class="btn" style="background: #FFFFFF; color: #1A1815; border-color: rgba(20,18,14,0.14);">Cancel</button>
+     <button class="btn" style="background: transparent; color: #6B665C;">Ghost</button>
+    </div>
+    <div class="row" style="gap: 12px;">
+     <button class="btn" style="background: #00A32E; color: #FFFFFF; outline: 2px solid #00A32E; outline-offset: 2px;">Focus ring</button>
+     <button class="btn" style="background: #F4F2EE; color: #6B665C; cursor: not-allowed;">Disabled</button>
+    </div>
+    <div class="row" style="gap: 12px;">
+     <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: #6B665C;">Amount (EGP)
+      <input class="input" value="20,000">
+     </label>
+     <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: #6B665C;">Category
+      <input class="input" value="Mosque / Religious" style="outline: 2px solid #00A32E; outline-offset: 2px;">
+     </label>
+    </div>
+    <div class="row" style="gap: 8px; flex-wrap: wrap;">
+     <span class="chip" style="background: rgba(0,163,46,0.14); color: #00A32E;">executed</span>
+     <span class="chip" style="background: rgba(179,126,0,0.16); color: #8A6100;">pending</span>
+     <span class="chip" style="background: rgba(0,0,0,0.55); color: #6B665C;">cancelled</span>
+     <span class="chip" style="background: rgba(224,0,0,0.14); color: #C41818;">Palm Hills</span>
+     <span class="chip" style="background: rgba(179,126,0,0.16); color: #8A6100;">Taj Misr</span>
+    </div>
+   </div>
+  </div>
+
+  <div style="background: #171613; border-radius: 16px; padding: 24px; border: 1px solid rgba(255,255,255,0.10);">
+   <p class="sec-label" style="color: #6E6860;">Controls — dark</p>
+   <div style="display: flex; flex-direction: column; gap: 20px;">
+    <div class="row" style="gap: 12px;">
+     <button class="btn" style="background: #00FF00; color: #0F0E0C; box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);">Save record</button>
+     <button class="btn" style="background: #00FF00; color: #0F0E0C; box-shadow: 0 0 0 1px rgba(0,255,0,0.26), 0 2px 8px rgba(0,0,0,0.45);">Hover</button>
+     <button class="btn" style="background: #F4F2EE; color: #F3F1EC; border-color: rgba(255,255,255,0.14); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);">Cancel</button>
+    </div>
+    <div class="row" style="gap: 12px;">
+     <button class="btn" style="background: #00FF00; color: #0F0E0C; outline: 2px solid #00FF00; outline-offset: 2px;">Focus ring</button>
+     <button class="btn" style="background: #F4F2EE; color: #E4E1DA; cursor: not-allowed; border-color: rgba(20,18,14,0.07);">Disabled</button>
+    </div>
+    <div class="row" style="gap: 12px;">
+     <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: #A8A296;">Amount (EGP)
+      <input class="input" value="20,000" style="background: #FAF9F7; border-color: rgba(20,18,14,0.12); color: #F3F1EC;">
+     </label>
+     <label style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: #A8A296;">Category
+      <input class="input" value="Mosque / Religious" style="background: #FAF9F7; border-color: rgba(20,18,14,0.12); color: #F3F1EC; outline: 2px solid #00FF00; outline-offset: 2px;">
+     </label>
+    </div>
+    <div class="row" style="gap: 8px; flex-wrap: wrap;">
+     <span class="chip" style="background: rgba(255,255,255,0.14); color: #00FF00;">executed</span>
+     <span class="chip" style="background: rgba(255,212,0,0.18); color: #8A6100;">pending</span>
+     <span class="chip" style="background: rgba(20,18,14,0.07); color: #A8A296;">cancelled</span>
+     <span class="chip" style="background: rgba(255,0,0,0.18); color: #C41818;">Palm Hills</span>
+     <span class="chip" style="background: rgba(255,212,0,0.20); color: #8A6100;">Taj Misr</span>
+    </div>
+   </div>
+  </div>
+ </div>
+
+</div>
+</x-dc>
+</body>
+</html>

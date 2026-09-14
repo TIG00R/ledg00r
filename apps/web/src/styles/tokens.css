@@ -1,0 +1,1138 @@
+/* Design tokens. Warm neutral chrome in both themes; saturation lives in the data. */
+
+:root {
+  --canvas: #FAF9F7;
+  --surface: #FFFFFF;
+  --raised: #F4F2EE;
+  --ink: #1A1815;
+  --muted: #6B665C;
+  --faint: #97907F;
+  --disabled: #B9B2A2;
+  --hairline: rgba(20, 18, 14, 0.09);
+  --hairline-strong: rgba(20, 18, 14, 0.14);
+
+  --accent: #24211C;
+  --accent-ink: #FAF9F7;
+  --focus: rgba(20, 18, 14, 0.42);
+  --focus-edge: rgba(20, 18, 14, 0.48);
+  --positive: #00A32E;
+  --positive-ink: #FFFFFF;
+  --negative: #E00000;
+  --negative-ink: #FFFFFF;
+  --gold: #B37E00;
+  --car: #0086A8;
+  --stocks: #7A00E0;
+  --cash: #00701F;
+  --zakat: #B37E00;
+  --sadaqat: #C13C86;
+  --switch-off: rgba(20, 18, 14, 0.20);
+  /* Controls sit on their own step, not on a card colour — on a dark page a card is
+     only a couple of values away from the background and a button disappears into it. */
+  --control: #FFFFFF;
+  --control-hover: #F1EFEA;
+  --control-border: rgba(20, 18, 14, 0.16);
+  --tint: 10%;
+
+  --shadow-sm: 0 1px 2px rgba(20, 18, 14, 0.04), 0 4px 12px rgba(20, 18, 14, 0.06);
+  --shadow-lg: 0 2px 4px rgba(20, 18, 14, 0.04), 0 12px 32px rgba(20, 18, 14, 0.10);
+  --inner-top: none;
+
+  --r-sm: 8px; --r-card: 12px; --r-panel: 16px; --r-modal: 20px;
+  color-scheme: light;
+  --sans: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-theme='dark'],
+:root:not([data-theme='light']) .dark-scope { /* placeholder for scoped previews */ }
+
+:root[data-theme='dark'] {
+  /* Without this the browser renders native controls — buttons, selects, date pickers —
+     against a light system palette, which is why they came out white on a dark page. */
+  color-scheme: dark;
+  --canvas: #0F0E0C;
+  --surface: #171613;
+  --raised: #1E1C18;
+  --ink: #F3F1EC;
+  --muted: #A8A296;
+  --faint: #6E6860;
+  --disabled: #5A544B;
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+
+  --accent: #F3F1EC;
+  --accent-ink: #14120E;
+  --focus: rgba(255, 255, 255, 0.46);
+  --focus-edge: rgba(255, 255, 255, 0.52);
+  --positive: #5CFF5C;
+  --positive-ink: #0B1A0B;
+  --negative: #FF4040;
+  --negative-ink: #1A0606;
+  --gold: #FFD400;
+  --car: #00E5FF;
+  --stocks: #A020FF;
+  --cash: #00B33C;
+  --zakat: #FFD400;
+  --sadaqat: #FF7FC0;
+  --switch-off: rgba(255, 255, 255, 0.26);
+  --control: #33302A;
+  --control-hover: #423E36;
+  --control-border: rgba(255, 255, 255, 0.20);
+  --tint: 20%;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32), 0 4px 12px rgba(0, 0, 0, 0.26);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.36), 0 12px 32px rgba(0, 0, 0, 0.44);
+  --inner-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-sm), var(--inner-top);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm), var(--inner-top);
+}
+
+.ov {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--faint);
+}
+
+.chip {
+  border-radius: var(--r-sm); padding: 3px 10px;
+  font-size: 11px; font-weight: 500;
+  background: var(--raised); color: var(--muted);
+}
+
+
+.btn {
+  font-size: 13px; font-weight: 500; border-radius: var(--r-sm);
+  padding: 9px 15px; border: 1px solid transparent; cursor: pointer;
+  background-color: var(--accent);
+  color: var(--accent-ink);
+  transition: box-shadow 150ms var(--ease), transform 150ms var(--ease), background-color 150ms var(--ease);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+.btn:active { transform: translateY(0); }
+.btn.ghost {
+  background-color: var(--control);
+  color: var(--ink);
+  border-color: var(--control-border);
+}
+.btn.ghost:hover { background-color: var(--control-hover); }
+.btn.quiet {
+  background-color: transparent;
+  color: var(--ink);
+  border-color: var(--control-border);
+}
+.btn.quiet:hover { background-color: var(--control); }
+
+/*
+ * What a button is for, said in colour.
+ *
+ * Three answers and no fourth. Adding something takes the theme's own contrast — black on the
+ * light theme, white on the dark — because it is the ordinary forward act and should read as
+ * the page's own voice. Saving or finishing is green, removing is red, and every one of them
+ * is the same button underneath: same radius, same padding, same type, same lift on hover.
+ * They were inline styles repeated in eight files, which is how Save came to be green in one
+ * table and gold in the bar above it.
+ */
+.btn.go { background-color: var(--positive); color: var(--positive-ink); }
+.btn.danger { background-color: var(--negative); color: var(--negative-ink); }
+/* `add` is the default fill, named so a caller can say which of the three it means */
+.btn.add { background-color: var(--accent); color: var(--accent-ink); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled:hover { transform: none; box-shadow: none; }
+
+/* A button that carries an icon sets it the same way everywhere. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.btn svg { flex: 0 0 auto; }
+
+/* One smaller size, for buttons that live inside a row of a table rather than under a form.
+   Every table had picked its own padding and type size, so Save in one log was a different
+   button from Save in the next. It is as tight as it can be and still read as a button,
+   because the column it sits in is width the row's fields would rather have. */
+.btn.sm { font-size: 11.5px; padding: 6px 9px; gap: 5px; border-radius: calc(var(--r-sm) * 0.85); }
+.btn.sm svg { width: 12px; height: 12px; }
+
+/* Save and Cancel, Add and Cancel: one pair, side by side, in that order everywhere. */
+.btn-pair {
+  display: flex; gap: 6px; align-items: center; justify-content: flex-end;
+  flex-wrap: nowrap; min-width: 0;
+}
+/* a pair that still cannot fit shrinks its labels rather than spilling over the row */
+.btn-pair .btn { min-width: 0; overflow: hidden; }
+
+/* Inputs share the control surface so a field and a button read as the same family. */
+input, select, textarea { background-color: var(--control); border-color: var(--control-border); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+option { background-color: var(--control); color: var(--ink); }
+
+/* Focus is the control's own border brightening, not a second ring drawn around it.
+   An outline sits outside the box and offsets it, so a focused field looks like a
+   different, larger object than the one beside it; changing the border it already has
+   keeps the shape still and says the same thing more quietly. */
+:where(input, select, textarea):focus {
+  outline: none;
+  border-color: var(--focus-edge);
+  box-shadow: 0 0 0 1px var(--focus-edge) inset;
+}
+
+/* Anything without a border of its own to brighten still needs to be findable by keyboard,
+   so it keeps a ring — but only when the keyboard is what focused it. */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* A field the pointer landed in does not need the keyboard's ring on top of the border. */
+:where(input, select, textarea):focus-visible { outline: none; }
+
+/* Form controls are painted by the engine unless every one of these is set. Using
+   background-color rather than the shorthand matters: the shorthand would wipe the
+   chevron drawn onto the select. */
+button, input, select, textarea {
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button {
+  background-color: transparent;
+  color: inherit;
+  border: none;
+}
+
+input, select, textarea {
+  font-size: 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--control-border);
+  background-color: var(--control);
+  color: var(--ink);
+  padding: 9px 11px;
+}
+
+select {
+  padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+
+
+table { width: 100%; border-collapse: collapse; }
+/* Every column reads from the same edge. Mixing left and right alignment down a table
+   makes the eye hunt for where each column starts. */
+th {
+  text-align: left; padding: 0 0 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--faint);
+}
+td { text-align: left; font-size: 13px; padding: 12px 0; border-top: 1px solid var(--hairline); }
+/* Columns were running into each other where a heading was long. */
+th, td { padding-right: 18px; }
+th:last-child, td:last-child { padding-right: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+:root[data-density='compact'] .panel { padding: 16px !important; }
+:root[data-density='compact'] td { padding: 8px 0; }
+:root[data-density='compact'] .chip { padding: 2px 8px; }
+
+/* Privacy blurs the figures in place. Nothing is substituted, so the layout does not move
+   and the shape of the page is still readable across a room. */
+:root[data-privacy='on'] .mono,
+:root[data-privacy='on'] .private {
+  filter: blur(7px);
+  user-select: none;
+}
+/* Hold the pointer on one figure to read it without unhiding the whole page. */
+:root[data-privacy='on'] .mono:hover,
+:root[data-privacy='on'] .private:hover { filter: blur(0px); }
+
+/* Native date fields: keep the picker, match the rest of the inputs. */
+input[type='date'] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+:root[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.65);
+  cursor: pointer;
+}
+input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
+input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* ---------------------------------------------------------------------------
+   Icon motion.
+
+   These animate the icon's own parts. A bell's clapper swings under a body that
+   tilts; an eye blinks by squashing its outline while the pupil shrinks; a plus
+   draws itself from the middle out. The whole-glyph nudge is only a fallback for
+   icons with nothing interesting inside them.
+
+   Everything is one short ease, plays once on hover, and stops entirely under
+   prefers-reduced-motion.
+   --------------------------------------------------------------------------- */
+
+.ico { overflow: visible; }
+.ico > * {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  transition: transform 300ms var(--ease), opacity 200ms var(--ease);
+}
+
+/* The fallback, for icons with no scene of their own.
+
+   Its shapes stagger in place — the glyph itself never travels. An icon that slides
+   across its own box says nothing about what the control does; a glyph whose parts
+   answer in turn at least reads as the thing being touched. A single-shape icon has
+   nothing inside it to move, so it breathes where it stands rather than going
+   anywhere.
+
+   Rules for a particular icon carry both classes, so they outrank this fallback
+   whatever order the file ends up in. */
+.ico-parts > * { transition: transform 300ms var(--ease), opacity 240ms var(--ease); }
+:where(button, a, label, [role='switch']):hover .ico-parts > *:nth-child(1) { transform: scale(1.09); }
+:where(button, a, label, [role='switch']):hover .ico-parts > *:nth-child(2) { transform: scale(1.09); transition-delay: 45ms; }
+:where(button, a, label, [role='switch']):hover .ico-parts > *:nth-child(n+3) { transform: scale(1.09); transition-delay: 90ms; }
+@keyframes breathe {
+  0% { transform: scale(1); } 45% { transform: scale(1.13); }
+  75% { transform: scale(0.985); } 100% { transform: scale(1); }
+}
+
+/* chevron — the arrowhead opens on its own point rather than sliding off its axis */
+.ico-chevron.ico-parts > * { transform-origin: 15px 12px; }
+:where(button, a, label):hover .ico-chevron.ico-parts > * { transform: scaleX(1.24); }
+
+/* calendar — the two rings lift and the dates fill in under a page that holds still */
+.ico-calendar.ico-parts > *:nth-child(-n+2) { transform-origin: 12px 4px; }
+:where(button, a, label):hover .ico-calendar.ico-parts > *:nth-child(-n+2) { transform: translateY(-1.4px); }
+:where(button, a, label):hover .ico-calendar.ico-parts > *:nth-child(3),
+:where(button, a, label):hover .ico-calendar.ico-parts > *:nth-child(4) { transform: none; }
+:where(button, a, label):hover .ico-calendar.ico-parts > *:nth-child(n+5) { transform: none; animation: breathe 520ms var(--ease) 80ms; }
+
+/* download — the arrow drops into a tray that gives under it */
+:where(button, a, label):hover .ico-download.ico-parts > *:nth-child(1),
+:where(button, a, label):hover .ico-download.ico-parts > *:nth-child(3) { transform: none; animation: drop 520ms var(--ease); }
+:where(button, a, label):hover .ico-download.ico-parts > *:nth-child(2) { transform: none; animation: flex-line 520ms var(--ease) 160ms; }
+
+/* a handshake closes: the right hand comes left, the left hand comes right */
+:where(button, a, label):hover .ico-handshake.ico-parts > *:nth-child(-n+3) { transform: translateX(-0.9px); }
+:where(button, a, label):hover .ico-handshake.ico-parts > *:nth-child(n+4) { transform: translateX(0.9px); }
+
+/* wheels turn under a body that stays where it is */
+:where(button, a, label):hover .ico-car.ico-parts > circle,
+:where(button, a, label):hover .ico-suv.ico-parts > circle,
+:where(button, a, label):hover .ico-motorbike.ico-parts > circle { transform: none; animation: spin 760ms linear; }
+:where(button, a, label):hover .ico-car.ico-parts > path,
+:where(button, a, label):hover .ico-suv.ico-parts > path,
+:where(button, a, label):hover .ico-motorbike.ico-parts > path { transform: none; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* a clock's hands move; its face only breathes */
+.ico-clock.ico-parts > path { transform-origin: 12px 12px; }
+:where(button, a, label):hover .ico-clock.ico-parts > path { transform: rotate(30deg); }
+:where(button, a, label):hover .ico-clock.ico-parts > circle { transform: scale(1.05); }
+
+/* a magnifying glass looks closer: the lens grows, the handle follows it out */
+.ico-search.ico-parts > circle { transform-origin: 11px 11px; }
+:where(button, a, label):hover .ico-search.ico-parts > circle { transform: scale(1.14); }
+:where(button, a, label):hover .ico-search.ico-parts > path { transform: translate(1.2px, 1.2px); }
+
+/* the warning's own mark flashes; the triangle holds */
+:where(button, a, label):hover .ico-warn.ico-parts > *:nth-child(1) { transform: none; }
+:where(button, a, label):hover .ico-warn.ico-parts > *:nth-child(n+2) { transform: none; animation: pulse 620ms var(--ease); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 40% { opacity: 0.25; } }
+
+/* undo — the arc redraws itself rather than the glyph shifting left */
+.ico-undo.ico-parts > * { stroke-dasharray: 34; }
+:where(button, a, label):hover .ico-undo.ico-parts > * { transform: none; animation: draw-arc 460ms var(--ease); }
+@keyframes draw-arc { from { stroke-dashoffset: 34; } to { stroke-dashoffset: 0; } }
+
+/* a book opens: the spine holds, the covers ease apart */
+.ico-ledger.ico-parts > *:nth-child(1) { transform-origin: 12px 12px; }
+:where(button, a, label):hover .ico-ledger.ico-parts > *:nth-child(1) { transform: scaleY(1.06); }
+:where(button, a, label):hover .ico-ledger.ico-parts > *:nth-child(2) { transform: scaleX(1.06); }
+
+/* refresh — one clean sweep, the arrowhead leading */
+.ico-refresh.ico-parts > *:nth-child(1) { transition: transform 520ms var(--ease); }
+.ico-refresh.ico-parts > *:nth-child(2) { transition: transform 520ms var(--ease) 40ms; }
+:where(button, a, label):hover .ico-refresh.ico-parts > * { transform: rotate(-360deg); }
+
+/* bell — the body tilts, the clapper follows a beat later */
+.ico-bell.ico-parts > *:nth-child(2) { transform-origin: 12px 4px; }
+.ico-bell.ico-parts > *:nth-child(1) { transform-origin: 12px 18px; transition-delay: 60ms; }
+:where(button, a, label):hover .ico-bell.ico-parts > *:nth-child(2) { transform: none; animation: bell-swing 620ms var(--ease); }
+:where(button, a, label):hover .ico-bell.ico-parts > *:nth-child(1) { transform: none; animation: bell-swing 620ms var(--ease) 70ms; }
+@keyframes bell-swing {
+  0% { transform: rotate(0); } 25% { transform: rotate(11deg); }
+  55% { transform: rotate(-8deg); } 80% { transform: rotate(4deg); } 100% { transform: rotate(0); }
+}
+
+/* eye — a blink: the lid squashes while the pupil contracts */
+:where(button, a, label):hover .ico-eye.ico-parts > *:nth-child(1) { transform: none; animation: lid 420ms var(--ease); }
+:where(button, a, label):hover .ico-eye.ico-parts > *:nth-child(2) { transform: none; animation: pupil 420ms var(--ease); }
+@keyframes lid { 0%, 100% { transform: scaleY(1); } 45% { transform: scaleY(0.12); } }
+@keyframes pupil { 0%, 100% { transform: scale(1); } 45% { transform: scale(0.3); opacity: 0.4; } }
+
+/* eye, closed — the slash draws itself across */
+.ico-eyeoff.ico-parts > *:nth-child(1) { stroke-dasharray: 30; stroke-dashoffset: 0; }
+:where(button, a, label):hover .ico-eyeoff.ico-parts > *:nth-child(1) { transform: none; animation: draw 380ms var(--ease); }
+@keyframes draw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+
+/* sun — the rays turn and breathe, the core holds */
+.ico-sun.ico-parts > *:nth-child(n+2) { transition: transform 420ms var(--ease); }
+:where(button, a, label):hover .ico-sun.ico-parts > *:nth-child(n+2) { transform: rotate(45deg); }
+:where(button, a, label):hover .ico-sun.ico-parts > *:nth-child(1) { transform: scale(1.14); }
+
+/* moon — leans back into its own arc */
+:where(button, a, label):hover .ico-moon.ico-parts > * { transform: rotate(-18deg) scale(1.06); }
+
+/* plus and close — drawn from the middle out */
+:where(button, a, label):hover .ico-plus.ico-parts > *:nth-child(1) { transform: scaleY(1.28); }
+:where(button, a, label):hover .ico-plus.ico-parts > *:nth-child(2) { transform: scaleX(1.28); }
+:where(button, a, label):hover .ico-close.ico-parts > * { transform: rotate(90deg); }
+
+/* check — the tick writes itself */
+.ico-check.ico-parts > * { stroke-dasharray: 26; }
+:where(button, a, label):hover .ico-check.ico-parts > * { transform: none; animation: draw-tick 420ms var(--ease); }
+@keyframes draw-tick { from { stroke-dashoffset: 26; } to { stroke-dashoffset: 0; } }
+
+/* pencil — a small stroke, as if writing */
+:where(button, a, label):hover .ico-edit.ico-parts > * { transform: none; animation: scribble 460ms var(--ease); }
+@keyframes scribble {
+  0% { transform: translate(0, 0); } 30% { transform: translate(1.6px, -1.6px); }
+  65% { transform: translate(-1px, 1px); } 100% { transform: translate(0, 0); }
+}
+
+/* arrow — the head travels, the shaft stretches after it */
+.ico-arrow.ico-parts > *:nth-child(1) { transform-origin: 5px 12px; }
+:where(button, a, label):hover .ico-arrow.ico-parts > *:nth-child(1) { transform: scaleX(1.22); }
+:where(button, a, label):hover .ico-arrow.ico-parts > *:nth-child(2) { transform: translateX(2.4px); }
+
+/* the bin lid lifts before the body reacts */
+.ico-trash.ico-parts > *:nth-child(1) { transform-origin: 12px 6px; }
+:where(button, a, label):hover .ico-trash.ico-parts > *:nth-child(1) { transform: rotate(-16deg) translateY(-1px); }
+:where(button, a, label):hover .ico-trash.ico-parts > *:nth-child(n+3) { transform: translateY(1px); opacity: 0.6; }
+
+@keyframes drop { 0% { transform: translateY(-2.5px); } 60% { transform: translateY(1px); } 100% { transform: translateY(0); } }
+@keyframes flex-line { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.12); } }
+
+/* in and out — the pair that every two-way control is drawn from, so buying and selling,
+   money in and money out, lent and borrowed all move as two halves of one decision. The
+   arrow travels towards its line and the line gives under it; out is the same motion read
+   upwards. */
+:where(button, a, label):hover .ico-in.ico-parts > *:nth-child(-n+2) { transform: none; animation: drop 460ms var(--ease); }
+:where(button, a, label):hover .ico-in.ico-parts > *:nth-child(n+3) { transform: none; animation: flex-line 460ms var(--ease) 180ms; }
+:where(button, a, label):hover .ico-out.ico-parts > *:nth-child(-n+2) { transform: none; animation: lift 460ms var(--ease); }
+:where(button, a, label):hover .ico-out.ico-parts > *:nth-child(n+3) { transform: none; animation: flex-line 460ms var(--ease) 180ms; }
+@keyframes lift { 0% { transform: translateY(2.5px); } 60% { transform: translateY(-1px); } 100% { transform: translateY(0); } }
+
+/* arrow down — the connector between two stacked fields, falling the way the money does */
+.ico-arrowdown.ico-parts > *:nth-child(1) { transform-origin: 12px 5px; }
+:where(button, a, label):hover .ico-arrowdown.ico-parts > *:nth-child(1) { transform: scaleY(1.22); }
+:where(button, a, label):hover .ico-arrowdown.ico-parts > *:nth-child(2) { transform: translateY(2.4px); }
+
+/* send — leaves, rather than pointing */
+:where(button, a, label):hover .ico-send.ico-parts > * { transform: none; animation: send-off 520ms var(--ease); }
+@keyframes send-off {
+  0% { transform: translateX(0); opacity: 1; } 45% { transform: translateX(4px); opacity: 0; }
+  55% { transform: translateX(-4px); opacity: 0; } 100% { transform: translateX(0); opacity: 1; }
+}
+
+/* repeat — one turn of the loop */
+.ico-repeat.ico-parts > * { transition: transform 520ms var(--ease); }
+:where(button, a, label):hover .ico-repeat.ico-parts > * { transform: rotate(360deg); }
+
+/* a lock opens: the shackle lifts off a body that holds still */
+.ico-lock.ico-parts > *:nth-child(2) { transform-origin: 12px 9px; }
+:where(button, a, label):hover .ico-lock.ico-parts > *:nth-child(2) { transform: translateY(-1.4px) scaleY(1.12); }
+:where(button, a, label):hover .ico-lock.ico-parts > *:nth-child(1) { transform: none; }
+
+/* a plug goes in */
+:where(button, a, label):hover .ico-plug.ico-parts > * { transform: translateY(1.4px); }
+
+/* filter — settles */
+:where(button, a, label):hover .ico-filter.ico-parts > * { transform: none; animation: settle 420ms var(--ease); }
+@keyframes settle { 0% { transform: translateY(-2px); } 60% { transform: translateY(0.8px); } 100% { transform: translateY(0); } }
+
+:where(button, a, label):active .ico { transform: scale(0.94); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ico > *, .ico { transition: none !important; animation: none !important; }
+  :where(button, a, label, [role='switch']):hover .ico,
+  :where(button, a, label, [role='switch']):hover .ico > *,
+  /* the pie nests its wedges a level deeper, so the reset has to reach them too */
+  :where(button, a, label, [role='switch']):hover .ico [data-part],
+  :where(button, a, label, [role='switch']):hover .ico-parts > * { transform: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   Drawn icons: the movement.
+
+   Reversible states use transitions, so leaving the control plays the movement
+   backwards rather than snapping. One-shot sequences — a coin dropping, a glint
+   passing — are keyframes, and they end where they started so there is nothing
+   to snap back to. Long durations and soft easing, because these read as motion
+   rather than as a state change.
+   --------------------------------------------------------------------------- */
+
+.anim [data-part] {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.28, 1),
+              opacity 360ms cubic-bezier(0.22, 1, 0.28, 1);
+}
+:where(button, a, label):hover .anim [data-part] { transition-duration: 460ms, 400ms; }
+
+/* Portfolio — the pie comes apart into slices.
+
+   Each wedge travels along its own bisector, and the vertical component is flattened by the
+   same 0.606 the ellipse is, so a wedge slides in the plane the pie lies in instead of
+   rising off it. The near wedge leaves first and the far one last, which is the order the
+   eye already reads them in. Nothing rotates: the perspective is baked into the geometry,
+   so turning the mark would turn the ellipse against its own vanishing point. */
+.anim-portfolio [data-part] {
+  transition: transform 620ms cubic-bezier(0.3, 1.18, 0.28, 1);
+}
+.anim-portfolio [data-part='s1'] { transition-delay: 60ms; }
+.anim-portfolio [data-part='s3'] { transition-delay: 60ms; }
+.anim-portfolio [data-part='s4'] { transition-delay: 130ms; }
+:where(button, a, label):hover .anim-portfolio [data-part='s2'] { transform: translate(0.12px, 2.1px); }
+:where(button, a, label):hover .anim-portfolio [data-part='s1'] { transform: translate(2.49px, -0.81px); }
+:where(button, a, label):hover .anim-portfolio [data-part='s3'] { transform: translate(-2.64px, 0.46px); }
+:where(button, a, label):hover .anim-portfolio [data-part='s4'] { transform: translate(-1.45px, -1.78px); }
+
+/* Statistics — the columns redraw against the period before: two rise, one falls.
+   Each scales from its own footing on the axis, so the bases stay put and the tops move. */
+.anim-dashboards [data-part] {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform 560ms cubic-bezier(0.3, 1.14, 0.3, 1);
+}
+.anim-dashboards [data-part='b2'] { transition-delay: 70ms; }
+.anim-dashboards [data-part='b3'] { transition-delay: 140ms; }
+:where(button, a, label):hover .anim-dashboards [data-part='b1'] { transform: scaleY(1.44); }
+:where(button, a, label):hover .anim-dashboards [data-part='b2'] { transform: scaleY(0.62); }
+:where(button, a, label):hover .anim-dashboards [data-part='b3'] { transform: scaleY(1.26); }
+
+/* Accounts — the globe turns and the banks ride round on it.
+
+   The orbit group turns one full revolution and every bank turns exactly as far the other
+   way. That is not decoration: the banks sit inside the squash that makes the equator an
+   ellipse, so without the counter-turn the parent's scale and the orbit's rotation would
+   compose into a shear, and each building would lean and stretch as it went round.
+   Cancelled, all that survives is position.
+
+   Depth is a second animation on a group of its own, because one element can only run one
+   transform: a bank swells and darkens through the near half and shrinks and fades through
+   the far half. All three share the cycle and differ only by where they start in it, which
+   is what the negative delays are for — a third of the turn apart, the same as their
+   placement. Their resting opacities are the values that cycle holds at those three points,
+   so nothing jumps when the hover starts.
+
+   The meridian narrows to a line at the quarter and three-quarter marks, which is where the
+   banks are crossing the poles, so the wireframe and the buildings agree about which way the
+   globe is facing. Linear on both, because a planet does not ease. */
+.anim-accounts [data-part] { transform-origin: 12px 12px; }
+.anim-accounts [data-part='mark'],
+.anim-accounts [data-part='depth'] { transform-origin: 20.4px 12px; }
+.anim-accounts [data-part='globe'] { transition: transform 520ms cubic-bezier(0.3, 1.1, 0.3, 1); }
+:where(button, a, label):hover .anim-accounts [data-part='globe'] { transform: scale(1.03); }
+:where(button, a, label):hover .anim-accounts [data-part='orbit'] { animation: globe-turn 3200ms linear infinite; }
+:where(button, a, label):hover .anim-accounts [data-part='mark'] { animation: globe-hold 3200ms linear infinite; }
+:where(button, a, label):hover .anim-accounts [data-part='depth'] { animation: globe-depth 3200ms linear infinite; }
+:where(button, a, label):hover .anim-accounts [data-part='meridian'] { animation: globe-face 3200ms ease-in-out infinite; }
+/* a third of a turn apart, so the three banks are never at the same depth */
+.anim-accounts g:nth-child(2) [data-part='depth'] { animation-delay: -1067ms; }
+.anim-accounts g:nth-child(3) [data-part='depth'] { animation-delay: -2133ms; }
+@keyframes globe-turn { to { transform: rotate(360deg); } }
+@keyframes globe-hold { to { transform: rotate(-360deg); } }
+@keyframes globe-depth {
+  0%, 100% { transform: scale(1); opacity: 0.72; }
+  25%      { transform: scale(1.16); opacity: 1; }
+  50%      { transform: scale(1); opacity: 0.72; }
+  75%      { transform: scale(0.84); opacity: 0.42; }
+}
+@keyframes globe-face {
+  0%, 50%, 100% { transform: scaleX(1); }
+  25%, 75%      { transform: scaleX(0.06); }
+}
+
+@keyframes pocket-give {
+  0%, 100% { transform: scaleY(1); }
+  40%      { transform: scaleY(1.06); }
+  75%      { transform: scaleY(0.99); }
+}
+
+
+/* Real estate — the roof lifts, the walls step out from under it */
+.anim-realestate [data-part] { transition: transform 560ms cubic-bezier(0.3, 1.12, 0.3, 1); }
+.anim-realestate [data-part='wallL'], .anim-realestate [data-part='wallR'] { transition-delay: 45ms; }
+:where(button, a, label):hover .anim-realestate [data-part='roof']  { transform: translateY(-2.2px); }
+:where(button, a, label):hover .anim-realestate [data-part='wallL'] { transform: translateX(-1.5px); }
+:where(button, a, label):hover .anim-realestate [data-part='wallR'] { transform: translateX(1.5px); }
+:where(button, a, label):hover .anim-realestate [data-part='floor'] { transform: scaleX(1.06); }
+:where(button, a, label):hover .anim-realestate [data-part='door']  { transform: translateY(0.4px); }
+
+/* Money flow — the two lanes run their own way and come back */
+.anim-flow [data-part] { transition: transform 480ms cubic-bezier(0.3, 1.1, 0.3, 1); }
+/* the pool and the far stack give at their base, not at the centre of the icon */
+.anim-flow [data-part='pool'] { transform-origin: 12px 19px; }
+.anim-flow [data-part='far'] { transform-origin: 19.7px 19px; }
+/* Two coins, half a cycle apart. Each throw is a carry across on one group and a rise and
+   fall on the group inside it, because their sum is an arc and a single translate is not.
+   Everything resets at 93%, under the fade, so neither coin is seen sliding home across the
+   gap it has just crossed. The second coin's negative delay is what puts it in the air while
+   the first is landing, which is the difference between a payment and a flow. */
+:where(button, a, label):hover .anim-flow [data-part='carryA'] { animation: cash-carry 1700ms ease-in-out infinite; }
+:where(button, a, label):hover .anim-flow [data-part='liftA'] { animation: cash-lift-a 1700ms ease-in-out infinite; }
+:where(button, a, label):hover .anim-flow [data-part='carryB'] { animation: cash-carry-b 1700ms ease-in-out infinite -850ms; }
+:where(button, a, label):hover .anim-flow [data-part='gain'] { animation: cash-gain 1700ms ease-in-out infinite -850ms; }
+:where(button, a, label):hover .anim-flow [data-part='uncover'] { animation: cash-gain 1700ms ease-in-out infinite; }
+:where(button, a, label):hover .anim-flow [data-part='liftB'] { animation: cash-lift-b 1700ms ease-in-out infinite -850ms; }
+:where(button, a, label):hover .anim-flow [data-part='pool'] { animation: cash-land 1700ms ease-out infinite; }
+:where(button, a, label):hover .anim-flow [data-part='far'] { animation: cash-land 1700ms ease-out infinite -850ms; }
+@keyframes cash-carry {
+  0%, 10%  { transform: translateX(0); opacity: 1; }
+  60%, 86% { transform: translateX(7.7px); opacity: 1; }
+  92%      { transform: translateX(7.7px); opacity: 0; }
+  93%      { transform: translateX(0); opacity: 0; }
+  100%     { transform: translateX(0); opacity: 1; }
+}
+/* The second coin is nothing at rest: it rises out of the pool rather than sitting on it,
+   which keeps the pool reading as a pool instead of a coin with a lid. */
+@keyframes cash-carry-b {
+  0%, 8%   { transform: translateX(0); opacity: 0; }
+  20%      { transform: translateX(1.7px); opacity: 1; }
+  60%, 86% { transform: translateX(7.7px); opacity: 1; }
+  92%      { transform: translateX(7.7px); opacity: 0; }
+  100%     { transform: translateX(0); opacity: 0; }
+}
+/* what a stack is holding while a coin of it is elsewhere: one fewer here, one more there */
+@keyframes cash-gain {
+  0%, 22%   { opacity: 0; }
+  34%, 88%  { opacity: 1; }
+  93%, 100% { opacity: 0; }
+}
+/* off the top of the stack and down into the pool, which is the lower of the two */
+@keyframes cash-lift-a {
+  0%, 10%  { transform: translateY(0); }
+  34%      { transform: translateY(-4.6px); }
+  60%      { transform: translateY(2.9px); }
+  67%      { transform: translateY(2.3px); }
+  74%, 92% { transform: translateY(2.6px); }
+  93%, 100% { transform: translateY(0); }
+}
+/* out of the pool and up onto the far stack, which stands a little higher */
+@keyframes cash-lift-b {
+  0%, 10%  { transform: translateY(0); }
+  34%      { transform: translateY(-5.4px); }
+  60%      { transform: translateY(-0.7px); }
+  67%      { transform: translateY(-1.3px); }
+  74%, 92% { transform: translateY(-1px); }
+  93%, 100% { transform: translateY(0); }
+}
+/* whatever receives the coin takes the weight for a moment */
+@keyframes cash-land {
+  0%, 58%   { transform: scaleY(1); }
+  64%       { transform: scaleY(0.86); }
+  76%, 100% { transform: scaleY(1); }
+}
+
+
+
+
+/* Income — the bill travels in from the left and disappears into the pocket */
+.anim-income [data-part='cash'] { transform-origin: 5.8px 12px; }
+:where(button, a, label):hover .anim-income [data-part='cash'] { animation: bill-in 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
+:where(button, a, label):hover .anim-income [data-part='pouch'] { animation: pouch-give 1050ms cubic-bezier(0.34, 0, 0.2, 1) 420ms; }
+@keyframes bill-in {
+  0%   { transform: translate(-5.6px, 2.6px); opacity: 0; }
+  16%  { transform: translate(-3.4px, 1.6px); opacity: 1; }
+  56%  { transform: translate(3.4px, -0.6px); opacity: 1; }
+  74%  { transform: translate(5.8px, -1.2px); opacity: 0.7; }
+  88%  { transform: translate(7.4px, -1.6px); opacity: 0.15; }
+  96%  { transform: translate(8.2px, -1.8px); opacity: 0; }
+  100% { transform: translate(-5.6px, 2.6px); opacity: 0; }
+}
+@keyframes pouch-give {
+  0%, 100% { transform: scaleX(1); }
+  40%      { transform: scaleX(1.05); }
+  75%      { transform: scaleX(0.99); }
+}
+
+/* Expenses — the same bill drawn back out to the left */
+.anim-expenses [data-part='cash'] { transform-origin: 5.8px 12px; }
+:where(button, a, label):hover .anim-expenses [data-part='cash'] { animation: bill-out 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
+:where(button, a, label):hover .anim-expenses [data-part='pouch'] { animation: pouch-give 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
+@keyframes bill-out {
+  0%   { transform: translate(8.2px, -1.8px); opacity: 0; }
+  14%  { transform: translate(6.4px, -1.4px); opacity: 0.4; }
+  36%  { transform: translate(3.8px, -0.8px); opacity: 1; }
+  68%  { transform: translate(-2.2px, 1px);   opacity: 1; }
+  88%  { transform: translate(-4.8px, 2.2px); opacity: 0.3; }
+  96%  { transform: translate(-6px, 2.8px);   opacity: 0; }
+  100% { transform: translate(8.2px, -1.8px); opacity: 0; }
+}
+
+/* Gold — the stack separates a little and a glint passes across it */
+.anim-gold [data-part] { transition: transform 520ms cubic-bezier(0.3, 1.1, 0.3, 1), opacity 400ms ease; }
+.anim-gold [data-part='barLeft'], .anim-gold [data-part='barRight'] { transition-delay: 50ms; }
+:where(button, a, label):hover .anim-gold [data-part='barTop']   { transform: translateY(-3px); }
+:where(button, a, label):hover .anim-gold [data-part='barLeft']  { transform: translate(-2.4px, 1.4px); }
+:where(button, a, label):hover .anim-gold [data-part='barRight'] { transform: translate(2.4px, 1.4px); }
+:where(button, a, label):hover .anim-gold [data-part='glint'] { animation: glint 1100ms cubic-bezier(0.3, 0, 0.2, 1); }
+@keyframes glint {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-25deg); }
+  30%  { opacity: 1; transform: scale(1.05) rotate(0deg); }
+  55%  { opacity: 0.85; transform: scale(0.95) rotate(8deg); }
+  100% { opacity: 0; transform: scale(0.5) rotate(20deg); }
+}
+
+/* Stocks — each leg of the trace lifts in turn, the arrowhead carried by the last */
+:where(button, a, label):hover .anim-stocks [data-part='s1']   { animation: step 950ms cubic-bezier(0.24, 1, 0.3, 1) 0ms; }
+:where(button, a, label):hover .anim-stocks [data-part='s2']   { animation: step 950ms cubic-bezier(0.24, 1, 0.3, 1) 90ms; }
+:where(button, a, label):hover .anim-stocks [data-part='s3']   { animation: step 950ms cubic-bezier(0.24, 1, 0.3, 1) 180ms; }
+:where(button, a, label):hover .anim-stocks [data-part='s4']   { animation: step 950ms cubic-bezier(0.24, 1, 0.3, 1) 270ms; }
+:where(button, a, label):hover .anim-stocks [data-part='head'] { animation: step 950ms cubic-bezier(0.24, 1, 0.3, 1) 340ms; }
+@keyframes step {
+  0%   { transform: translateY(0); }
+  35%  { transform: translateY(-2.6px); }
+  70%  { transform: translateY(0.7px); }
+  100% { transform: translateY(0); }
+}
+
+/* Zakat — the beam tips and settles, the pans hanging level under it */
+.anim-zakat [data-part='beam'] { transform-origin: 12px 7.6px; }
+.anim-zakat [data-part='panL'] { transform-origin: 6.6px 9.2px; }
+.anim-zakat [data-part='panR'] { transform-origin: 17.4px 9.2px; }
+:where(button, a, label):hover .anim-zakat [data-part='beam'] { animation: tip 1600ms cubic-bezier(0.36, 0, 0.3, 1); }
+:where(button, a, label):hover .anim-zakat [data-part='panL'] { animation: pan-l 1600ms cubic-bezier(0.36, 0, 0.3, 1); }
+:where(button, a, label):hover .anim-zakat [data-part='panR'] { animation: pan-r 1600ms cubic-bezier(0.36, 0, 0.3, 1); }
+@keyframes tip {
+  0% { transform: rotate(0deg); }    18% { transform: rotate(9deg); }
+  42% { transform: rotate(-6.5deg); } 64% { transform: rotate(3.6deg); }
+  82% { transform: rotate(-1.6deg); } 100% { transform: rotate(0deg); }
+}
+@keyframes pan-l {
+  0% { transform: translateY(0); }     18% { transform: translateY(1.7px); }
+  42% { transform: translateY(-1.2px); } 64% { transform: translateY(0.7px); }
+  82% { transform: translateY(-0.3px); } 100% { transform: translateY(0); }
+}
+@keyframes pan-r {
+  0% { transform: translateY(0); }      18% { transform: translateY(-1.7px); }
+  42% { transform: translateY(1.2px); }  64% { transform: translateY(-0.7px); }
+  82% { transform: translateY(0.3px); }  100% { transform: translateY(0); }
+}
+
+/* Settings — the handles run along their tracks and settle somewhere new */
+.anim-settings [data-part] { transition: transform 560ms cubic-bezier(0.3, 1.12, 0.3, 1); }
+.anim-settings [data-part='k2'] { transition-delay: 60ms; }
+.anim-settings [data-part='k3'] { transition-delay: 120ms; }
+:where(button, a, label):hover .anim-settings [data-part='k1'] { transform: translateX(6.4px); }
+:where(button, a, label):hover .anim-settings [data-part='k2'] { transform: translateX(-6.8px); }
+:where(button, a, label):hover .anim-settings [data-part='k3'] { transform: translateX(5.2px); }
+
+
+/* Editing needs more air than reading does.
+   A row being read is one line to scan; a row being edited is several controls to aim at,
+   and packing them at reading density makes them feel like one object rather than five. */
+:root[data-mode='edit'] main { gap: 28px; }
+:root[data-mode='edit'] .panel { padding: 26px; }
+:root[data-mode='edit'] td,
+:root[data-mode='edit'] th { padding-top: 12px; padding-bottom: 12px; }
+:root[data-mode='edit'][data-density='compact'] main { gap: 20px; }
+:root[data-mode='edit'][data-density='compact'] .panel { padding: 18px; }
+
+
+/* Fields need room to be aimed at.
+   A grid of controls at reading density looks like one object; the eye has to work out where
+   each one ends. This is the gap between them, and it is deliberately larger than the gap
+   between lines of text. */
+.panel :where(div[style*='grid-template-columns']) { row-gap: 18px; }
+:root[data-density='compact'] .panel :where(div[style*='grid-template-columns']) { row-gap: 12px; }
+
+
+/* Which way the money went.
+   A dashed line travelling along each band, rather than an arrowhead — the head had to be
+   large enough to see, and at that size it was heavier than the band it pointed along. */
+@keyframes flow-run { to { stroke-dashoffset: -32; } }
+.flow-run { animation: flow-run 1.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .flow-run { animation: none; } }
+
+
+
+
+/* Assets — a car pulls up to the house.
+   At rest it waits back down the road, dimmed; hovering drives it up and the wheels turn
+   with it. The house does not move, because the house is the fixed thing. */
+.anim-assets [data-part='car'] {
+  transform: translateX(-4px);
+  opacity: 0.5;
+  transition: transform 720ms cubic-bezier(0.22, 0.9, 0.28, 1), opacity 420ms var(--ease);
+}
+.anim-assets [data-part='car'] circle { transform-box: fill-box; transform-origin: center; }
+
+:where(button, a, label):hover .anim-assets [data-part='car'] {
+  transform: translateX(1.8px);
+  opacity: 1;
+}
+:where(button, a, label):hover .anim-assets [data-part='car'] circle {
+  animation: wheel-roll 720ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+:where(button, a, label):hover .anim-assets [data-part='door'] { transform: translateY(0.5px); }
+
+@keyframes wheel-roll { from { transform: rotate(0deg); } to { transform: rotate(320deg); } }
+
+
+/* A table of records.
+   The heading row carries the filters, so it needs to read as one band rather than as text
+   with controls dangling under it: a quieter ground, a single rule beneath, and fields that
+   sit at the same weight as everything else on the screen. */
+.panel table { border-collapse: separate; border-spacing: 0; }
+.panel thead th {
+  background: color-mix(in srgb, var(--raised) 62%, transparent);
+  border-bottom: 1px solid var(--hairline-strong);
+  position: sticky; top: 0; z-index: 2;
+}
+.panel thead th:first-child { border-top-left-radius: var(--r-sm); }
+.panel thead th:last-child { border-top-right-radius: var(--r-sm); }
+.panel thead th input,
+.panel thead th button[aria-haspopup='listbox'] {
+  background-color: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: calc(var(--r-sm) * 0.8);
+  font-size: 11px;
+}
+.panel thead th button[aria-haspopup='listbox'] { padding: 5px 8px; }
+.panel thead th ::placeholder { color: var(--disabled); }
+.panel tbody tr:hover { background: color-mix(in srgb, var(--raised) 45%, transparent); }
+.panel tbody td { border-bottom: 1px solid var(--hairline); }
+.panel tbody tr:last-child td { border-bottom: none; }
+
+/* ── Ledg00r ──────────────────────────────────────────────────────────────────────────
+   One character, five moods, and each mood is the same parts moved differently. He breathes
+   at rest so the screen never looks frozen; everything else is switched on by the mood the
+   assistant is actually in, so the animation says something rather than decorating. */
+.tiger { overflow: visible; }
+.tiger * { transform-box: fill-box; transform-origin: center; }
+
+.tiger .t-thought, .tiger .t-lens { opacity: 0; transition: opacity 260ms var(--ease); }
+.tiger .t-tail { transform-origin: 8% 90%; }
+.tiger .t-head { transform-origin: 50% 80%; }
+.tiger .t-armR { transform-origin: 50% 8%; }
+.tiger .t-specs { transform-origin: 50% 60%; }
+
+/* at rest: breathing, a blink now and then, a tail that will not sit still */
+.tiger-idle .t-body   { animation: t-breathe 3.6s ease-in-out infinite; }
+.tiger-idle .t-head   { animation: t-bob 3.6s ease-in-out infinite; }
+.tiger-idle .t-tail   { animation: t-swish 2.8s ease-in-out infinite; }
+.tiger-idle .t-eyes   { animation: t-blink 6.5s infinite; }
+.tiger-idle .t-specs  { animation: t-nudge 9s infinite; }
+
+/* thinking: head tilted, glasses pushed up, three dots counting */
+.tiger-thinking .t-head    { animation: t-tilt 2.4s ease-in-out infinite; }
+.tiger-thinking .t-tail    { animation: t-swish 1.6s ease-in-out infinite; }
+.tiger-thinking .t-armR    { animation: t-chin 2.4s ease-in-out infinite; }
+.tiger-thinking .t-thought { opacity: 1; }
+.tiger-thinking .t-dot1    { animation: t-pulse 1.4s infinite; }
+.tiger-thinking .t-dot2    { animation: t-pulse 1.4s infinite 0.18s; }
+.tiger-thinking .t-dot3    { animation: t-pulse 1.4s infinite 0.36s; }
+.tiger-thinking .t-eyes    { animation: t-squint 2.4s ease-in-out infinite; }
+
+/* searching: the glass sweeps, the head follows it, the lenses catch the light */
+.tiger-searching .t-lens  { opacity: 1; animation: t-sweep 2.1s ease-in-out infinite; }
+.tiger-searching .t-head  { animation: t-look 2.1s ease-in-out infinite; }
+.tiger-searching .t-glint { animation: t-glint 2.1s ease-in-out infinite; }
+.tiger-searching .t-tail  { animation: t-swish 1.3s ease-in-out infinite; }
+
+/* talking: the mouth moves, one paw makes a point */
+.tiger-talking .t-mouth { animation: t-speak 0.42s ease-in-out infinite; }
+.tiger-talking .t-head  { animation: t-bob 1.5s ease-in-out infinite; }
+.tiger-talking .t-armR  { animation: t-point 1.5s ease-in-out infinite; }
+.tiger-talking .t-tail  { animation: t-swish 1.9s ease-in-out infinite; }
+
+/* pleased: a hop, ears up */
+.tiger-pleased .t-body { animation: t-hop 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 2; }
+.tiger-pleased .t-head { animation: t-hop 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 2; }
+.tiger-pleased .t-tail { animation: t-swish 0.9s ease-in-out infinite; }
+.tiger-pleased .t-earL, .tiger-pleased .t-earR { animation: t-perk 0.7s ease-out 2; }
+
+/* sorry: head down, ears flat, tail still */
+.tiger-sorry .t-head { transform: translateY(3px) rotate(-4deg); }
+.tiger-sorry .t-earL { transform: translateY(4px) rotate(-22deg); }
+.tiger-sorry .t-earR { transform: translateY(4px) rotate(22deg); }
+.tiger-sorry .t-mouth { transform: translateY(2px) scaleY(-0.7); }
+
+@keyframes t-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
+@keyframes t-bob     { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.4px); } }
+@keyframes t-swish   { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(11deg); } }
+@keyframes t-blink   { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
+@keyframes t-squint  { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.62); } }
+@keyframes t-nudge   { 0%, 88%, 100% { transform: translateY(0); } 93% { transform: translateY(-2.6px); } }
+@keyframes t-tilt    { 0%, 100% { transform: rotate(-5deg) translateY(-1px); }
+                       50%      { transform: rotate(-9deg) translateY(-3px); } }
+@keyframes t-chin    { 0%, 100% { transform: rotate(-52deg) translate(-9px, -6px); }
+                       50%      { transform: rotate(-58deg) translate(-9px, -8px); } }
+@keyframes t-point   { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(-34deg); } }
+@keyframes t-pulse   { 0%, 100% { opacity: 0.25; transform: scale(0.8); }
+                       50%      { opacity: 1;    transform: scale(1.15); } }
+@keyframes t-sweep   { 0%, 100% { transform: translate(0, 0) rotate(0deg); }
+                       50%      { transform: translate(-13px, 9px) rotate(-16deg); } }
+@keyframes t-look    { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(-4deg); } }
+@keyframes t-glint   { 0%, 100% { opacity: 0; } 45% { opacity: 0.9; } }
+@keyframes t-speak   { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.42) translateY(1px); } }
+@keyframes t-hop     { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-9px); } }
+@keyframes t-perk    { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-3px) scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tiger * { animation: none !important; }
+  .tiger-thinking .t-thought, .tiger-searching .t-lens { opacity: 1; }
+}
+
+/*
+ * The record table.
+ *
+ * Every log in the application is drawn by one component, so the rules that keep a column
+ * from bursting its banks live here rather than in eight screens. A control inside a cell
+ * fills the cell it was given — a date field, a picker, an amount — and a value too long for
+ * its column is cut with an ellipsis rather than pushing the table sideways.
+ */
+.rt { border-collapse: separate; border-spacing: 0; }
+
+/*
+ * The table is a card, like everything else on a panel.
+ *
+ * It used to sit flush inside its panel with the first and last columns hard against the
+ * walls, so a date on the left and a bin on the right had nothing between them and the edge
+ * while every other card on the screen kept its inset. It now has what the others have: a
+ * hairline round it, the panel's corner radius, the raised surface behind its heading band —
+ * and room inside, at the ends of a row as much as between the columns.
+ */
+.rt-wrap {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow: hidden auto;
+}
+.rt-h, .rt-c { padding: 11px 14px; }
+.rt-h { padding-top: 13px; padding-bottom: 11px; }
+/* the ends of a row breathe like the inside of any other card */
+.rt tr > .rt-h:first-child, .rt tr > .rt-c:first-child { padding-left: 18px; }
+.rt tr > .rt-h:last-child, .rt tr > .rt-c:last-child { padding-right: 18px; }
+/* the heading band reaches the card's edges and carries its top corners */
+.rt thead th { background: var(--raised); }
+.rt thead tr > th:first-child { border-top-left-radius: var(--r-card); }
+.rt thead tr > th:last-child { border-top-right-radius: var(--r-card); }
+
+/*
+ * One rule between rows, not two.
+ *
+ * Every cell in the application carries a hairline above it and the record table adds one
+ * below, which with separate borders drew both — a two-pixel line of two different colours
+ * between every pair of rows, and a heavier one under the headings. The row's own bottom rule
+ * is the one that stays.
+ */
+.rt tbody td { border-top: none; }
+.rt tbody tr:last-child td { border-bottom: none; }
+
+/* an edited row keeps the height of a read one: the controls inside it are the size of the
+   text they stand in for, not the size of a form field on its own */
+.rt-c { height: 46px; }
+:root[data-mode='edit'] .rt tbody td { padding-top: 9px; padding-bottom: 9px; }
+
+/*
+ * The buttons that end an edit stay reachable.
+ *
+ * A row being edited is wider than the row it replaced, and on a narrow window the table
+ * scrolls sideways — which used to carry Save and Cancel off the right-hand edge, so the only
+ * way out of an edit was to scroll a table you could not see the end of. The last column is
+ * pinned to that edge instead.
+ */
+/* The last column used to pin itself to the right edge whenever the table was wider than its
+   panel, which drew a shaded seam down the whole table — a column that was not there, in front
+   of the values that were. It scrolls with everything else now: the row is read left to right,
+   and its two buttons are the end of it. */
+/* One height for every control in a row being edited: a text box, a picker and a date field
+   were 32, 37 and 32 pixels tall, so nothing in the row shared a line. A shade smaller than a
+   field under a form, because six of them share the width of one row. The picker carries its
+   padding as an inline style, which only `!important` outranks. */
+.rt-field input,
+.rt-field textarea,
+.rt-field button[aria-haspopup="listbox"] {
+  font-size: 11.5px !important;
+  min-height: 28px;
+  padding: 4px 7px !important;
+  border-radius: calc(var(--r-sm) * 0.8);
+  letter-spacing: 0;
+}
+/* the picker sets its own type size inline, which nothing but `!important` outranks — the
+   rule above says the size, this one takes back the room its chevron was given */
+.rt-field button[aria-haspopup="listbox"] { gap: 4px !important; }
+.rt-field button[aria-haspopup="listbox"] svg { width: 10px; height: 10px; }
+/* the calendar button on a date field, and the room its input leaves for it */
+.rt-field input.mono { padding-right: 26px !important; }
+.rt-field .df-open { padding: 3px !important; right: 3px !important; }
+
+.rt-field { display: block; min-width: 0; }
+.rt-field > * { width: 100%; max-width: 100%; box-sizing: border-box; }
+.rt-field input,
+.rt-field select,
+.rt-field button[aria-haspopup="listbox"] { width: 100%; max-width: 100%; }
+
+/*
+ * A date inside a row.
+ *
+ * The lunar reading belongs under the field, but in the flow it made the date column two
+ * lines tall while every column beside it was one — and with cells centred, the date input
+ * ended up sitting above the rest of the row. Out of the flow it still reads under the field
+ * and the inputs line up.
+ */
+.rt-field .df-hijri {
+  position: absolute; top: 100%; left: 0;
+  margin-top: 1px; white-space: nowrap; pointer-events: none;
+}
+
+/*
+ * An amount and the unit it is in are one field.
+ *
+ * The number takes whatever room is left and the unit takes what it needs. Written as a plain
+ * flex row, the currency picker's fixed width was subtracted from a column that had no room
+ * to give, and the amount collapsed to a sliver a digit could not fit in.
+ */
+.field-money { display: flex; gap: 6px; min-width: 0; align-items: center; }
+.field-money > input { flex: 1 1 auto; min-width: 0; }
+.field-money > :not(input) { flex: 0 0 auto; }
+
+.rt-cell {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* every date in every log wears the same small calendar */
+.rt-date { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rt-date > svg { flex: 0 0 auto; color: var(--faint); }
+.rt-date > span { min-width: 0; }
+
+/* a chip or a button inside a cell is laid out, not clipped mid-word */
+.rt-cell:has(button), .rt-cell:has(.chip) { overflow: visible; white-space: normal; }
+
+/*
+ * A cell holding a sentence rather than a value.
+ *
+ * The rule above cuts a value to one line, which is right for a name, an amount or a date and
+ * wrong for a description: "annual maintenance · buys no equity" became "annual maint…". A
+ * column that says so wraps instead, and the row grows to hold it.
+ */
+.rt-cell:has(.rt-wrap-text), .rt-cell .rt-wrap-text {
+  white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.45;
+}
+.rt-field textarea {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  font: inherit; font-size: 13px; padding: 6px 9px; min-height: 34px;
+  border-radius: calc(var(--r-sm) * 0.8); line-height: 1.4;
+}
+
+/*
+ * Where an account is held.
+ *
+ * An account's name is rarely enough on its own — two banks each have a "USD account" — so the
+ * institution sits under it, quieter and smaller, the same way every second line in this
+ * application does.
+ */
+.at-bank { display: block; font-size: 10.5px; color: var(--faint); margin-top: 1px; }
+
+/* the two ends of a date filter, one above the other — side by side they demanded a column
+   twice as wide as the dates it was filtering */
+.rt thead th .rt-daterange { display: flex; flex-direction: column; gap: 5px; }
+.rt thead th input,
+.rt thead th button[aria-haspopup="listbox"] {
+  width: 100%; box-sizing: border-box;
+  min-height: 28px; padding: 5px 8px; font-size: 11px;
+  border-radius: calc(var(--r-sm) * 0.8);
+}
+/* the chevron on a filter's picker is the same weight as the text beside it */
+.rt thead th button[aria-haspopup="listbox"] svg { width: 11px; height: 11px; }
+
+
+/* ---------------------------------------------------------------------------
+   Narrow windows.
+
+   Every layout in this app is written as an inline style, which is the only
+   thing a rule here has to fight: an inline style loses to `!important` and to
+   nothing else. So these are the four things that actually break when the
+   window is a phone rather than a desk — the column beside the work, the
+   padding around it, tables wider than the screen, and any grid asking for
+   more columns than there is room for — and each is answered once.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 1080px) {
+  /* the panel beside the work goes under it rather than squeezing it */
+  .page { grid-template-columns: minmax(0, 1fr) !important; }
+  .page > aside { position: static !important; }
+}
+
+@media (max-width: 860px) {
+  .page { padding: 16px !important; gap: 16px !important; }
+  .panel { padding: 18px !important; }
+  .topbar { padding: 10px 16px !important; gap: 10px !important; }
+  /* a table of records is the one thing that cannot be made narrower, so it scrolls
+     inside its own panel rather than pushing the page sideways */
+  .panel table { display: block; overflow-x: auto; width: 100%; }
+  .panel table tbody, .panel table thead { display: table; width: 100%; min-width: 560px; }
+}
+
+@media (max-width: 760px) {
+  /* a row of fixed columns stacks; there is no width at which four pixel columns fit a phone.
+     Grids that already ask for as many columns as fit are left alone, and so is the month
+     grid, which is seven columns by definition. */
+  .row { grid-template-columns: 1fr !important; gap: 8px !important; }
+  .panel div[style*='grid-template-columns']:not([style*='auto-fit']):not([style*='repeat(7']) {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 760px) {
+  /* stacked, the mark stays a mark — it is the thing that says what kind of event this is,
+     and a stretched square would say nothing at all */
+  .ev-bar { width: 26px !important; height: 26px !important; }
+}
+
+@media (max-width: 620px) {
+  .page { padding: 12px !important; }
+  .panel { padding: 14px !important; }
+  /* two columns of figures read better than one column of squeezed ones */
+  .panel :where(div[style*='repeat(auto-fit']) { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important; }
+}
+
+/* The mark is black line art on a transparent ground: one file, inverted on a dark page
+   rather than kept as a second drawing. */
+.brand-logo { display: block; }
+:root[data-theme='dark'] .brand-logo { filter: invert(1); }

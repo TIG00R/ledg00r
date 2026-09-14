@@ -1,0 +1,223 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+    a { color: #00FF00; } a:hover { color: #5CFF5C; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: #171613; border: 1px solid rgba(255,255,255,0.10); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05); }
+    .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E6860; }
+    .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+    .row { display: grid; grid-template-columns: 42px 1fr 150px 1fr 150px 120px; gap: 18px; align-items: center;
+           padding: 16px 18px; border-radius: 12px; background: #1E1C18; border: 1px solid rgba(255,255,255,0.07); }
+    .btn { font-family: inherit; font-size: 13px; font-weight: 500; border-radius: 8px; padding: 9px 15px; border: none; cursor: pointer; }
+    .ghost { background: transparent; color: #A8A296; border: 1px solid rgba(255,255,255,0.12); }
+    .ico { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  </style>
+</helmet>
+
+<div style="background: #0F0E0C; color: #F3F1EC; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Assets</h1>
+    <span class="chip" style="background: rgba(255,255,255,0.08); color: #A8A296;">6 assets · 2 under a plan</span>
+    <div style="margin-left: auto; display: flex; gap: 10px;">
+      <button class="btn ghost">Move money into an asset</button>
+      <button class="btn" style="background: #00FF00; color: #0F0E0C;">+ Add asset</button>
+    </div>
+  </div>
+
+  <section class="panel" style="padding: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;">
+      <div><div class="ov">Owned</div><div class="mono" style="font-size: 24px; font-weight: 500; margin-top: 5px;">26,959,902</div><div style="font-size: 11px; color: #6E6860;">everything at full contract value</div></div>
+      <div><div class="ov">Owed</div><div class="mono" style="font-size: 24px; font-weight: 500; margin-top: 5px; color: #FF4040;">−15,313,823</div><div style="font-size: 11px; color: #6E6860;">remaining on 2 plans</div></div>
+      <div><div class="ov">Net worth</div><div class="mono" style="font-size: 24px; font-weight: 500; margin-top: 5px; color: #5CFF5C;">11,646,079</div><div style="font-size: 11px; color: #6E6860;">owned less owed</div></div>
+      <div><div class="ov">Due in 12 months</div><div class="mono" style="font-size: 24px; font-weight: 500; margin-top: 5px;">1,796,406</div><div style="font-size: 11px; color: #6E6860;">across both plans</div></div>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: 42px 1fr 150px 1fr 150px 120px; gap: 18px; padding: 0 18px;">
+    <span></span><span class="ov">Asset</span><span class="ov" style="text-align: right;">Held</span>
+    <span class="ov">Ownership</span><span class="ov" style="text-align: right;">Value now</span><span class="ov" style="text-align: right;">Status</span>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+
+    <div class="row">
+      <span class="ico" style="background: rgba(0,179,60,0.18);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00B33C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle></svg></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Cash</div><div style="font-size: 11px; color: #6E6860;">3 banks · 6 accounts · 4 currencies</div></div>
+      <div class="mono" style="text-align: right; font-size: 14px; color: #A8A296;">—</div>
+      <div style="font-size: 12px; color: #6E6860;">Held outright</div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">4,258,830</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(0,255,0,0.16); color: #5CFF5C;">paid</span></div>
+    </div>
+
+    <div class="row">
+      <span class="ico" style="background: rgba(255,212,0,0.18);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFD400" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l4-4h8l4 4-8 12z"></path></svg></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Gold · 24k</div><div style="font-size: 11px; color: #6E6860;">7,046 EGP/g live · 62.2 g held for a friend, excluded</div></div>
+      <div class="mono" style="text-align: right; font-size: 14px;">318.3 g</div>
+      <div style="font-size: 12px; color: #6E6860;">Held outright</div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">2,242,662</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(0,255,0,0.16); color: #5CFF5C;">paid</span></div>
+    </div>
+
+    <div class="row">
+      <span class="ico" style="background: rgba(0,229,255,0.18);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16l1.5-5h11L19 16"></path><rect x="3" y="16" width="18" height="4" rx="1"></rect></svg></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Car</div><div style="font-size: 11px; color: #6E6860;">$20,000 at the live rate · rented out for $500/mo</div></div>
+      <div class="mono" style="text-align: right; font-size: 14px;">1</div>
+      <div style="font-size: 12px; color: #6E6860;">Bought outright</div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">1,018,485</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(0,255,0,0.16); color: #5CFF5C;">paid</span></div>
+    </div>
+
+    <div class="row">
+      <span class="ico" style="background: rgba(160,32,255,0.18);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#A020FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 5-8"></path><path d="M17 6h4v4"></path></svg></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Brokerage book</div><div style="font-size: 11px; color: #6E6860;">4 positions + 174,073 uninvested</div></div>
+      <div class="mono" style="text-align: right; font-size: 14px;">4 lines</div>
+      <div style="font-size: 12px; color: #6E6860;">Funded from cash</div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">568,228</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(0,255,0,0.16); color: #5CFF5C;">paid</span></div>
+    </div>
+
+    <div class="row" style="grid-template-columns: 42px 1fr 150px 1fr 150px 120px;">
+      <span class="ico" style="background: #FFFFFF; padding: 2px;"><img src="s_dev_palmhills.png" alt="Palm Hills" style="width: 30px; display: block;"></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Palm Hills</div><div style="font-size: 11px; color: #6E6860;">46 installments to Dec 2036 · next 30 Sep, 50,742</div><div style="display: flex; gap: 6px; margin-top: 5px;"><span class="chip" style="background: rgba(0,229,255,0.16); color: #5CF0FF;">pays itself from HSBC Egypt · EGP current</span></div></div>
+      <div class="mono" style="text-align: right; font-size: 14px;">1 unit</div>
+      <div>
+        <div class="bar"><span style="display: block; width: 8.6%; height: 100%; background: #FF4040;"></span></div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: #6E6860;">
+          <span class="mono">1,046,414 yours</span><span class="mono">11,131,673 owed</span>
+        </div>
+      </div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">1,046,414</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(255,0,0,0.18); color: #FF4040;">8.6% paid</span></div>
+    </div>
+
+    <div class="row">
+      <span class="ico" style="background: rgba(255,212,0,0.18);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFD400" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path></svg></span>
+      <div><div style="font-size: 14px; font-weight: 500;">Taj Misr</div><div style="font-size: 11px; color: #6E6860;">22 installments to Dec 2031 · next 11 Oct, 199,150</div><div style="display: flex; gap: 6px; margin-top: 5px;"><span class="chip" style="background: rgba(255,255,255,0.08); color: #A8A296;">paid by hand</span></div></div>
+      <div class="mono" style="text-align: right; font-size: 14px;">1 unit</div>
+      <div>
+        <div class="bar"><span style="display: block; width: 37.5%; height: 100%; background: #FFD400;"></span></div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: #6E6860;">
+          <span class="mono">2,511,460 yours</span><span class="mono">4,182,150 owed</span>
+        </div>
+      </div>
+      <div class="mono" style="text-align: right; font-size: 15px; font-weight: 500;">2,511,460</div>
+      <div style="text-align: right;"><span class="chip" style="background: rgba(255,212,0,0.20); color: #FFE95C;">37.5% paid</span></div>
+    </div>
+  </div>
+
+  <section class="panel" style="padding: 24px;">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px;">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Standing instructions</h2>
+      <span class="chip" style="background: rgba(0,229,255,0.16); color: #5CF0FF;">1 active</span>
+    </div>
+    <p style="margin: 0 0 20px; font-size: 13px; color: #A8A296; max-width: 900px;">Point an asset's schedule at an account and its installments come out on their own, on the due date. You keep one job — making sure that account has the money in it.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+
+      <div style="padding: 18px; border-radius: 12px; background: #1E1C18; border: 1px solid rgba(0,229,255,0.28);">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span class="ico" style="background: rgba(255,0,0,0.16);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FF4040" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path></svg></span>
+          <div style="font-size: 14px; font-weight: 500;">Palm Hills</div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6860" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          <div style="font-size: 14px;">HSBC Egypt · EGP current · EGP</div>
+          <span class="chip" style="background: rgba(0,255,0,0.16); color: #5CFF5C; margin-left: 10px;">on</span>
+          <div style="margin-left: auto; display: flex; gap: 10px;">
+            <button class="btn ghost" style="padding: 7px 12px;">Change account</button>
+            <button class="btn ghost" style="padding: 7px 12px;">Turn off</button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.07);">
+          <div><div class="ov">Next deduction</div><div class="mono" style="font-size: 16px; font-weight: 500; margin-top: 4px;">50,742</div><div style="font-size: 11px; color: #6E6860;">30 Sep · in 29 days</div></div>
+          <div><div class="ov">Account balance</div><div class="mono" style="font-size: 16px; font-weight: 500; margin-top: 4px;">180,077</div><div style="font-size: 11px; color: #6E6860;">HSBC Egypt · EGP current</div></div>
+          <div><div class="ov">Covers</div><div class="mono" style="font-size: 16px; font-weight: 500; margin-top: 4px; color: #5CFF5C;">2 payments</div><div style="font-size: 11px; color: #6E6860;">through 31 Dec</div></div>
+          <div><div class="ov">Then short by</div><div class="mono" style="font-size: 16px; font-weight: 500; margin-top: 4px; color: #FF4040;">392,180</div><div style="font-size: 11px; color: #6E6860;">the 31 Dec balloon, 521,515</div></div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 13px 16px; border-radius: 10px; background: rgba(255,212,0,0.10); border: 1px solid rgba(255,212,0,0.30);">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFD400" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 17px;"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+          <div style="font-size: 13px; color: #A8A296; flex: 1;">Top this account up by <strong style="color: #F3F1EC; font-weight: 600;">392,180</strong> before 31 December, or the balloon payment will not clear.</div>
+          <button class="btn" style="background: #00E5FF; color: #0F0E0C;">Fund it now</button>
+        </div>
+      </div>
+
+      <div style="padding: 18px; border-radius: 12px; background: #1E1C18; border: 1px solid rgba(255,255,255,0.07); display: flex; align-items: center; gap: 14px;">
+        <span class="ico" style="background: rgba(255,212,0,0.16);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFD400" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path></svg></span>
+        <div style="font-size: 14px; font-weight: 500;">Taj Misr</div>
+        <span style="font-size: 13px; color: #6E6860;">no standing instruction — each installment is recorded by hand</span>
+        <button class="btn ghost" style="margin-left: auto; padding: 7px 12px;">Set one up</button>
+      </div>
+    </div>
+
+    <p style="font-size: 12px; color: #6E6860; margin: 18px 0 0; max-width: 900px;">A deduction is an ordinary movement — cash out of the account, equity into the asset, debt down by the same amount — and appears in the money log marked <span style="color: #5CF0FF;">automatic</span>. Nothing is paid silently: if the account is short on the day, the payment is held and flagged rather than forced into an overdraft.</p>
+  </section>
+
+  <section class="panel" style="padding: 24px;">
+    <h2 style="margin: 0 0 4px; font-size: 15px; font-weight: 600;">Add an asset</h2>
+    <p style="margin: 0 0 20px; font-size: 13px; color: #A8A296;">Anything you own gets a node. Whether it came with a debt is a separate question from what it is.</p>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap;">
+      <button class="btn ghost" style="border-color: rgba(255,0,0,0.36); color: #FF4040;">Real estate</button>
+      <button class="btn ghost">Vehicle</button>
+      <button class="btn ghost">Gold or metal</button>
+      <button class="btn ghost">Brokerage book</button>
+      <button class="btn ghost">Something else</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; align-items: end;">
+      <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 12px; font-weight: 500; color: #A8A296;">Name</span>
+        <input style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); padding: 10px 12px; font-family: inherit; font-size: 14px; background: #0F0E0C; color: #F3F1EC;" value="North Coast chalet"></label>
+      <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 12px; font-weight: 500; color: #A8A296;">Full value</span>
+        <input class="mono" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); padding: 10px 12px; font-family: inherit; font-size: 14px; background: #0F0E0C; color: #F3F1EC;" value="4,200,000"></label>
+      <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 12px; font-weight: 500; color: #A8A296;">Valued in</span>
+        <select style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); padding: 10px 12px; font-family: inherit; font-size: 14px; background: #0F0E0C; color: #F3F1EC;"><option>EGP — fixed</option></select></label>
+      <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 12px; font-weight: 500; color: #A8A296;">Colour</span>
+        <div style="display: flex; gap: 8px; align-items: center; height: 42px;">
+          <span style="width: 26px; height: 26px; border-radius: 8px; background: #00E5FF; outline: 2px solid #00E5FF; outline-offset: 2px;"></span>
+          <span style="width: 26px; height: 26px; border-radius: 8px; background: #A020FF;"></span>
+          <span style="width: 26px; height: 26px; border-radius: 8px; background: #FFD400;"></span>
+        </div></label>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 22px;">
+      <div style="flex: 1; padding: 16px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10); background: #1E1C18;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="width: 16px; height: 16px; border-radius: 999px; border: 2px solid #6E6860; display: inline-block;"></span>
+          <span style="font-size: 14px; font-weight: 500;">Paid in full</span>
+        </div>
+        <div style="font-size: 12px; color: #6E6860; margin-top: 8px; line-height: 1.5;">One asset node, no debt. Record where the money came from and it appears in the log as a movement out of that account.</div>
+      </div>
+      <div style="flex: 1; padding: 16px 18px; border-radius: 12px; border: 1px solid rgba(255,0,0,0.34); background: rgba(255,0,0,0.06);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="width: 16px; height: 16px; border-radius: 999px; border: 5px solid #FF4040; display: inline-block;"></span>
+          <span style="font-size: 14px; font-weight: 500;">Under an installment plan</span>
+        </div>
+        <div style="font-size: 12px; color: #A8A296; margin-top: 8px; line-height: 1.5;">Two nodes — what you own and what you owe. The next step builds the plan; every payment moves value from cash into equity and takes the same amount off the debt.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 16px; margin-top: 22px;">
+      <div style="font-size: 13px; color: #A8A296;">Adds an asset node and a liability node · net worth unchanged until the first payment</div>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <button class="btn ghost">Cancel</button>
+        <button class="btn" style="background: #00FF00; color: #0F0E0C;">Continue to the plan</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>

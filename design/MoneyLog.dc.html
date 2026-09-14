@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif; }
+    a { color: #00A32E; } a:hover { color: #007A22; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: #FFFFFF; border: 1px solid rgba(20,18,14,0.09); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(20,18,14,0.04), 0 4px 12px rgba(20,18,14,0.06); }
+    .ov { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #97907F; }
+    .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+    .inp { border-radius: 8px; border: 1px solid rgba(20,18,14,0.14); padding: 9px 12px; font-family: inherit;
+           font-size: 13px; background: #FFFFFF; color: #1A1815; }
+    th { text-align: right; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #97907F; padding: 0 0 12px; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+    td { text-align: right; font-size: 13px; padding: 13px 0; border-top: 1px solid rgba(20,18,14,0.07); vertical-align: top; }
+    .route { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6B665C; }
+  </style>
+</helmet>
+
+<div style="background: #FAF9F7; color: #1A1815; min-height: 100%; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Money log</h1>
+    <span class="chip" style="background: rgba(20,18,14,0.06); color: #6B665C;">Every movement in and between accounts</span>
+    <button style="margin-left: auto; font-family: inherit; font-size: 13px; font-weight: 500; background: #00A32E; color: #FFFFFF; border: none; border-radius: 8px; padding: 9px 16px; cursor: pointer;">+ Record movement</button>
+  </div>
+
+  <section class="panel" style="padding: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px;">
+      <div><div class="ov">In this month</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 5px; color: #00A32E;">+280,083</div></div>
+      <div><div class="ov">Out this month</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 5px; color: #E00000;">−60,759</div></div>
+      <div><div class="ov">Exchanged</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 5px;">253,843</div></div>
+      <div><div class="ov">Spread and fees paid</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 5px; color: #E00000;">−1,185</div><div style="font-size: 11px; color: #97907F;">this year: −8,940</div></div>
+      <div><div class="ov">Movements</div><div class="mono" style="font-size: 19px; font-weight: 500; margin-top: 5px;">7</div><div style="font-size: 11px; color: #97907F;">1 automatic</div></div>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid rgba(20,18,14,0.07);">
+      <select class="inp"><option>All types</option></select>
+      <select class="inp"><option>All banks</option></select>
+      <select class="inp"><option>All currencies</option></select>
+      <select class="inp"><option>This month</option></select>
+      <input class="inp" placeholder="Search note or counterparty" style="flex: 1; min-width: 200px;">
+    </div>
+  </section>
+
+  <section class="panel" style="padding: 24px;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr><th>Date</th><th>Type</th><th>Route</th><th>Out</th><th>In</th><th>Rate</th><th>Cost</th><th>Effect on net worth</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">2 Sep</td>
+          <td><span class="chip" style="background: rgba(0,134,168,0.14); color: #0086A8;">Exchange</span></td>
+          <td><div class="route">HSBC Egypt · USD savings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> HSBC Egypt · EGP current</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">Funding Sep installment</div></td>
+          <td class="mono" style="color: #E00000;">−$5,000.00</td>
+          <td class="mono" style="color: #00A32E;">+253,843</td>
+          <td class="mono">50.8500</td>
+          <td class="mono" style="color: #E00000;">−1,185</td>
+          <td class="mono" style="color: #E00000;">−1,185</td>
+        </tr>
+        <tr>
+          <td class="mono">30 Sep</td>
+          <td><span class="chip" style="background: rgba(0,134,168,0.14); color: #0086A8;">Installment</span><div style="margin-top: 5px;"><span class="chip" style="background: rgba(0,134,168,0.10); color: #0086A8;">automatic</span></div></td>
+          <td><div class="route">HSBC Egypt · EGP current <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> Palm Hills equity</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">Standing instruction · debt falls by the same amount</div></td>
+          <td class="mono" style="color: #E00000;">−50,742</td>
+          <td class="mono" style="color: #00A32E;">+50,742</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">no change</td>
+        </tr>
+        <tr>
+          <td class="mono">1 Sep</td>
+          <td><span class="chip" style="background: rgba(0,163,46,0.14); color: #00A32E;">Income</span></td>
+          <td><div class="route">Salary <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> HSBC Egypt · USD savings</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">Salary $5,000 + car rental $500</div></td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #00A32E;">+$5,500.00</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #00A32E;">+280,083</td>
+        </tr>
+        <tr>
+          <td class="mono">1 Sep</td>
+          <td><span class="chip" style="background: rgba(224,0,0,0.12); color: #E00000;">Expense</span></td>
+          <td><div class="route">HSBC Egypt · EGP current <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> Travel</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">UK visa expenses · $189 at 53.00</div></td>
+          <td class="mono" style="color: #E00000;">−10,017</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono">53.0000</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #E00000;">−10,017</td>
+        </tr>
+        <tr>
+          <td class="mono">24 Aug</td>
+          <td><span class="chip" style="background: rgba(122,0,224,0.12); color: #7A00E0;">Transfer</span></td>
+          <td><div class="route">HSBC US · USD account <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> HSBC Egypt · USD savings</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">Consolidating the dollar stack</div></td>
+          <td class="mono" style="color: #E00000;">−$2,000.00</td>
+          <td class="mono" style="color: #00A32E;">+$2,000.00</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">no change</td>
+        </tr>
+        <tr>
+          <td class="mono">18 Aug</td>
+          <td><span class="chip" style="background: rgba(122,0,224,0.12); color: #7A00E0;">Transfer</span></td>
+          <td><div class="route">HSBC Egypt · EGP current <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> HSBC Egypt · EGP savings</div></td>
+          <td class="mono" style="color: #E00000;">−100,000</td>
+          <td class="mono" style="color: #00A32E;">+100,000</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #97907F;">no change</td>
+        </tr>
+        <tr>
+          <td class="mono">12 Jul</td>
+          <td><span class="chip" style="background: rgba(224,0,0,0.12); color: #E00000;">Expense</span></td>
+          <td><div class="route">HSBC UK · GBP account <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#97907F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg> Food &amp; Dining</div>
+              <div style="font-size: 11px; color: #97907F; margin-top: 3px;">Trip · recorded in euro</div></td>
+          <td class="mono" style="color: #E00000;">−€400.00</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono">58.1200</td>
+          <td class="mono" style="color: #97907F;">—</td>
+          <td class="mono" style="color: #E00000;">−23,248</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size: 12px; color: #6B665C; margin: 18px 0 0; max-width: 900px;">The rate on each row is the rate that actually applied at the time, frozen into the record — never today's rate. A transfer inside one currency shows <em>no change</em> because none happened; an exchange shows exactly what the spread and fee cost you.</p>
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>

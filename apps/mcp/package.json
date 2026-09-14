@@ -1,0 +1,9 @@
+{
+  "name": "@ledger/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "ledg00r-mcp": "./src/stdio.ts" },
+  "scripts": { "start": "tsx src/stdio.ts" },
+  "dependencies": { "@ledger/api": "*", "@ledger/db": "*" }
+}
