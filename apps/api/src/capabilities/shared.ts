@@ -87,9 +87,13 @@ export function refusal(code: Refusal['code'], message: string, remedy?: string)
 export const today = (ctx: AppCtx) => ctx.now.toISOString().slice(0, 10);
 export const bucketOf = (date: string) => date.slice(0, 7);
 
-/** Ids are readable on purpose: a person reading the log should recognise what they name. */
-export const newId = (prefix: string) =>
-  `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+/**
+ * Ids are readable on purpose: a person reading the log should recognise what they name.
+ *
+ * The random tail is what keeps them apart, and it comes from the engine so that every id in
+ * the ledger — these and the movement ids the repository writes — is drawn the same way.
+ */
+export { newId } from '@ledger/engine';
 
 export const DryRun = z.object({ dryRun: z.boolean().default(false) });
 

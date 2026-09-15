@@ -140,10 +140,57 @@ export const charity = sqliteTable('charity', {
   categoryId: text('category_id').notNull(),
   note: text('note'),
   isZakat: integer('is_zakat', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * The zakat year this payment discharges.
+   *
+   * Zakat is owed for a particular lunar year, so a payment that names no year reduces
+   * nothing — it is giving, recorded, but not applied. Sadaqat never carries one.
+   */
+  zakatYearId: text('zakat_year_id'),
   movementId: text('movement_id'),
 }, (t) => ({
   byKindDate: index('give_kind_date').on(t.isZakat, t.date),
   byDate: index('give_date').on(t.date),
+  byYear: index('give_year').on(t.zakatYearId),
+}));
+
+/**
+ * A lunar year, closed and confirmed.
+ *
+ * Everything else in this schema is a movement or a thing owned; this is the one place a
+ * computed figure is stored. It has to be: what is owed is fixed on the day the hawl closes,
+ * and gold moves the day after. Recomputing it from today's prices would mean the obligation
+ * never settles, so the figure — and the arithmetic that produced it — is written down once
+ * the owner has looked at it and said it is right.
+ *
+ * A row exists only for a year that has been confirmed. A hawl that has closed and not been
+ * confirmed is still being worked out, and is computed live like any other.
+ */
+export const zakatYears = sqliteTable('zakat_years', {
+  id: text('id').primaryKey(),
+  /** which pot of wealth: cash, gold, silver, or one named asset */
+  bucket: text('bucket').notNull(),
+  label: text('label').notNull(),
+  startOn: text('start_on').notNull(),
+  dueOn: text('due_on').notNull(),
+  dueHijri: text('due_hijri').notNull(),
+  /** the day this pot passed nisab, from which the year was counted */
+  anchorOn: text('anchor_on'),
+  /** the zakatable base as confirmed, after any correction the owner made */
+  base: real('base').notNull(),
+  due: real('due').notNull(),
+  nisab: real('nisab').notNull(),
+  basis: text('basis', { enum: ['gold', 'silver'] }).notNull(),
+  /** the prices in force on the day it was confirmed, so the figure can be re-read */
+  goldPerG: real('gold_per_g'),
+  silverPerG: real('silver_per_g'),
+  /** the signed lines that made the base, as they stood at confirmation */
+  entries: text('entries', { mode: 'json' }).notNull(),
+  note: text('note'),
+  confirmedAt: text('confirmed_at').notNull(),
+}, (t) => ({
+  byBucketDue: index('zy_bucket_due').on(t.bucket, t.dueOn),
+  oneEach: uniqueIndex('zy_unique').on(t.bucket, t.dueOn),
 }));
 
 export const goldLots = sqliteTable('gold_lots', {
@@ -406,6 +453,7 @@ export type Transaction = typeof transactions.$inferSelect;
 export type Leg = typeof legs.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Charity = typeof charity.$inferSelect;
+export type ZakatYear = typeof zakatYears.$inferSelect;
 export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Installment = typeof installments.$inferSelect;

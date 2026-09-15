@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { DateField } from '../components/DateField';
 import { Select, opts } from '../components/Select';
@@ -24,7 +24,7 @@ export function Charity() {
 }
 
 function Body() {
-  const { data, dm, reminders, setReminders  } = useApp();
+  const { data, dm, now, reminders, setReminders  } = useApp();
   const { run } = useLive();
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
   const [draft, setDraft] = useState({
@@ -43,15 +43,30 @@ function Body() {
     return n ? `${inst?.name ?? ''} · ${n.name}` : '—';
   };
 
-  const rows = data.charity.filter((c) => !c.isZakat);
-  /** what the table shows when there is no ledger behind the screen */
-  const fallbackRows: GivingRow[] = rows.map((c) => ({
-    id: c.id, date: c.date, kind: 'sadaqat' as const,
-    amount: c.usd ?? c.egp, currency: c.usd != null ? 'USD' : 'EGP',
-    from: data.settings.burnAccountId, categoryId: c.categoryId, note: c.note,
-  }));
+  /**
+   * What the table shows with no ledger behind the screen.
+   *
+   * Held steady across renders: the table hands its rows back up, which sets state here, so a
+   * list rebuilt each render would never settle.
+   */
+  const fallbackRows: GivingRow[] = useMemo(
+    () => data.charity.filter((c) => !c.isZakat).map((c) => ({
+      id: c.id, date: c.date, kind: 'sadaqat' as const,
+      amount: c.usd ?? c.egp, currency: c.usd != null ? 'USD' : 'EGP',
+      from: data.settings.burnAccountId, categoryId: c.categoryId, note: c.note,
+    })),
+    [data.charity, data.settings.burnAccountId]);
+
+  /**
+   * The totals are the table's own rows, added up.
+   *
+   * They used to come from the fixture the screens fall back on, which a live service empties
+   * — so a ledger holding real gifts announced that nothing had been given, directly above a
+   * table listing them.
+   */
+  const [rows, setRows] = useState<GivingRow[]>(fallbackRows);
   const split = splitByCurrency(rows,
-    (c) => (c.usd != null ? { amount: c.usd, currency: 'USD' } : { amount: c.egp, currency: 'EGP' }), market);
+    (c) => ({ amount: c.amount, currency: c.currency }), market);
 
   const sadaqah = reminders.find((r) => r.subject === 'sadaqah');
   const update = (patch: Partial<(typeof reminders)[number]>) =>
@@ -108,7 +123,9 @@ function Body() {
         <Stats>
           <Stat label="Given as sadaqat" value={dm(split.totalEgp)} color="var(--sadaqat)"
                 sub={`${rows.length} record${rows.length === 1 ? '' : 's'}`} />
-          <Stat label="This year" value={dm(rows.filter((c) => c.date.startsWith('2026')).reduce((s, c) => s + c.egp, 0))} />
+          <Stat label="This year"
+                value={dm(rows.filter((c) => c.date.startsWith(String(now.getFullYear())))
+                  .reduce((s, c) => s + toEgp(c.amount, c.currency, market), 0))} />
           <Stat label="Owed to nobody" value="—" sub="sadaqat never reduces the zakat figure" />
         </Stats>
       </Panel>
@@ -140,7 +157,7 @@ function Body() {
 
       <Panel title="Records"
              hint="Every sadaqat payment, out of the account it left. Each heading filters its own column, and a record can be corrected or reversed in edit mode — the same table the zakat screen shows.">
-        <GivingRecords only="sadaqat" fallback={fallbackRows} />
+        <GivingRecords only="sadaqat" fallback={fallbackRows} onRows={setRows} />
       </Panel>
 
       {tab === 'causes' && (

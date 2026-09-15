@@ -1,19 +1,141 @@
 import { z } from 'zod';
-import { command, query, DateOnly, NodeId, CategoryId, Outcome } from '@ledger/contracts';
+import { command, query, DateOnly, NodeId, CategoryId, Outcome, type Refusal } from '@ledger/contracts';
 import { schema as t, allBalances } from '@ledger/db';
 import { desc, eq } from 'drizzle-orm';
 import { zakatDates, zakatDebts, zakatReceivables, nisabEgp, formatHijri, HIJRI_MONTHS,
-         NISAB_GOLD_G, NISAB_SILVER_G, type ZakatSettings } from '@ledger/engine';
+         NISAB_GOLD_G, NISAB_SILVER_G, ZAKAT_RATE, bucketDue, correctionEntry, zakatYearId,
+         zakatTotals, type ZakatSettings, type ZakatEntry } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, bucketOf, DryRun, undoMovement, atomically } from './shared.js';
 import { nextSeq, rateFor } from './spending.js';
 import { readPref, writePref, buildDataset } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';
 import { assetsForZakat } from '../zakat-assets.js';
+import { zakatBuckets, type BucketSources } from '../zakat-buckets.js';
 
 const DEFAULT_ZAKAT: ZakatSettings = {
   anniversaryMonth: 9, anniversaryDay: 1, basis: 'gold', silverPerG: 52, deductDebts: false,
 };
+
+/**
+ * Everything the buckets are built from, read once.
+ *
+ * The assessment, confirming a year and listing the years all need the same picture of what
+ * is held and what is owed. Reading it in one place means the figure an owner confirms is the
+ * figure they were shown, which is the whole point of confirming it.
+ */
+function bucketSources(ctx: AppCtx): BucketSources {
+  const settings = (readPref(ctx.db, 'zakat') as ZakatSettings | undefined) ?? DEFAULT_ZAKAT;
+  const { data, market } = buildDataset(ctx.db, ctx.now);
+  const rate = (c: string) => (c === 'EGP' ? 1 : market.fxRates[c] ?? 1);
+  const held = ledgerHoldings(ctx.db, ctx.now, market);
+  const nisab = nisabEgp(market, settings);
+  const owned = assetsForZakat(ctx.db, ctx.now, market, nisab);
+  const receivables = zakatReceivables(data, rate);
+
+  // The day the books start. A ledger opened from a snapshot says so; otherwise the earliest
+  // movement on record is the earliest date anything can be true from.
+  const snapshot = readPref<{ effectiveFrom?: string }>(ctx.db, 'snapshot');
+  const firstMovement = ctx.db.select().from(t.transactions).all().map((x) => x.date).sort()[0];
+
+  return {
+    now: ctx.now, settings, nisab,
+    cash: held.cash, shares: held.shares,
+    receivables,
+    heldBack: Math.min(owned.heldBack, held.cash),
+    debts: zakatDebts(data, ctx.now, settings, rate),
+    deductDebts: settings.deductDebts,
+    owned,
+    ledgerSince: snapshot?.effectiveFrom ?? firstMovement ?? null,
+  };
+}
+
+/** the market prices behind a confirmed figure, so it can be read back years later */
+function pricesNow(ctx: AppCtx) {
+  const { market } = buildDataset(ctx.db, ctx.now);
+  return { goldPerG: market.goldPerG ?? null, silverPerG: market.prices.silver_g ?? null };
+}
+
+/**
+ * Which year a zakat payment discharges.
+ *
+ * Named outright when the owner says so. Otherwise, if exactly one confirmed year is still
+ * short, that is the one — there is no other it could be. Two years outstanding and the
+ * payment is left unattributed rather than credited to a guess, because a payment credited to
+ * the wrong year leaves one year overpaid and another still owed, and nothing on the screen
+ * says which.
+ */
+function resolveZakatYear(
+  ctx: AppCtx, named: string | undefined, isZakat: boolean,
+): { id: string | null } | Refusal {
+  if (!named) {
+    if (!isZakat) return { id: null };
+    const given = ctx.db.select().from(t.charity).all();
+    const short = ctx.db.select().from(t.zakatYears).all().filter((y) => {
+      const paid = given
+        .filter((c) => (c as { zakatYearId?: string | null }).zakatYearId === y.id)
+        .reduce((s2, c) => s2 + c.egp, 0);
+      return y.due - paid > 0;
+    });
+    return { id: short.length === 1 ? short[0]!.id : null };
+  }
+  if (!isZakat) {
+    return refusal('immutable', 'Sadaqat discharges no obligation, so it cannot be booked against a zakat year.',
+      'Record it with isZakat true, or leave the year off.');
+  }
+  const year = ctx.db.select().from(t.zakatYears).where(eq(t.zakatYears.id, named)).get();
+  if (!year) {
+    return refusal('not_found', `${named} is not a confirmed zakat year.`,
+      'Call zakat.years to list them, or zakat.confirm to close one first.');
+  }
+  return { id: year.id };
+}
+
+const BucketShape = z.object({
+  id: z.string(), label: z.string(), kind: z.string(),
+  anchorOn: z.string().nullable(),
+  closedOn: z.string().nullable(),
+  state: z.enum(['running', 'draft', 'confirmed']),
+  base: z.number(), due: z.number(), aboveNisab: z.boolean(),
+  entries: z.array(z.object({
+    id: z.string(), label: z.string(), detail: z.string().optional(),
+    sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
+    amount: z.number(), note: z.string().optional(),
+  })),
+  hawl: z.object({
+    startOn: z.string(), startHijriText: z.string(),
+    dueOn: z.string(), dueHijriText: z.string(),
+    yearsComplete: z.number(), complete: z.boolean(),
+    daysRemaining: z.number(), elapsedPct: z.number(),
+  }).nullable(),
+  confirmed: z.object({
+    id: z.string(), dueOn: z.string(), dueHijri: z.string(), confirmedAt: z.string(),
+    base: z.number(), due: z.number(), note: z.string().nullable(),
+    paid: z.number(), remaining: z.number(),
+    entries: z.array(z.object({
+      id: z.string(), label: z.string(), detail: z.string().optional(),
+      sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
+      amount: z.number(), note: z.string().optional(),
+    })),
+  }).nullable(),
+});
+
+/** trim a bucket to the shape the contract publishes */
+function publish(b: ReturnType<typeof zakatBuckets>[number]) {
+  return {
+    id: b.id, label: b.label, kind: b.kind,
+    anchorOn: b.anchorOn, closedOn: b.closedOn, state: b.state,
+    base: b.base, due: b.due, aboveNisab: b.aboveNisab,
+    entries: b.entries,
+    hawl: b.hawl && {
+      startOn: b.hawl.startOn, startHijriText: b.hawl.startHijriText,
+      dueOn: b.hawl.dueOn, dueHijriText: b.hawl.dueHijriText,
+      yearsComplete: b.hawl.yearsComplete, complete: b.hawl.complete,
+      daysRemaining: b.hawl.daysRemaining, elapsedPct: b.hawl.elapsedPct,
+    },
+    confirmed: b.confirmed,
+  };
+}
 
 /**
  * Zakat and sadaqat.
@@ -34,6 +156,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       causeId: CategoryId,
       isZakat: z.boolean().default(false),
+      /** the confirmed year this discharges; left off, a lone outstanding year is assumed */
+      zakatYearId: z.string().optional(),
       date: DateOnly.optional(),
       note: z.string().max(500).optional(),
     }).merge(DryRun),
@@ -44,6 +168,9 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       if (!acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
       const cause = ctx.db.select().from(t.categories).where(eq(t.categories.id, input.causeId)).get();
       if (!cause) return refusal('not_found', `${input.causeId} is not a cause.`, 'Call destinations.list with domain "charity".');
+
+      const year = resolveZakatYear(ctx, input.zakatYearId, input.isZakat);
+      if ('ok' in year) return year;
 
       const date = input.date ?? today(ctx);
       const currency = input.currency ?? acct.currency ?? 'EGP';
@@ -62,7 +189,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
             id, seq: nextSeq(db, 'charity'), date, egp: input.amount * rate,
             usd: currency === 'USD' ? input.amount : null, currency,
             accountId: input.accountId, categoryId: input.causeId,
-            note: input.note ?? null, isZakat: input.isZakat, movementId,
+            note: input.note ?? null, isZakat: input.isZakat,
+            zakatYearId: year.id, movementId,
           }).run();
         },
       });
@@ -81,6 +209,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       causeId: CategoryId.optional(),
       isZakat: z.boolean().optional(),
+      /** pass null to unbook it from the year it was paying */
+      zakatYearId: z.string().nullable().optional(),
       date: DateOnly.optional(),
       note: z.string().max(500).optional(),
     }),
@@ -103,6 +233,16 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       const cause = ctx.db.select().from(t.categories).where(eq(t.categories.id, next.causeId)).get();
       if (!cause) return refusal('not_found', `${next.causeId} is not a cause.`);
 
+      // Explicit null unbooks it; leaving the field off keeps whatever year it already paid,
+      // unless the correction has stopped it being zakat at all.
+      const named = input.zakatYearId === undefined
+        ? (row as { zakatYearId?: string | null }).zakatYearId ?? undefined
+        : input.zakatYearId ?? undefined;
+      const year = input.zakatYearId === null
+        ? { id: null }
+        : resolveZakatYear(ctx, named, next.isZakat);
+      if ('ok' in year) return year;
+
       return atomically(ctx, () => {
         undoMovement(ctx, row.movementId);
         ctx.db.delete(t.charity).where(eq(t.charity.id, input.givingId)).run();
@@ -120,7 +260,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
               egp: next.amount * rate, usd: next.currency === 'USD' ? next.amount : null,
               currency: next.currency, accountId: next.accountId,
               categoryId: next.causeId, note: next.note ?? null,
-              isZakat: next.isZakat, movementId,
+              isZakat: next.isZakat, zakatYearId: year.id, movementId,
             }).run();
           },
         });
@@ -158,6 +298,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       id: z.string(), date: z.string(), amount: z.number(), currency: z.string(),
       egp: z.number(), isZakat: z.boolean(), causeId: z.string(),
       accountId: z.string().nullable(), note: z.string().nullable(),
+      zakatYearId: z.string().nullable(),
     })),
     handler: async ({ kind, limit }) => {
       const { db } = ctxOf();
@@ -167,6 +308,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
           id: c.id, date: c.date, amount: c.usd ?? c.egp, currency: c.currency,
           egp: c.egp, isZakat: c.isZakat, causeId: c.categoryId,
           accountId: c.accountId, note: c.note,
+          zakatYearId: (c as { zakatYearId?: string | null }).zakatYearId ?? null,
         }));
     },
   }),
@@ -225,6 +367,30 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       })),
       owedToYou: z.number(),
       deductDebts: z.boolean(),
+      /**
+       * The settings the figures above were worked out under.
+       *
+       * The screen holds its own copy so a change answers instantly, but the ledger's copy is
+       * the one the arithmetic used — and a screen showing one anniversary beside dates
+       * reckoned from another is worse than a screen that waits.
+       */
+      settings: z.object({
+        anniversaryMonth: z.number(), anniversaryDay: z.number(),
+        basis: z.enum(['gold', 'silver']), silverPerG: z.number(), deductDebts: z.boolean(),
+      }),
+      /**
+       * Each pot of wealth with its own lunar year.
+       *
+       * Wealth of the same kind shares a year — cash earned mid-year joins the cash year
+       * rather than starting its own — so there is one date per kind, not one per purchase.
+       * A bucket's own `base` and `due` are always the figures as they stand today; what is
+       * actually owed sits under `confirmed`, frozen on the day the owner accepted it.
+       */
+      buckets: z.array(BucketShape),
+      totals: z.object({
+        base: z.number(), due: z.number(), paid: z.number(), remaining: z.number(),
+        estimatedBase: z.number(), estimatedDue: z.number(), drafts: z.number(),
+      }),
     }),
     handler: async ({ manual }) => {
       const ctx = ctxOf();
@@ -283,7 +449,23 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       const dates = zakatDates(ctx.now, z);
       const nisab = nisabNow;
 
+      /**
+       * The same wealth, sorted into pots.
+       *
+       * Working it out a second time rather than reusing what is above is deliberate for the
+       * manual mode only: figures somebody typed do not belong to any pot, so there are no
+       * buckets to show for them.
+       */
+      const buckets = manual ? [] : zakatBuckets(ctx.db, bucketSources(ctx));
+      const totals = zakatTotals(buckets);
+
       return {
+        buckets: buckets.map(publish),
+        totals,
+        settings: {
+          anniversaryMonth: z.anniversaryMonth, anniversaryDay: z.anniversaryDay,
+          basis: z.basis, silverPerG: z.silverPerG, deductDebts: z.deductDebts,
+        },
         due: base * 0.025, base, baseBeforeDebts: included,
         nisab, nisabGrams: z.basis === 'silver' ? NISAB_SILVER_G : NISAB_GOLD_G, basis: z.basis,
         aboveNisab: base >= nisab,
@@ -310,6 +492,156 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
           },
         })),
       };
+    },
+  }),
+
+  command({
+    name: 'zakat.confirm',
+    context: 'giving',
+    summary: 'Close a lunar year: freeze what is owed on one pot of wealth so it stops moving.',
+    detail: 'What is owed was fixed on the day the year closed, but the figure behind it is worked out from today\'s prices and moves every time it is asked for. Confirming writes it down. Supply a base of your own if the ledger has it wrong — the difference is recorded as a line of its own rather than replacing the arithmetic.',
+    input: z.object({
+      bucketId: z.string(),
+      base: z.number().min(0).optional(),
+      note: z.string().max(500).optional(),
+    }).merge(DryRun),
+    output: Outcome,
+    handler: async (input) => {
+      const ctx = ctxOf();
+      const src = bucketSources(ctx);
+      const bucket = zakatBuckets(ctx.db, src).find((b) => b.id === input.bucketId);
+      if (!bucket) return refusal('not_found', `${input.bucketId} is not a pot of wealth in this ledger.`,
+        'Call zakat.assessment and confirm one of the buckets it returns.');
+      if (!bucket.closedOn) {
+        return refusal('invalid_period',
+          `${bucket.label} has no closed lunar year yet${bucket.hawl ? ` — the first closes in ${bucket.hawl.daysRemaining} days` : ''}.`,
+          'Nothing is owed until a full lunar year has run, so there is nothing to confirm.');
+      }
+      if (bucket.confirmed) {
+        return refusal('duplicate',
+          `${bucket.label} is already confirmed for ${bucket.closedOn}, at ${Math.round(bucket.confirmed.due)}.`,
+          'Call zakat.reopen to work it out again.');
+      }
+
+      const corrected = input.base ?? bucket.base;
+      const adjustment = correctionEntry(bucket.base, corrected);
+      const entries: ZakatEntry[] = adjustment ? [...bucket.entries, adjustment] : bucket.entries;
+      const due = bucketDue(corrected);
+      const id = zakatYearId(bucket.id, bucket.closedOn);
+      const prices = pricesNow(ctx);
+      const summary = `${bucket.label}: ${Math.round(due)} owed on ${Math.round(corrected)}, for the year that closed ${bucket.closedOn}`;
+
+      if (input.dryRun) return { ...noted(summary), dryRun: true };
+
+      ctx.db.insert(t.zakatYears).values({
+        id, bucket: bucket.id, label: bucket.label,
+        startOn: bucket.hawl?.startOn ?? bucket.closedOn,
+        dueOn: bucket.closedOn,
+        dueHijri: bucket.hawl?.startHijriText ?? '',
+        anchorOn: bucket.anchorOn,
+        base: corrected, due, nisab: src.nisab, basis: src.settings.basis,
+        goldPerG: prices.goldPerG, silverPerG: prices.silverPerG,
+        entries, note: input.note ?? null,
+        confirmedAt: ctx.now.toISOString(),
+      }).run();
+
+      return noted(summary, adjustment
+        ? [`Your figure differs from the ledger's by ${Math.round(adjustment.sign * adjustment.amount)}, recorded as its own line.`]
+        : []);
+    },
+  }),
+
+  command({
+    name: 'zakat.reopen',
+    context: 'giving',
+    summary: 'Undo a confirmed year so it can be worked out again.',
+    detail: 'The frozen figure goes and the pot returns to being worked out from what is held. Payments already booked against it are not deleted — they lose the year they paid, and have to be pointed at one again.',
+    effect: 'irreversible',
+    input: z.object({ yearId: z.string(), force: z.boolean().default(false) }),
+    output: Outcome,
+    handler: async ({ yearId, force }) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.zakatYears).where(eq(t.zakatYears.id, yearId)).get();
+      if (!row) return refusal('not_found', 'There is no confirmed year by that name.');
+
+      const payments = ctx.db.select().from(t.charity).all()
+        .filter((c) => (c as { zakatYearId?: string | null }).zakatYearId === yearId);
+      if (payments.length && !force) {
+        return refusal('immutable',
+          payments.length === 1
+            ? '1 payment already discharges this year.'
+            : `${payments.length} payments already discharge this year.`,
+          'Call again with force true to unpick it — the payments stay on the record but stop counting against any year.');
+      }
+
+      return atomically(ctx, () => {
+        for (const c of payments) {
+          ctx.db.update(t.charity).set({ zakatYearId: null }).where(eq(t.charity.id, c.id)).run();
+        }
+        ctx.db.delete(t.zakatYears).where(eq(t.zakatYears.id, yearId)).run();
+        return noted(
+          `${row.label} for ${row.dueOn} is open again`,
+          payments.length
+            ? [payments.length === 1
+                ? '1 payment no longer discharges any year.'
+                : `${payments.length} payments no longer discharge any year.`]
+            : [],
+        );
+      });
+    },
+  }),
+
+  query({
+    name: 'zakat.years',
+    context: 'giving',
+    summary: 'Every lunar year confirmed, in full: the arithmetic it was worked out from, what it owed, what has been paid against it, and what is left.',
+    detail: 'This is the record of past years. Each one carries the lines it was worked out from and the prices in force the day it closed, so a figure from three years ago can be read back and explained rather than merely remembered.',
+    input: z.object({
+      bucket: z.string().optional(),
+      outstanding: z.boolean().default(false),
+      limit: z.number().int().min(1).max(200).default(50),
+    }),
+    output: z.array(z.object({
+      id: z.string(), bucket: z.string(), label: z.string(),
+      startOn: z.string(), dueOn: z.string(), dueHijri: z.string(),
+      anchorOn: z.string().nullable(),
+      base: z.number(), due: z.number(), paid: z.number(), remaining: z.number(),
+      nisab: z.number(), basis: z.string(), confirmedAt: z.string(),
+      note: z.string().nullable(),
+      /** the prices the figure was struck at, so it can be checked years later */
+      goldPerG: z.number().nullable(), silverPerG: z.number().nullable(),
+      /** the signed lines as they stood when the year was confirmed */
+      entries: z.array(z.object({
+        id: z.string(), label: z.string(), detail: z.string().optional(),
+        sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
+        amount: z.number(), note: z.string().optional(),
+      })),
+      payments: z.array(z.object({
+        id: z.string(), date: z.string(), egp: z.number(), causeId: z.string(),
+        note: z.string().nullable(),
+      })),
+    })),
+    handler: async ({ bucket, outstanding, limit }) => {
+      const { db } = ctxOf();
+      const given = db.select().from(t.charity).all();
+      return db.select().from(t.zakatYears).orderBy(desc(t.zakatYears.dueOn)).limit(limit).all()
+        .map((y) => {
+          const payments = given
+            .filter((c) => (c as { zakatYearId?: string | null }).zakatYearId === y.id)
+            .map((c) => ({ id: c.id, date: c.date, egp: c.egp, causeId: c.categoryId, note: c.note }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+          const paid = payments.reduce((s2, c) => s2 + c.egp, 0);
+          return {
+            id: y.id, bucket: y.bucket, label: y.label,
+            startOn: y.startOn, dueOn: y.dueOn, dueHijri: y.dueHijri, anchorOn: y.anchorOn,
+            base: y.base, due: y.due, paid, remaining: Math.max(0, y.due - paid),
+            nisab: y.nisab, basis: y.basis, confirmedAt: y.confirmedAt, note: y.note,
+            goldPerG: y.goldPerG, silverPerG: y.silverPerG,
+            entries: (y.entries as ZakatEntry[]) ?? [],
+            payments,
+          };
+        })
+        .filter((y) => (!outstanding || y.remaining > 0) && (!bucket || y.bucket === bucket));
     },
   }),
 

@@ -25,13 +25,22 @@ export interface GivingRow {
   from: string; categoryId: string; note: string;
 }
 
-export function GivingRecords({ only, search, fallback }: {
+export function GivingRecords({ only, search, fallback, onRows }: {
   /** which kinds to show; both when it is not said */
   only?: 'all' | GivingKind;
   /** an outside search box, where the screen has one */
   search?: string;
   /** what to show when there is no ledger service behind the screen */
   fallback: GivingRow[];
+  /**
+   * What this table is actually showing, handed back to the screen around it.
+   *
+   * A screen that totals giving has to total the same records the table lists. Working them
+   * out separately is how a heading came to say nothing was given while the rows underneath
+   * it listed payments — two answers to one question, and no way for a reader to tell which
+   * of them is the ledger's.
+   */
+  onRows?: (rows: GivingRow[]) => void;
 }) {
   const { data, dm, currencies } = useApp();
   /** which institution a node sits at, for the second line under an account's name */
@@ -62,6 +71,9 @@ export function GivingRecords({ only, search, fallback }: {
   useEffect(loadGiving, [loadGiving, version]);
 
   const rows = (live_ ?? fallback).slice().sort((a, b) => b.date.localeCompare(a.date));
+  // Reported after the render that used them, so the screen around this one never totals a
+  // list the table has not drawn.
+  useEffect(() => { onRows?.(rows); }, [live_, fallback, onRows]);
   const q = (search ?? '').trim().toLowerCase();
   const matching = rows
     .filter((r) => !only || only === 'all' || r.kind === only)

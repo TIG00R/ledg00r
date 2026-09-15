@@ -4,6 +4,7 @@ import * as t from './schema.js';
 import { allBalances, balanceOf } from './projections.js';
 import { indexRow } from './search.js';
 import type { Ledger, MovementDraft, NodeView, ValidatedMovement } from '@ledger/domain';
+import { randomToken } from '@ledger/engine';
 
 /**
  * The repositories.
@@ -83,7 +84,7 @@ export function writeMovementDetailed(
 
   return db.$raw.transaction(() => {
     const seq = nextSeq(db);
-    const id = `tx-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = `tx-${seq}-${randomToken(10)}`;
 
     db.insert(t.transactions).values({
       id, seq, date: mv.date, kind: mv.kind, note: mv.note ?? null,

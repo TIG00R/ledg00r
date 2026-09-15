@@ -445,6 +445,44 @@ const STEPS: Step[] = [
       `);
     },
   },
+  {
+    version: 18,
+    name: 'zakat years, confirmed and paid against',
+    up: (db) => {
+      // What is owed is fixed on the day the hawl closes. Working it out from today's prices
+      // means it moves every time it is asked for, so a year the owner has confirmed is
+      // written down — base, rate, thresholds, the prices behind them, and the lines that
+      // made it. Only confirmed years get a row; one still being worked out is computed.
+      db.$raw.exec(`
+        CREATE TABLE IF NOT EXISTS zakat_years (
+          id           TEXT PRIMARY KEY,
+          bucket       TEXT NOT NULL,
+          label        TEXT NOT NULL,
+          start_on     TEXT NOT NULL,
+          due_on       TEXT NOT NULL,
+          due_hijri    TEXT NOT NULL,
+          anchor_on    TEXT,
+          base         REAL NOT NULL,
+          due          REAL NOT NULL,
+          nisab        REAL NOT NULL,
+          basis        TEXT NOT NULL,
+          gold_per_g   REAL,
+          silver_per_g REAL,
+          entries      TEXT NOT NULL,
+          note         TEXT,
+          confirmed_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS zy_bucket_due ON zakat_years (bucket, due_on);
+        CREATE UNIQUE INDEX IF NOT EXISTS zy_unique ON zakat_years (bucket, due_on);
+      `);
+
+      // A zakat payment that names no year discharges nothing, because zakat is owed for a
+      // particular year. Existing payments keep the flag and gain no year: which year they
+      // paid is not recoverable, and guessing would credit the wrong one.
+      try { db.$raw.exec('ALTER TABLE charity ADD COLUMN zakat_year_id TEXT'); } catch { /* already there */ }
+      db.$raw.exec('CREATE INDEX IF NOT EXISTS give_year ON charity (zakat_year_id)');
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

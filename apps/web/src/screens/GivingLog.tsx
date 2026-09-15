@@ -1,24 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp, market } from '../AppState';
 import { money, toEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Chip } from '../components/UI';
 import { Icon, type IconName } from '../components/Icon';
 import { GivingRecords, type GivingRow } from '../components/GivingRecords';
 import { ModeBar, ModeProvider } from '../components/ModeBar';
+import { useLive } from '../Live';
+import { ledger } from '../api';
 
 type Kind = 'zakat' | 'sadaqat';
 
 type Row = GivingRow;
-
-/** Both kinds in one list, because what you actually want to know is what left in total. */
-const EXTRA: Row[] = [
-  { id: 'g1', date: '2026-08-22', kind: 'sadaqat', amount: 3000, currency: 'EGP',
-    from: 'nile-egp-cur', categoryId: 'cha-food-aid', note: 'food parcels, shared with a neighbour' },
-  { id: 'g2', date: '2026-06-30', kind: 'zakat', amount: 45000, currency: 'EGP',
-    from: 'nile-egp-sav', categoryId: 'cha-emergency', note: 'first instalment against the hawl' },
-  { id: 'g3', date: '2026-05-14', kind: 'sadaqat', amount: 250, currency: 'USD',
-    from: 'nile-usd-sav', categoryId: 'cha-education', note: 'school fees for a relative' },
-];
 
 /**
  * Correcting a record is not recording one, so this screen carries the same switch as every
@@ -31,21 +23,53 @@ export function GivingLog() {
 
 function Body() {
   const { data, dm } = useApp();
+  const { live, version } = useLive();
   const [kind, setKind] = useState<'all' | Kind>('all');
   const [q, setQ] = useState('');
 
-  /** what the screen shows when there is no ledger behind it */
-  const rows: Row[] = [
-    ...data.charity.map((c) => ({
-      id: c.id, date: c.date, kind: (c.isZakat ? 'zakat' : 'sadaqat') as Kind,
-      amount: c.usd ?? c.egp, currency: c.usd != null ? 'USD' : 'EGP',
-      from: 'nile-egp-cur', categoryId: c.categoryId, note: c.note,
-    })),
-    ...EXTRA,
-  ].sort((a, b) => b.date.localeCompare(a.date));
+  /**
+   * What the screen shows with no ledger behind it: a ledger with no records in it.
+   *
+   * Held steady across renders on purpose. The table hands its rows back up, which sets state
+   * here, which renders again — and a fallback rebuilt each time would be a new array every
+   * render and so a loop that never settles.
+   */
+  const fallback: Row[] = useMemo(() => data.charity.map((c) => ({
+    id: c.id, date: c.date, kind: (c.isZakat ? 'zakat' : 'sadaqat') as Kind,
+    amount: c.usd ?? c.egp, currency: c.usd != null ? 'USD' : 'EGP',
+    from: data.settings.burnAccountId, categoryId: c.categoryId, note: c.note,
+  })), [data.charity, data.settings.burnAccountId]);
 
+  /**
+   * The totals are the table's own rows, added up.
+   *
+   * They used to be worked out from a separate list that carried three invented payments, so
+   * a ledger that had given nothing announced sixty thousand given and forty-five thousand of
+   * it as zakat. A heading over a table has to be that table's arithmetic, or it is somebody
+   * else's money on a reader's screen.
+   */
+  const [shown, setShown] = useState<Row[]>(fallback);
+  const rows = shown;
   const totalOf = (k: Kind) => rows.filter((r) => r.kind === k)
     .reduce((s, r) => s + toEgp(r.amount, r.currency, market), 0);
+
+  /**
+   * What is still owed, from the years actually confirmed.
+   *
+   * Not an estimate of what this year might come to: a year still running owes nothing yet,
+   * and a figure that mixes the two tells an owner to pay something nobody is owed.
+   */
+  const [outstanding, setOutstanding] = useState<number | null>(null);
+  useEffect(() => {
+    if (!live) { setOutstanding(null); return; }
+    let off = false;
+    (ledger as any)['zakat.years']({})
+      .then((ys: Array<{ remaining: number }>) => {
+        if (!off) setOutstanding((ys ?? []).reduce((s, y) => s + y.remaining, 0));
+      })
+      .catch(() => { if (!off) setOutstanding(null); });
+    return () => { off = true; };
+  }, [live, version]);
 
   return (
     <Page>
@@ -54,8 +78,12 @@ function Body() {
           <Stat label="Given, all time" value={dm(totalOf('zakat') + totalOf('sadaqat'))} sub={`${rows.length} payment${rows.length === 1 ? '' : 's'}`} />
           <Stat label="As zakat" value={dm(totalOf('zakat'))} color="var(--zakat)" sub="counts against the obligation" />
           <Stat label="As sadaqat" value={dm(totalOf('sadaqat'))} color="var(--sadaqat)" sub="given freely, owed by nobody" />
-          <Stat label="Zakat still to give" value={dm(176743 - totalOf('zakat'))} color="var(--negative)"
-                sub="against 176,743 estimated" />
+          <Stat label="Zakat still to give"
+                value={outstanding == null ? '—' : dm(outstanding)}
+                color={outstanding ? 'var(--negative)' : 'var(--muted)'}
+                sub={outstanding == null ? 'needs the ledger service'
+                  : outstanding > 0 ? 'across every year you have confirmed'
+                    : 'every confirmed year is discharged'} />
         </Stats>
       </Panel>
 
@@ -78,7 +106,7 @@ function Body() {
           ))}
         </div>
 
-        <GivingRecords only={kind} search={q} fallback={rows} />
+        <GivingRecords only={kind} search={q} fallback={fallback} onRows={setShown} />
       </Panel>
     </Page>
   );
