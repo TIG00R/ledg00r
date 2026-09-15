@@ -338,15 +338,26 @@ export function AppProvider({ children, demo }: {
     const owedAgainst = new Set(data.nodes
       .filter((n) => n.kind === 'liability' && n.parentId)
       .map((n) => n.parentId));
+    /*
+     * A debt, either way it points, is named by the record that opened it.
+     *
+     * It matters twice. Money lent out is an asset node and was read as a chattel, so a loan
+     * to a friend was drawn in the pile with the machines. Money borrowed hangs off no
+     * institution, and a liability hanging off nothing reads as the balance of a purchase
+     * plan — which is never subtracted — when what it is is owed in full today.
+     */
+    const isDebtNode = (n: (typeof data.nodes)[number]) => n.assetKind === 'debt'
+      || /^debt-/.test(n.id);
     const kindOf = (n: (typeof data.nodes)[number]) =>
-      n.assetKind
-      ?? (/car|vehicle|truck|bike/i.test(`${n.id} ${n.name}`) ? 'vehicle'
-        : owedAgainst.has(n.id) ? 'property' : 'other');
+      (isDebtNode(n) ? 'debt'
+        : n.assetKind
+        ?? (/car|vehicle|truck|bike/i.test(`${n.id} ${n.name}`) ? 'vehicle'
+          : owedAgainst.has(n.id) ? 'property' : 'other'));
     const institutions = new Set(data.institutions.map((i) => i.id));
     const h = valueHoldings(data.nodes, liveBalances, market, {
       positions: computedPositions(data.orders, market.prices),
       kindOf,
-      isContract: (n) => !n.parentId || !institutions.has(n.parentId),
+      isContract: (n) => !isDebtNode(n) && (!n.parentId || !institutions.has(n.parentId)),
     });
     /**
      * The share book is the positions and the wallet behind them.
@@ -362,7 +373,7 @@ export function AppProvider({ children, demo }: {
     return {
       ...forecast,
       cash: h.cash - h.brokerageCash, gold: h.metals, re: h.realEstate, car: h.vehicles,
-      stocks: h.shares + h.brokerageCash, other: h.other, total: h.total,
+      stocks: h.shares + h.brokerageCash, other: h.other, debt: h.lent, total: h.total,
       /*
        * The weight, read from what is held rather than from the opening snapshot. A ledger
        * kept by the service has no snapshot to roll forward, so the grams beside the gold

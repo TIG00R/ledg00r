@@ -4,7 +4,7 @@ import { schema as t, allBalances } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import { installmentDueDate, defaultIntention, intentionsFor, intentionLabel,
          unitValue, type Valuation } from '@ledger/engine';
-import { assetKindOf } from '../zakat-assets.js';
+import { assetKindOf, isDebtNode } from '../zakat-assets.js';
 import { readMarket } from '../read.js';
 import type { AppCtx } from '../context.js';
 import { noted, refusal, newId } from './shared.js';
@@ -68,14 +68,15 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
         }, market);
 
       return ctx.db.select().from(t.nodes).all()
-        // Metal is a weight, not an asset in this sense — it has its own screen and its own
-        // arithmetic — and the brokerage book is the share book's cash.
-        // Metal is a weight with its own screen and its own arithmetic, and the brokerage
-        // book is the share book's own holding — neither belongs in a list of things owned.
+        // Metal is a weight with its own screen and its own arithmetic, the brokerage book is
+        // the share book's own holding, and money lent out is a debt kept on the debts screen
+        // — none of the three is a thing owned, and a loan listed here was offered a payment
+        // plan, a mark and an intention, none of which a loan has.
         .filter((n) => n.kind === 'asset'
           && !n.unit
           && n.priceKey !== 'brokerage_cash'
           && !/^brokerage/.test(n.id)
+          && !isDebtNode(n)
           && (includeArchived || !n.archived))
         .map((n) => {
           const mine = installments.filter((i) => i.propertyId === n.id);

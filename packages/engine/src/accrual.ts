@@ -33,6 +33,8 @@ export interface Values {
   stocks: number;
   /** everything owned that is none of the above — a machine, a thing, an asset kept as "other" */
   other: number;
+  /** money lent out and still owed back to you */
+  debt: number;
   total: number;
   accrual: Accrual;
 }
@@ -229,7 +231,7 @@ export function compute(d: DataSet, m: MarketState, now: Date): Values {
     asOf: now, rate: m.usdEgp, goldPerG: m.goldPerG,
     // the forecast works forward from a snapshot, which knows the four piles it was written
     // with and nothing else — anything else only exists where a ledger is being read
-    cash: a.cash, gold, re: a.reEgp, car, stocks, other: 0, total, accrual: a,
+    cash: a.cash, gold, re: a.reEgp, car, stocks, other: 0, debt: 0, total, accrual: a,
   };
 }
 

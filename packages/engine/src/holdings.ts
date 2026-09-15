@@ -24,8 +24,16 @@ export interface Holdings {
   realEstate: number;
   /** vehicles */
   vehicles: number;
-  /** anything else owned that is not money — including money lent out */
+  /** anything else owned that is not money */
   other: number;
+  /**
+   * Money lent out, still owed back to you.
+   *
+   * Owned, so it counts towards the total, but it is not a thing on a shelf: it belongs on
+   * the debts screen and in a pile of its own. Left in `other` it was drawn as a machine or
+   * a chattel, which is what a loan to a friend is not.
+   */
+  lent: number;
   /** shares at the last price recorded for each */
   shares: number;
   /**
@@ -110,7 +118,7 @@ export function valueHoldings(
   } = {},
 ): Holdings {
   const out: Holdings = {
-    cash: 0, metals: 0, realEstate: 0, vehicles: 0, other: 0, shares: 0,
+    cash: 0, metals: 0, realEstate: 0, vehicles: 0, other: 0, lent: 0, shares: 0,
     brokerageCash: 0, goldGrams: 0, silverGrams: 0,
     liabilities: 0, contracts: 0, total: 0, byNode: {},
   };
@@ -142,11 +150,12 @@ export function valueHoldings(
     const kind = opts.kindOf?.(n) ?? 'other';
     if (kind === 'property') out.realEstate += value;
     else if (kind === 'vehicle') out.vehicles += value;
+    else if (kind === 'debt') out.lent += value;
     else out.other += value;
   }
 
   out.shares = (opts.positions ?? []).reduce((s, p) => s + p.value, 0);
-  out.total = out.cash + out.metals + out.realEstate + out.vehicles + out.other
+  out.total = out.cash + out.metals + out.realEstate + out.vehicles + out.other + out.lent
     + out.shares - out.liabilities;
   return out;
 }

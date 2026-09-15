@@ -3,7 +3,7 @@ import type { IconName } from './components/Icon';
 
 /** Everything about how the app looks that should be the user's choice, not the app's. */
 
-export type AssetKey = 'cash' | 'gold' | 'realestate' | 'car' | 'stocks' | 'other';
+export type AssetKey = 'cash' | 'gold' | 'realestate' | 'car' | 'stocks' | 'debt' | 'other';
 
 export interface AssetStyle { icon: IconName; color: string; label: string }
 export interface CurrencyStyle { color: string; symbol: string }
@@ -24,7 +24,10 @@ export const DEFAULT_APPEARANCE: Appearance = {
     realestate: { icon: 'realestate', color: 'var(--negative)', label: 'Real estate' },
     car:        { icon: 'car',      color: 'var(--car)',      label: 'Car' },
     stocks:     { icon: 'stocks',   color: 'var(--stocks)',  label: 'Stocks' },
-    /* A machine, a thing, anything owned that is none of the four above. Without a pile of
+    /* Money lent out and still owed back. Owned, so it is part of the total, but it is not a
+       thing on a shelf — without a pile of its own a loan was drawn among the machines. */
+    debt:       { icon: 'handshake', color: 'var(--sadaqat)', label: 'Debt' },
+    /* A machine, a thing, anything owned that is none of the five above. Without a pile of
        its own such a thing counted towards the total and appeared in no line of the split. */
     other:      { icon: 'assets',   color: 'var(--accent)',   label: 'Other' },
   },

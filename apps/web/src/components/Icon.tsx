@@ -130,6 +130,8 @@ export const ICON_FAMILY: Record<string, IconName[]> = {
            'car', 'suv', 'motorbike',
            'tools', 'briefcase', 'goldbar', 'assets'],
   stocks: ['chartline', 'candles', 'briefcase', 'salary'],
+  /* A loan is between two people, which is what these are pictures of. */
+  debt: ['handshake', 'handout', 'person', 'ledger'],
   spending: ['plane', 'beach', 'groceries', 'restaurant', 'health', 'fuel', 'gift',
              'education', 'phone', 'person', 'tools', 'shirt', 'pet', 'ticket', 'expenses'],
   income: ['income', 'salary', 'briefcase', 'person', 'gift'],

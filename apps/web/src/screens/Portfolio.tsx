@@ -18,12 +18,16 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
    * Every category used to be drawn whether or not anything was in it, so a ledger with one
    * car in it still showed Real estate, Gold and Stocks at nothing — five headings standing
    * in for holdings nobody had entered. What is drawn now is what is held; a thing that is
-   * none of the four named kinds lands in "Other", which is a pile rather than a silence:
+   * none of the named kinds lands in "Other", which is a pile rather than a silence:
    * before it existed such a thing counted towards the total and appeared in no line at all.
+   *
+   * Money lent out is one of the named kinds. It is owned — a debt owed to you is wealth you
+   * happen not to be holding — but it is not a chattel, and reading it as one drew a loan to
+   * a friend in the pile with the machines.
    */
   const slices = ([
     ['cash', v.cash], ['realestate', v.re], ['gold', v.gold], ['car', v.car],
-    ['stocks', v.stocks], ['other', v.other],
+    ['stocks', v.stocks], ['debt', v.debt], ['other', v.other],
   ] as Array<[AssetKey, number]>)
     .filter(([, value]) => value !== 0)
     .map(([key, value]) => ({

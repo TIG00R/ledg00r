@@ -7,7 +7,7 @@ import { noted } from './shared.js';
 import { buildDataset, readMarket, readPref, writePref } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';
 import { readBase, readCurrencies } from './currencies.js';
-import { assetKindOf } from '../zakat-assets.js';
+import { assetKindOf, isDebtNode } from '../zakat-assets.js';
 
 /**
  * The whole picture, and the settings that shape it.
@@ -54,11 +54,15 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
        * what the zakat base counts — but it is not cash at a bank, and every screen that
        * draws the book draws it as one thing. Reported here the same way, so an agent asking
        * where things stand and a person looking at the portfolio see the same split.
+       *
+       * Money lent out is its own line for the same reason. It counts towards what you are
+       * worth — a debt owed to you is wealth you happen not to be holding — but it is not a
+       * chattel, and inside "Other" it was reported as one.
        */
       const parts: Array<[string, number]> = [
         ['Cash', h.cash - h.brokerageCash], ['Real estate', h.realEstate],
         ['Gold and silver', h.metals], ['Vehicles', h.vehicles],
-        ['Shares', h.shares + h.brokerageCash], ['Other', h.other],
+        ['Shares', h.shares + h.brokerageCash], ['Lent out', h.lent], ['Other', h.other],
       ];
       const owned = parts.reduce((s, [, v]) => s + v, 0);
       return {
@@ -243,9 +247,13 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
           currency: n.currency, unit: n.unit, openingQty: n.openingQty,
           color: n.color, archived: n.archived,
           valuation: n.valuation, priceKey: n.priceKey,
+          // Money lent out says so, so the portfolio can draw it as the debt it is rather
+          // than reading it as a chattel and putting a loan in the pile with the machines.
           assetKind: n.kind === 'asset' && !n.unit
-            ? assetKindOf(n as { id: string; name: string; assetKind?: string | null },
-                          planned.has(n.id))
+            ? isDebtNode(n)
+              ? 'debt'
+              : assetKindOf(n as { id: string; name: string; assetKind?: string | null },
+                            planned.has(n.id))
             : null,
           ownership: (n as { ownership?: string | null }).ownership ?? null,
         })),

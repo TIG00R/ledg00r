@@ -2,7 +2,7 @@ import { schema as t, allBalances, type Db } from '@ledger/db';
 import {
   valueHoldings, computedPositions, type Holdings, type LedgerNode, type MarketState,
 } from '@ledger/engine';
-import { assetKindOf } from './zakat-assets.js';
+import { assetKindOf, isDebtNode } from './zakat-assets.js';
 
 /**
  * One answer to "what is this worth", for the whole service.
@@ -29,10 +29,10 @@ export function ledgerHoldings(db: Db, now: Date, market: MarketState): Holdings
     shares: o.shares, price: o.price, total: o.total, status: o.status, note: o.note ?? '',
   })) as never;
 
-  const kindOf = (n: LedgerNode) => assetKindOf(
+  const kindOf = (n: LedgerNode) => (isDebtNode(n) ? 'debt' : assetKindOf(
     { id: n.id, name: n.name, assetKind: (rows.find((r) => r.id === n.id) as { assetKind?: string | null } | undefined)?.assetKind },
     planned.has(n.id),
-  );
+  ));
 
   /**
    * A liability hanging off an asset is that asset's contract; one hanging off a bank is money
@@ -40,7 +40,13 @@ export function ledgerHoldings(db: Db, now: Date, market: MarketState): Holdings
    * to draw it the same way or the two disagree.
    */
   const institutions = new Set(db.select().from(t.institutions).all().map((i) => i.id));
-  const isContract = (n: LedgerNode) => !n.parentId || !institutions.has(n.parentId);
+  /*
+   * Money borrowed from a person hangs off nothing, and a liability hanging off nothing reads
+   * as a contract — which is never subtracted. It is not one: a debt is a debt whoever it is
+   * with, and it is owed in full today rather than spread over a schedule.
+   */
+  const isContract = (n: LedgerNode) =>
+    !isDebtNode(n) && (!n.parentId || !institutions.has(n.parentId));
 
   return valueHoldings(nodes, balances, market, {
     positions: computedPositions(orders, market.prices),

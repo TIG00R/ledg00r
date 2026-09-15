@@ -45,6 +45,17 @@ const KIND: Record<string, AssetClass> = {
 };
 
 /**
+ * A debt rather than a thing owned.
+ *
+ * `debt.record` writes money lent out as an asset node, because that is what it is — wealth
+ * you happen not to be holding — and everything that walks nodes has to see it. It is not a
+ * thing on a shelf, though: it belongs to the debts screen, it has its own pile in the
+ * portfolio, and the zakat assessment counts it through the debts themselves rather than
+ * twice. Read in one place so those three cannot disagree about the same loan.
+ */
+export const isDebtNode = (node: { id: string }) => /^debt-/.test(node.id);
+
+/**
  * What kind of thing a node is.
  *
  * Stated on the record once it has been set, and otherwise worked out the same way the assets
@@ -126,7 +137,7 @@ export function assetsForZakat(db: Db, now: Date, market: MarketState, nisab: nu
     && !n.unit
     && n.priceKey !== 'brokerage_cash'
     && !/^brokerage/.test(n.id)
-    && !/^debt-/.test(n.id)
+    && !isDebtNode(n)
     && !n.archived);
 
   const planned = new Set(db.select().from(t.installments).all().map((i) => i.propertyId));
