@@ -27,6 +27,13 @@ export interface LedgerNode {
   valuation: Valuation;
   /** which price to look up: 'gold_24k', 'usd_egp', a ticker */
   priceKey?: string;
+  /**
+   * What kind of thing it is: 'property', 'vehicle', 'equipment', 'other'.
+   *
+   * Stated by the ledger rather than guessed from the name, and absent on anything that is
+   * not an asset. A reader that guessed put a car called "BMW" in no pile at all.
+   */
+  assetKind?: string;
   openingQty: number;
   color?: string;
   archived?: boolean;

@@ -4,7 +4,7 @@ import {
   valueHoldings, computedPositions,
   type Values, type Reminder, type UpcomingEvent, type Currency, type Dismissal,
   type Snapshot, type MarketState, type RecurringTemplate, type ZakatSettings, type Settings,
-  type DataSet,
+  type DataSet, type Order,
 } from '@ledger/engine';
 import { EMPTY_DATASET, EMPTY_MARKET } from './data/empty';
 import { ledger } from './api';
@@ -118,6 +118,10 @@ export function AppProvider({ children, demo }: {
   const [recurring, setRecurring] = useState<RecurringTemplate[]>(demo?.recurring ?? []);
   const [zakatSettings, setZakatSettings] = useState<ZakatSettings>(DEFAULT_ZAKAT);
   const [dismissals, setDismissals] = useState<Dismissal[]>([]);
+  /** what the service says is coming up; null until it has said, or without a service */
+  const [liveEvents, setLiveEvents] = useState<UpcomingEvent[] | null>(null);
+  /** bumped when something has been silenced, so the list is asked for again */
+  const [dismissedAt, setDismissedAt] = useState(0);
   const [settings, setSettingsState] = useState<Settings>(base.settings);
   /** installment plans the owner has asked the ledger to post on their due date */
   const [autoPay, setAutoPay] = useState<Record<string, { on: boolean; fromNodeId: string }>>({});
@@ -157,6 +161,15 @@ export function AppProvider({ children, demo }: {
   const { live, version } = useLive();
   const [liveBalances, setLiveBalances] = useState<Record<string, number> | null>(null);
   const [catalogue, setCatalogue] = useState<any | null>(null);
+  /**
+   * The share orders, as the service holds them.
+   *
+   * The book is worked out from the orders rather than from a node — `computedPositions`
+   * reads them, and so does the accrual — so a dataset with none in it values every holding
+   * at nothing. This used to be left empty against a live service, which meant the Stocks
+   * screen and the portfolio's share of it both read zero however many orders were logged.
+   */
+  const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   /** bumped when the outside world has been re-read, so the figures recompute */
   const [marketAt, setMarketAt] = useState(0);
 
@@ -169,17 +182,56 @@ export function AppProvider({ children, demo }: {
    */
   useEffect(() => {
     if (!live) { setReminders(demo?.reminders ?? []); setRecurring(demo?.recurring ?? []); return; }
-    setRecurring([]);
     // asked for rather than assumed, and a service that cannot answer leaves the ledger with
     // no reminders rather than with the demonstration's
     Promise.resolve((ledger as any)['reminders.list']?.({}) ?? [])
       .then((rows: Reminder[]) => setReminders(rows ?? []))
       .catch(() => setReminders([]));
+    /**
+     * The standing charges are the service's too.
+     *
+     * They used to be emptied and never filled, which left the Recurring screen blank on a
+     * ledger that had several and gave a reminder about a standing charge nothing to name.
+     */
+    Promise.resolve((ledger as any)['recurring.list']?.({}) ?? [])
+      .then((rows: any[]) => setRecurring((rows ?? []).map((r) => ({
+        id: r.id, name: r.name,
+        fromNodeId: r.fromNodeId ?? undefined, toNodeId: r.toNodeId ?? undefined,
+        amount: r.amount, currency: r.currency, cadence: r.cadence,
+        dayOfMonth: r.dayOfMonth ?? undefined,
+        startDate: r.startDate ?? undefined, endDate: r.endDate ?? undefined,
+        categoryId: r.categoryId ?? undefined, enabled: r.enabled,
+        note: r.note ?? undefined, internal: r.internal,
+      })) as RecurringTemplate[]))
+      .catch(() => setRecurring([]));
   }, [live, version]);
 
   useEffect(() => {
-    if (!live) { setLiveBalances(null); setCatalogue(null); return; }
+    if (!live) { setLiveBalances(null); setCatalogue(null); setLiveOrders(null); return; }
     let cancelled = false;
+    /**
+     * The order log, newest first, renumbered oldest-first.
+     *
+     * `orders.list` drops `seq` on the way out and sorts by it descending, but the accrual
+     * walks the orders in `seq` order to work out what a position cost. Handing them back
+     * their original order is what keeps an average buy price from depending on which way
+     * the list happened to arrive.
+     */
+    // asked for the way every other read here is: a service that cannot answer leaves the
+    // orders empty rather than throwing out of the effect and taking the balances with it
+    Promise.resolve((ledger as any)['orders.list']?.({ limit: 500 }) ?? [])
+      .then((rows: any[]) => {
+        if (cancelled) return;
+        const n = rows.length;
+        setLiveOrders(rows.map((o, i) => ({
+          id: o.id, seq: n - 1 - i, date: o.date, time: o.time ?? undefined,
+          ticker: o.ticker, side: o.side as 'BUY' | 'SELL',
+          shares: o.shares, price: o.price, total: o.total,
+          status: o.status as 'pending' | 'executed' | 'cancelled',
+          note: o.note ?? '',
+        })));
+      })
+      .catch(() => { if (!cancelled) setLiveOrders([]); });
     (ledger as any)['accounts.list']({ includeArchived: true })
       .then((rows: Array<{ id: string; balance: number }>) => {
         if (!cancelled) setLiveBalances(Object.fromEntries(rows.map((r) => [r.id, r.balance])));
@@ -231,7 +283,7 @@ export function AppProvider({ children, demo }: {
     return {
       ...base,
       transactions: [], installments: [], planRules: [], goldLots: [],
-      orders: [], expenses: [], charity: [], debts: [],
+      orders: liveOrders ?? [], expenses: [], charity: [], debts: [],
       snapshot: { ...base.snapshot, cashEgp: 0, goldGramsOwn: 0, reEgp: 0,
                   paidByProperty: {}, totalByProperty: {} },
       institutions: catalogue.institutions.map((i: any) => ({ ...i, logo: i.logo ?? undefined })),
@@ -242,6 +294,8 @@ export function AppProvider({ children, demo }: {
         // both are columns on the node, so the service is the one that knows them
         valuation: n.valuation ?? 'face',
         priceKey: n.priceKey ?? undefined,
+        // what kind of thing it is, as the ledger reads it — not as a name suggests
+        assetKind: n.assetKind ?? undefined,
       })),
       categories: catalogue.categories
         .filter((c: any) => !c.archived)
@@ -255,7 +309,7 @@ export function AppProvider({ children, demo }: {
           icon: s2.icon ?? undefined,
         })),
     } as DataSet;
-  }, [catalogue]);
+  }, [catalogue, liveOrders]);
 
   // the figures only depend on the calendar day, so recompute per day rather than per tick
   const dayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
@@ -273,15 +327,20 @@ export function AppProvider({ children, demo }: {
     /**
      * What kind of thing an asset is.
      *
-     * A property is an asset something is owed against — the contract balance hangs off it
-     * as a liability of its own. That is read from the ledger's own nodes rather than from a
-     * list of plans, because an empty ledger has no plans and a flat is still a flat.
+     * The ledger states it — the assets screen writes it down when the thing is added, and
+     * the service derives it for anything older — so it is read, not guessed. The guess was
+     * a name matched against /car|vehicle/ plus "a property is whatever something is owed
+     * against", which put a car called "BMW" and a flat paid for outright into neither
+     * pile: the portfolio counted them in the total and drew nothing for them.
+     *
+     * The old reading stays as the fallback for a ledger the service has not classified.
      */
     const owedAgainst = new Set(data.nodes
       .filter((n) => n.kind === 'liability' && n.parentId)
       .map((n) => n.parentId));
     const kindOf = (n: (typeof data.nodes)[number]) =>
-      (/car|vehicle|truck|bike/i.test(`${n.id} ${n.name}`) ? 'vehicle'
+      n.assetKind
+      ?? (/car|vehicle|truck|bike/i.test(`${n.id} ${n.name}`) ? 'vehicle'
         : owedAgainst.has(n.id) ? 'property' : 'other');
     const institutions = new Set(data.institutions.map((i) => i.id));
     const h = valueHoldings(data.nodes, liveBalances, market, {
@@ -292,13 +351,53 @@ export function AppProvider({ children, demo }: {
     return {
       ...forecast,
       cash: h.cash, gold: h.metals, re: h.realEstate, car: h.vehicles,
-      stocks: h.shares, total: h.total,
+      stocks: h.shares, other: h.other, total: h.total,
     };
   }, [dayKey, data, market, marketAt, live, liveBalances]); // eslint-disable-line react-hooks/exhaustive-deps
-  const events = useMemo(
+  /**
+   * What is coming up.
+   *
+   * Worked out here when there is no service, because the fixture is the only thing that
+   * knows its own plans. With a service it is asked for, because the browser is not given
+   * the schedules: the dataset above carries no installments and no plan rules, so a
+   * reminder about a property had nothing to attach to and nothing was ever surfaced. The
+   * service holds the plans, the reminders and the dismissals, and answers with the same
+   * engine this would have run.
+   */
+  const localEvents = useMemo(
     () => upcoming(data, market, reminders, now,
                    { recurring, zakat: zakatSettings, dismissals }),
     [dayKey, reminders, data, market, marketAt, recurring, zakatSettings, dismissals]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!live) { setLiveEvents(null); return; }
+    let cancelled = false;
+    Promise.resolve((ledger as any)['upcoming.list']?.({}) ?? null)
+      .then((rows: any[] | null) => {
+        if (cancelled) return;
+        setLiveEvents(rows == null ? null : rows.map((e) => ({
+          id: e.id, date: new Date(`${e.date}T12:00:00`), daysAway: e.daysAway,
+          kind: e.kind, label: e.label, detail: e.detail ?? undefined,
+          amount: e.amount ?? undefined, currency: e.currency ?? undefined,
+          due: e.due, overdue: e.overdue ?? undefined,
+          reminderLead: e.reminderLead ?? undefined, internal: e.internal ?? undefined,
+        })) as UpcomingEvent[]);
+      })
+      .catch(() => { if (!cancelled) setLiveEvents(null); });
+    return () => { cancelled = true; };
+  }, [live, version, dismissedAt, dayKey]);
+
+  /**
+   * A dismissal reaches the service, and until the answer comes back it is honoured here —
+   * otherwise the row the owner has just closed reappears for as long as the round trip takes.
+   */
+  const events = useMemo(() => {
+    if (!liveEvents) return localEvents;
+    const hidden = new Set(dismissals
+      .filter((x) => !x.until || new Date(`${x.until}T23:59:59`) >= now)
+      .map((x) => x.eventId));
+    return liveEvents.filter((e) => !hidden.has(e.id));
+  }, [liveEvents, localEvents, dismissals, dayKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** every node's live balance, opening figure plus the movements against it */
   const localBalances = useMemo(() => nodeBalances(data, now), [dayKey, data]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -315,10 +414,22 @@ export function AppProvider({ children, demo }: {
       privacy, setPrivacy, balances,
       zakatSettings, setZakatSettings,
       dismissals,
-      dismiss: (eventId, until) =>
+      // silencing is recorded where the events are worked out, so it survives a reload
+      dismiss: (eventId, until) => {
         setDismissals((xs) => [...xs.filter((x) => x.eventId !== eventId),
-                               { eventId, until, on: new Date().toISOString().slice(0, 10) }]),
-      undismiss: (eventId) => setDismissals((xs) => xs.filter((x) => x.eventId !== eventId)),
+                               { eventId, until, on: new Date().toISOString().slice(0, 10) }]);
+        if (!live) return;
+        Promise.resolve((ledger as any)['upcoming.dismiss']?.({ eventId, until }))
+          .then(() => setDismissedAt((n) => n + 1))
+          .catch(() => undefined);
+      },
+      undismiss: (eventId) => {
+        setDismissals((xs) => xs.filter((x) => x.eventId !== eventId));
+        if (!live) return;
+        Promise.resolve((ledger as any)['upcoming.dismiss']?.({ eventId, undo: true }))
+          .then(() => setDismissedAt((n) => n + 1))
+          .catch(() => undefined);
+      },
       currencies: catalogue?.currencies ?? FALLBACK_CURRENCIES,
       settings, setSettings: (patch) => setSettingsState((s2) => ({ ...s2, ...patch })),
       autoPay, setAutoPay: (id, patch) =>

@@ -20,6 +20,10 @@ interface Lot {
   id: string; date: string; dateText: string; metal: Metal;
   direction: 'buy' | 'sell'; grams: number; pricePerGram: number;
   totalEgp: number; note: string | null; movementId: string | null;
+  /** what the dealer quoted, and in what — the pound figures are the reading of it */
+  currency: string; priceNative: number;
+  /** the making charge — مصنعية — a gram in that currency, and what it came to in pounds */
+  makingPerGram: number; makingEgp: number;
   /** the account the money came out of, or went into */
   accountId: string | null;
   /** worn, or held as a store of value — the answer decides whether zakat reaches it */
@@ -43,7 +47,7 @@ export function Metals() {
 }
 
 function Body() {
-  const { dm, balances, data, dm: _dm } = useApp();
+  const { dm, balances, data, market, currencies, dm: _dm } = useApp();
   const { tab } = useSection();
   const { run, live, version } = useLive();
 
@@ -54,6 +58,8 @@ function Body() {
   const [trade, setTrade] = useState({
     accountId: data.settings.burnAccountId, grams: 0, pricePerGram: 0, note: '',
     intention: 'investment' as 'personal' | 'investment',
+    /* what the dealer quotes in, and the workmanship they charge on top of the metal */
+    currency: 'EGP', makingPerGram: 0,
   });
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -97,7 +103,11 @@ function Body() {
   const holdingG = Math.max(0, weightOf('investment'));
 
   const bought = mine.filter((l) => l.direction === 'buy');
-  const paid = bought.reduce((s, l) => s + l.totalEgp, 0);
+  /* What the metal actually cost: the gram, plus the workmanship charged on top of it. The
+     making charge buys no weight and cannot be sold back, so leaving it out of the average
+     would report a holding as having cost less than the money that left the account. */
+  const paid = bought.reduce((s, l) => s + l.totalEgp + (l.makingEgp ?? 0), 0);
+  const makingPaid = bought.reduce((s, l) => s + (l.makingEgp ?? 0), 0);
   const boughtG = bought.reduce((s, l) => s + l.grams, 0);
   const avgCost = boughtG ? paid / boughtG : 0;
   const worth = held * perGram;
@@ -106,6 +116,16 @@ function Body() {
   const tone = metal === 'gold' ? 'var(--gold)' : '#9AA3AD';
   const accounts = data.nodes.filter((n) => n.kind === 'cash');
   const short = side === 'sell' && trade.grams > held;
+
+  /* The quote, as it was given: a price a gram in some currency, and the workmanship charged
+     on top of it. Everything the ledger stores is pounds, so this is only what the form
+     shows and what the capability is handed — the conversion happens once, on the way in. */
+  const fx = trade.currency === 'EGP' ? 1 : market.fxRates[trade.currency] ?? 1;
+  const quotedPrice = trade.pricePerGram || perGram / fx;
+  const quotedTotal = trade.grams
+    * (side === 'buy' ? quotedPrice + trade.makingPerGram : quotedPrice - trade.makingPerGram);
+  /* Selling for less than the dealer keeps is a typed figure rather than a sale. */
+  const swallowed = side === 'sell' && trade.makingPerGram >= quotedPrice;
 
   return (
     <Page>
@@ -145,13 +165,21 @@ function Body() {
         <Stats>
           <Stat label={`${metal === 'gold' ? 'Gold' : 'Silver'} held`} value={`${held.toFixed(1)} g`}
                 sub={`${(held / 31.1035).toFixed(2)} troy oz`} />
+          {/* The three figures are one subtraction, so they are written the same way: what
+              the weight is worth, what it cost, and the difference — each a total, with the
+              gram price that produced it underneath. Reading a total against a per-gram
+              figure was asking the eye to do the multiplication. */}
           <Stat label="Worth now" value={dm(worth)}
-                sub={perGram ? `at ${fmt(perGram)} a gram` : 'no price recorded'} />
-          <Stat label="Average cost" value={avgCost ? money(avgCost, 'EGP') : '—'}
-                sub={boughtG ? `over ${boughtG.toFixed(1)} g bought` : 'nothing bought yet'} />
+                sub={perGram ? `at ${dm(perGram)} a gram` : 'no price recorded'} />
+          <Stat label="Average cost" value={avgCost ? dm(held * avgCost) : '—'}
+                sub={avgCost
+                  ? `at ${dm(avgCost)} a gram${makingPaid ? `, making included` : ''} · ${boughtG.toFixed(1)} g bought`
+                  : 'nothing bought yet'} />
           <Stat label="Against cost" value={avgCost ? dm(worth - held * avgCost) : '—'}
                 color={worth >= held * avgCost ? 'var(--positive)' : 'var(--negative)'}
-                sub={avgCost ? `${(((perGram - avgCost) / avgCost) * 100).toFixed(1)}% a gram` : ''} />
+                sub={avgCost
+                  ? `${dm(perGram - avgCost)} a gram · ${(((perGram - avgCost) / avgCost) * 100).toFixed(1)}%`
+                  : ''} />
           {/* Two weights, because only one of them is reached by zakat. */}
           <Stat label="Held as a holding" value={`${holdingG.toFixed(1)} g`}
                 sub={holdingG ? 'the weight zakat can reach' : 'nothing held as a holding'} />
@@ -182,12 +210,33 @@ function Body() {
             <Field label="Grams" hint={side === 'sell' ? `${held.toFixed(1)} g held` : undefined}>
               <Amount value={trade.grams} ariaLabel="Grams" onChange={(n) => setTrade({ ...trade, grams: n })} />
             </Field>
-            <Field label="Price per gram" hint={`in force: ${perGram ? fmt(perGram) : 'none'}`}>
-              <Amount value={trade.pricePerGram} ariaLabel="Price per gram" onChange={(n) => setTrade({ ...trade, pricePerGram: n })} placeholder={String(perGram || 0)} />
+            {/* A dealer quotes in whatever they trade in. The currency is asked for beside
+                the price rather than assumed from the account, because the two are different
+                questions: what was agreed, and where the money came from. */}
+            <Field label="Quoted in" hint="the currency the dealer priced it in">
+              <Select ariaLabel="Currency the price is quoted in" value={trade.currency}
+                      onChange={(v) => setTrade({ ...trade, currency: v })}
+                      options={currencies.map((c) => ({
+                        value: c.code, label: `${c.symbol} ${c.code}`, hint: c.name,
+                      }))} />
             </Field>
-            <Field label="Total" hint="computed from the two above">
+            <Field label="Price per gram"
+                   hint={perGram ? `in force: ${fmt(perGram / fx, fx === 1 ? 0 : 2)} ${trade.currency}` : 'no price recorded'}>
+              <Amount value={trade.pricePerGram} ariaLabel="Price per gram" onChange={(n) => setTrade({ ...trade, pricePerGram: n })} placeholder={String(Math.round(perGram / fx) || 0)} />
+            </Field>
+            {/* مصنعية: the workmanship, charged by the gram on top of the metal. Buying, it
+                is money spent that buys no weight; selling, it is what the dealer keeps. */}
+            <Field label="Making charge per gram"
+                   hint={side === 'buy' ? 'مصنعية — paid on top of the metal'
+                                        : 'مصنعية — taken off what you are paid'}>
+              <Amount value={trade.makingPerGram} ariaLabel="Making charge per gram"
+                      onChange={(n) => setTrade({ ...trade, makingPerGram: n })} />
+            </Field>
+            <Field label="Total"
+                   hint={side === 'buy' ? 'the metal and the making, in the quoted currency'
+                                        : 'the metal less the making, in the quoted currency'}>
               <input className="mono" readOnly aria-label="Total"
-                     value={fmt(trade.grams * (trade.pricePerGram || perGram))} />
+                     value={`${fmt(quotedTotal)} ${trade.currency}`} />
             </Field>
             <Field label={side === 'buy' ? 'Paid from' : 'Proceeds into'}>
               <Select ariaLabel="Account" value={trade.accountId}
@@ -219,19 +268,26 @@ function Body() {
               You hold {held.toFixed(1)} g, which is {(trade.grams - held).toFixed(1)} g short.
             </p>
           )}
+          {swallowed && (
+            <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--negative)' }}>
+              A making charge of {fmt(trade.makingPerGram)} {trade.currency} a gram takes the
+              whole sale. Lower it, or raise the price a gram.
+            </p>
+          )}
 
 
           <div style={{ marginTop: 16 }}>
             {/* One width, whichever way the movement goes: a button that grows with the
                 number typed beside it moves under the cursor while it is being aimed at. */}
             <ActionButton capability={side === 'buy' ? 'metal.buy' : 'metal.sell'}
-              disabled={!(trade.grams > 0) || short || !(trade.pricePerGram || perGram)}
+              disabled={!(trade.grams > 0) || short || swallowed || !(trade.pricePerGram || perGram)}
               className={side === 'sell' ? 'btn danger' : 'btn go'}
               style={{ width: 170, justifyContent: 'center' }}
               onDone={(o) => { if (o.ok) { setTrade({ ...trade, grams: 0, note: '' }); load(); } }}
               input={() => ({
                 accountId: trade.accountId, metal, grams: trade.grams,
-                pricePerGram: trade.pricePerGram || perGram,
+                pricePerGram: quotedPrice, currency: trade.currency,
+                makingPerGram: trade.makingPerGram || undefined,
                 date: logDate, note: trade.note || undefined,
                 intention: trade.intention,
               })}>
@@ -333,11 +389,28 @@ function Body() {
                 {l.direction === 'sell' ? '−' : '+'}{l.grams}</span>,
               field: (d, set) => <Amount value={d.grams ?? 0} ariaLabel="Grams"
                                          onChange={(n) => set({ grams: n })} /> },
-            { key: 'price', label: 'Price / g', kind: 'amount', align: 'right', width: '118px',
+            { key: 'price', label: 'Price / g', kind: 'amount', align: 'right', width: '124px',
               value: (l) => l.pricePerGram,
-              cell: (l) => <span className="mono">{fmt(l.pricePerGram)}</span>,
+              /* Quoted in dollars, it is read back in dollars: the pound figure is in the
+                 total beside it, and printing both here said the same thing twice. */
+              cell: (l) => (
+                <span className="mono">{fmt(l.priceNative ?? l.pricePerGram)}
+                  {(l.currency ?? 'EGP') !== 'EGP' && (
+                    <span style={{ fontSize: 10, color: 'var(--faint)' }}> {l.currency}</span>
+                  )}
+                </span>
+              ),
               field: (d, set) => <Amount value={d.pricePerGram ?? 0} ariaLabel="Price a gram"
                                          onChange={(n) => set({ pricePerGram: n })} /> },
+            /* مصنعية: what the workmanship cost by the gram, in the currency it was quoted
+               in. Nought on a lot bought as bullion, which is most of them. */
+            { key: 'making', label: 'Making / g', kind: 'amount', align: 'right', width: '118px',
+              value: (l) => l.makingPerGram ?? 0,
+              cell: (l) => (l.makingPerGram
+                ? <span className="mono">{fmt(l.makingPerGram)}</span>
+                : <span style={{ color: 'var(--faint)' }}>—</span>),
+              field: (d, set) => <Amount value={d.makingPerGram ?? 0} ariaLabel="Making charge a gram"
+                                         onChange={(n) => set({ makingPerGram: n })} /> },
             { key: 'total', label: 'Total', kind: 'amount', align: 'right', width: '136px',
               value: (l) => l.totalEgp,
               // What it came to follows from the grams and the price; it is not typed in.
@@ -400,11 +473,13 @@ function Body() {
             // Buying and selling are different capabilities and one gesture.
             capability: (d) => (d.direction === 'sell' ? 'metal.sell' : 'metal.buy'),
             blank: { date: new Date().toISOString().slice(0, 10), direction: 'buy',
-                     grams: 0, pricePerGram: 0, accountId: data.settings.burnAccountId,
+                     grams: 0, pricePerGram: 0, makingPerGram: 0,
+                     accountId: data.settings.burnAccountId,
                      intention: 'investment', note: '' },
             valid: (d) => Number(d.grams) > 0 && !!d.accountId,
             build: (d) => ({ metal, accountId: d.accountId, grams: Number(d.grams),
                              pricePerGram: Number(d.pricePerGram) || undefined,
+                             makingPerGram: Number(d.makingPerGram) || undefined,
                              date: d.date, note: d.note || undefined,
                              intention: d.intention || 'investment' }),
           }}

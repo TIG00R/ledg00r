@@ -333,6 +333,36 @@ function Reminders() {
  */
 function AddReminder({ onAdd }: { onAdd: (r: Omit<Reminder, 'id'>) => void }) {
   const { data, recurring } = useApp();
+  const { live, version } = useLive();
+  /**
+   * The properties there is a plan against.
+   *
+   * Read from the ledger, because the dataset the screens hold carries no installments when
+   * there is a service — which is why this picker used to be empty, and why the form then
+   * quietly accepted a reminder that named no property and therefore warned about nothing.
+   */
+  const [plans, setPlans] = useState<Array<{ id: string; name: string }> | null>(null);
+  /** the tickers there is a position in, read from the ledger for the same reason */
+  const [tickers, setTickers] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!live) { setPlans(null); setTickers(null); return; }
+    let cancelled = false;
+    (ledger as any)['installments.list']({})
+      .then((rows: Array<{ propertyId: string; property: string }>) => {
+        if (cancelled) return;
+        const seen = new Map<string, string>();
+        for (const r of rows ?? []) if (!seen.has(r.propertyId)) seen.set(r.propertyId, r.property);
+        setPlans([...seen].map(([id, name]) => ({ id, name })));
+      })
+      .catch(() => { if (!cancelled) setPlans([]); });
+    (ledger as any)['positions.list']({})
+      .then((rows: Array<{ ticker: string }>) => {
+        if (!cancelled) setTickers((rows ?? []).map((r) => r.ticker));
+      })
+      .catch(() => { if (!cancelled) setTickers([]); });
+    return () => { cancelled = true; };
+  }, [live, version]);
+
   const [subject, setSubject] = useState<Reminder['subject']>('installment');
   const [subjectId, setSubjectId] = useState('');
   const [offsetValue, setOffsetValue] = useState(3);
@@ -343,17 +373,28 @@ function AddReminder({ onAdd }: { onAdd: (r: Omit<Reminder, 'id'>) => void }) {
 
   const targets: Array<{ value: string; label: string; hint?: string }> =
       subject === 'installment'
-        ? data.nodes.filter((n) => data.installments.some((i) => i.propertyId === n.id))
-            .map((n) => ({ value: n.id, label: n.name, hint: 'a payment falling due' }))
+        ? (plans ?? data.nodes
+            .filter((n) => data.installments.some((i) => i.propertyId === n.id))
+            .map((n) => ({ id: n.id, name: n.name })))
+            .map((pl) => ({ value: pl.id, label: pl.name, hint: 'a payment falling due' }))
     : subject === 'income'
         ? data.incomeSources.map((s) => ({ value: s.id, label: s.name, hint: 'has not landed' }))
     : subject === 'recurring'
         ? recurring.map((t) => ({ value: t.id, label: t.name, hint: 'standing charge' }))
     : subject === 'stock'
-        ? [...new Set(data.orders.map((o) => o.ticker))].map((t) => ({ value: t, label: t }))
+        ? [...new Set(tickers ?? data.orders.map((o) => o.ticker))].map((t) => ({ value: t, label: t }))
     : [];
 
-  const needsTarget = targets.length > 0 || subject === 'stock';
+  /**
+   * Whether this subject is one that has to name what it watches.
+   *
+   * It is the subject that decides, never the list: an empty list means there is nothing to
+   * watch yet, which is a reason to say so rather than to accept a reminder with no target.
+   * A targetless installment reminder is matched against no property and warns about nothing.
+   */
+  const needsTarget = subject === 'installment' || subject === 'income'
+                   || subject === 'recurring' || subject === 'stock';
+  const nothingToWatch = needsTarget && targets.length === 0;
   const ready = !needsTarget || !!subjectId;
 
   const submit = () => {
@@ -389,9 +430,18 @@ function AddReminder({ onAdd }: { onAdd: (r: Omit<Reminder, 'id'>) => void }) {
 
         {needsTarget && (
           <Field label="Which one">
-            <Select ariaLabel="Which one" value={subjectId} style={{ width: 220 }}
-                    onChange={setSubjectId}
-                    options={[{ value: '', label: 'Choose one' }, ...targets]} />
+            {nothingToWatch ? (
+              <div style={{ fontSize: 12, color: 'var(--muted)', width: 220, paddingTop: 6 }}>
+                {subject === 'installment' ? 'No property is on a plan yet.'
+                 : subject === 'income' ? 'No source of income yet.'
+                 : subject === 'recurring' ? 'No standing charge yet.'
+                 : 'Nothing has been bought yet.'}
+              </div>
+            ) : (
+              <Select ariaLabel="Which one" value={subjectId} style={{ width: 220 }}
+                      onChange={setSubjectId}
+                      options={[{ value: '', label: 'Choose one' }, ...targets]} />
+            )}
           </Field>
         )}
 

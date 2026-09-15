@@ -7,7 +7,8 @@
 services:
   ledger:
     build: .
-    image: ledg00r:latest
+    # tagged per checkout, so a development build never overwrites the production image
+    image: ledg00r:${LEDGER_TAG:-latest}
     ports:
       - "${LEDGER_PORT:-8080}:8080"
     volumes:

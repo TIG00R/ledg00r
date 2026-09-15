@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { command, query, NodeId, Outcome } from '@ledger/contracts';
 import { schema as t, allBalances } from '@ledger/db';
 import { eq } from 'drizzle-orm';
-import { installmentDueDate, defaultIntention, intentionsFor, intentionLabel } from '@ledger/engine';
+import { installmentDueDate, defaultIntention, intentionsFor, intentionLabel,
+         unitValue, type Valuation } from '@ledger/engine';
 import { assetKindOf } from '../zakat-assets.js';
 import { readMarket } from '../read.js';
 import type { AppCtx } from '../context.js';
@@ -49,18 +50,18 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
        * A car bought for twenty thousand dollars holds twenty thousand of something, and
        * which something is decided by how the node is valued. Reporting the bare number as
        * though it were the ledger's own currency understates it by the whole exchange rate,
-       * so the node's valuation is applied here — the same rule the engine uses for the
-       * totals on the front page.
+       * so the node's valuation is applied here — literally the engine's own rule, called
+       * rather than restated, so this list and the front page cannot disagree. Restating it
+       * is what dropped the currency on a fixed value: a dollar car read as pounds.
        */
       const valueOf = (n: { valuation: string; priceKey: string | null; currency: string | null },
-                       qty: number): number => {
-        if (n.valuation === 'live_price') return qty * (market.prices[n.priceKey ?? ''] ?? 1);
-        if (n.valuation !== 'fx') return qty;
-        const key = n.priceKey ?? n.currency ?? '';
-        // a price key is either a currency code or a pair written as usd_egp
-        const code = (/^([A-Za-z]{3})_[A-Za-z]{3}$/.exec(key)?.[1] ?? key).toUpperCase();
-        return qty * (market.fxRates[code] ?? 1);
-      };
+                       qty: number): number =>
+        qty * unitValue({
+          id: '', kind: 'asset', name: '', openingQty: 0,
+          valuation: n.valuation as Valuation,
+          priceKey: n.priceKey ?? undefined,
+          currency: n.currency ?? undefined,
+        }, market);
 
       return ctx.db.select().from(t.nodes).all()
         // Metal is a weight, not an asset in this sense — it has its own screen and its own
@@ -165,12 +166,13 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'asset.update',
     context: 'holdings',
-    summary: 'Rename an asset, change its mark, its colour, or how it was paid for.',
+    summary: 'Rename an asset, change its mark, its colour, its currency, or how it was paid for.',
     input: z.object({
       assetId: NodeId,
       name: z.string().min(1).max(80).optional(),
       kind: z.enum(['property', 'vehicle', 'equipment', 'other']).optional(),
       ownership: z.enum(['owned', 'installments']).optional(),
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       icon: z.string().max(80).optional(),
       color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
       intention: z.enum(['live_in', 'rent', 'sale', 'personal', 'investment']).optional(),

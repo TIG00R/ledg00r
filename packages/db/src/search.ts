@@ -31,7 +31,7 @@ export function fold(text: string): string {
 }
 
 export interface SearchRow {
-  kind: 'expense' | 'giving' | 'income' | 'order' | 'movement' | 'lot';
+  kind: 'expense' | 'giving' | 'income' | 'order' | 'movement' | 'lot' | 'note';
   recordId: string;
   occurredOn: string;
   title: string;

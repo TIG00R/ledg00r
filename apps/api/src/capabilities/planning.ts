@@ -28,6 +28,10 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
       id: z.string(), kind: z.string(), label: z.string(), detail: z.string().optional(),
       date: z.string(), daysAway: z.number(), amount: z.number().optional(),
       currency: z.string().optional(), due: z.boolean(), overdue: z.boolean().optional(),
+      /** how far ahead the reminder behind it warns, when one does */
+      reminderLead: z.string().optional(),
+      /** value moving between things you own — it leaves an account without being spent */
+      internal: z.boolean().optional(),
     })),
     handler: async ({ withinDays }) => {
       const ctx = ctxOf();
@@ -42,6 +46,7 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
         id: e.id, kind: e.kind, label: e.label, detail: e.detail,
         date: e.date.toISOString().slice(0, 10), daysAway: e.daysAway,
         amount: e.amount, currency: e.currency, due: e.due, overdue: e.overdue,
+        reminderLead: e.reminderLead, internal: e.internal,
       }));
     },
   }),
@@ -173,9 +178,24 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
        */
       assetId: NodeId.optional(),
     }),
-    output: z.object({ id: z.string(), summary: z.string() }),
+    output: z.union([z.object({ id: z.string(), summary: z.string() }), Outcome]),
     handler: async (input) => {
       const { db } = ctxOf();
+
+      /**
+       * It has to land somewhere real.
+       *
+       * A source pays into an account, and one pointing at something that is not an account —
+       * or at nothing, which is what an unconfigured ledger's "income account" setting is —
+       * pays into a hole: the payment is recorded and no balance moves. Said here rather than
+       * discovered later, because "nowhere" is not a thing a ledger can be corrected into.
+       */
+      const into = db.select().from(t.nodes).where(eq(t.nodes.id, input.toAccountId)).get();
+      if (!into || into.kind !== 'cash') {
+        return refusal('unknown_node', `${input.toAccountId} is not an account this income can land in.`,
+                       'Choose one of the accounts under Accounts.');
+      }
+
       const id = newId('src');
       const scheduled = input.cadence !== 'irregular' && input.cadence !== 'one_off';
       /**
@@ -294,6 +314,37 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
       if (!row) return refusal('not_found', `${sourceId} is not an income source.`);
       db.update(t.incomeSources).set({ archived: !restore }).where(eq(t.incomeSources.id, sourceId)).run();
       return noted(`${row.name} ${restore ? 'restored' : 'retired'}`);
+    },
+  }),
+
+  query({
+    name: 'recurring.list',
+    context: 'planning',
+    summary: 'Every standing charge this ledger holds, running or switched off.',
+    detail: 'The templates themselves, not the movements they post. A screen that could add one but never read them back showed an empty list to a ledger that had several.',
+    input: z.object({ includeDisabled: z.boolean().default(true) }),
+    output: z.array(z.object({
+      id: z.string(), name: z.string(),
+      fromNodeId: z.string().nullable(), toNodeId: z.string().nullable(),
+      amount: z.number().nullable(), currency: z.string(), cadence: z.string(),
+      dayOfMonth: z.union([z.number(), z.literal('last')]).nullable(),
+      startDate: z.string().nullable(), endDate: z.string().nullable(),
+      categoryId: z.string().nullable(), enabled: z.boolean(),
+      note: z.string().nullable(), internal: z.boolean(),
+    })),
+    handler: async ({ includeDisabled }) => {
+      const ctx = ctxOf();
+      return readTemplates(ctx)
+        .filter((tpl) => includeDisabled || tpl.enabled)
+        .map((tpl) => ({
+          id: tpl.id, name: tpl.name,
+          fromNodeId: tpl.fromNodeId ?? null, toNodeId: tpl.toNodeId ?? null,
+          amount: tpl.amount, currency: tpl.currency, cadence: tpl.cadence,
+          dayOfMonth: tpl.dayOfMonth ?? null,
+          startDate: tpl.startDate ?? null, endDate: tpl.endDate ?? null,
+          categoryId: tpl.categoryId ?? null, enabled: tpl.enabled,
+          note: tpl.note ?? null, internal: tpl.internal ?? false,
+        }));
     },
   }),
 
@@ -482,6 +533,9 @@ export function readReminders(ctx: AppCtx): Reminder[] {
     enabled: r.enabled, offsetValue: r.offsetValue, offsetUnit: r.offsetUnit,
     note: r.note ?? undefined, direction: r.direction ?? undefined,
     triggerPrice: r.triggerPrice ?? undefined,
+    // the date the owner asked to be reminded on; without it every dated intention
+    // surfaced as if it were due today
+    dueDate: r.dueDate ?? undefined,
     cadence: (r.cadence as Reminder['cadence']) ?? undefined,
     graceDays: r.graceDays ?? undefined,
   }));

@@ -7,6 +7,7 @@ import { Field } from './UI';
 /** The family a given subject picks from — cars for the car, metal for the metal. */
 const FAMILY_OF: Record<AssetKey, keyof typeof ICON_FAMILY> = {
   cash: 'cash', gold: 'gold', realestate: 'realestate', car: 'car', stocks: 'stocks',
+  other: 'assets',
 };
 
 export function AppearanceSettings() {

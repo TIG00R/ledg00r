@@ -43,7 +43,7 @@ export interface ManagedRow {
 }
 
 export function Manager({
-  rows, fields, markFamily, addLabel, emptyLabel,
+  rows, fields, markFamily, addLabel, emptyLabel, addBlocked, addValid,
   onSave, onDelete, onAdd, canDelete = true,
 }: {
   rows: ManagedRow[];
@@ -51,6 +51,22 @@ export function Manager({
   markFamily: string;
   addLabel: string;
   emptyLabel?: string;
+  /**
+   * Why nothing can be added yet, when something is missing first.
+   *
+   * An income source has to land in an account, so a ledger with no accounts cannot have one
+   * — and saying that here beats offering the form and refusing what it sends, which is what
+   * "The input does not match what this capability takes" was.
+   */
+  addBlocked?: string;
+  /**
+   * Why this particular draft cannot be added yet, when it cannot.
+   *
+   * Returns the reason, or nothing when the draft is fine. Said beside a disabled Add rather
+   * than discovered by sending it: an income source paid in a currency no account is held in
+   * has nowhere to land, and the form knows that before the ledger is asked.
+   */
+  addValid?: (draft: Record<string, string | number>) => string | undefined;
   onSave: (id: string, patch: Record<string, string | number>) => void | Promise<unknown>;
   onDelete?: (id: string) => void | Promise<unknown>;
   onAdd?: (draft: Record<string, string | number>) => void | Promise<unknown>;
@@ -197,7 +213,9 @@ export function Manager({
         </div>
       ))}
 
-      {onAdd && (adding ? (
+      {onAdd && addBlocked ? (
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--faint)' }}>{addBlocked}</p>
+      ) : onAdd && (adding ? (
         <>
         <div style={{
           display: 'grid', gridTemplateColumns: columnsFor(draft), gap: 12, alignItems: 'center',
@@ -228,7 +246,8 @@ export function Manager({
             );
           })}
           <span className="btn-pair">
-            <button className="btn add sm" disabled={!draft[fields[0]!.key] || !!running}
+            <button className="btn add sm"
+              disabled={!draft[fields[0]!.key] || !!running || !!addValid?.(draft)}
               onClick={async () => { await onAdd(draft); setDraft({}); setAdding(false); setPicking(null); }}>
               <Icon name="plus" size={13} motion="none" /> Add
             </button>
@@ -238,6 +257,10 @@ export function Manager({
             </button>
           </span>
         </div>
+
+        {addValid?.(draft) && (
+          <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--gold)' }}>{addValid(draft)}</p>
+        )}
 
         {picking === '__new' && (
           <MarkPicker value={draft.mark ? String(draft.mark) : undefined} family={markFamily}

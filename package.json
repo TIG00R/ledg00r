@@ -7,8 +7,9 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace @ledger/web",
-    "dev:api": "npx tsx apps/api/src/main.ts",
+    "dev": "LEDGER_API=http://127.0.0.1:8081 npm run dev --workspace @ledger/web",
+    "dev:api": "LEDGER_ENV=dev PORT=8081 LEDGER_DB=$PWD/.dev/ledger.db npx tsx apps/api/src/main.ts",
+    "dev:reset": "rm -rf .dev && mkdir -p .dev && cp dummy.db .dev/ledger.db && echo '.dev/ledger.db: fresh copy of dummy.db'",
     "build": "npm run build --workspace @ledger/web",
     "start": "npm run build && npx tsx apps/api/src/main.ts",
     "mcp": "npx tsx apps/mcp/src/stdio.ts",

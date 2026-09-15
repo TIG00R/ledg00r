@@ -99,6 +99,33 @@ export const DryRun = z.object({ dryRun: z.boolean().default(false) });
 
 
 /**
+ * A movement, the other way round.
+ *
+ * Each leg is mirrored — what went out comes back, what came in goes — and a leg that
+ * carried a fee gets that fee handed back as a leg of its own. A fee only ever subtracts, so
+ * it cannot be mirrored in place; left out altogether, reversing a purchase that cost a
+ * commission put the metal back and kept the commission, which is money vanishing.
+ */
+export function reversalLegs(legs: Array<{
+  fromNodeId: string | null; toNodeId: string | null;
+  qtyFrom: number | null; qtyTo: number | null;
+  feeQty: number | null; feeNodeId: string | null; categoryId: string | null;
+}>) {
+  return [
+    ...legs.map((l) => ({
+      fromNodeId: l.toNodeId ?? undefined,
+      toNodeId: l.fromNodeId ?? undefined,
+      qtyFrom: l.qtyTo ?? l.qtyFrom ?? 0,
+      qtyTo: l.qtyFrom ?? undefined,
+      categoryId: l.categoryId ?? undefined,
+    })),
+    ...legs
+      .filter((l) => l.feeQty && l.feeNodeId)
+      .map((l) => ({ toNodeId: l.feeNodeId!, qtyFrom: l.feeQty!, qtyTo: l.feeQty! })),
+  ];
+}
+
+/**
  * Reverse a movement, if there is one.
  *
  * Correcting or removing a log row has to undo what it moved, or the balances go on
@@ -115,13 +142,7 @@ export function undoMovement(ctx: AppCtx, movementId: string | null | undefined)
 
   const mv = validate({
     date: today(ctx), kind: 'correction', note: 'reverses a corrected record',
-    legs: legs.map((l) => ({
-      fromNodeId: l.toNodeId ?? undefined,
-      toNodeId: l.fromNodeId ?? undefined,
-      qtyFrom: l.qtyTo ?? l.qtyFrom ?? 0,
-      qtyTo: l.qtyFrom ?? undefined,
-      categoryId: l.categoryId ?? undefined,
-    })),
+    legs: reversalLegs(legs),
   }, ctx.ledger());
   writeMovementDetailed(ctx.db, mv, { correctsId: movementId });
 }

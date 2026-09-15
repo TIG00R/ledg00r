@@ -49,6 +49,48 @@ function Body() {
   /** things that can earn rent, so a source can name the one that earns it */
   const lettable = data.nodes.filter((n) => n.kind === 'asset' && !n.unit
     && !/^brokerage|^debt-/.test(n.id) && !n.archived);
+  /**
+   * The accounts income can land in.
+   *
+   * A source pays into one, which is what makes its payments money rather than a note — so
+   * the account is chosen on the source. It used to be taken from a setting that is empty in
+   * a ledger nobody has configured, and the form then sent nothing where an account id was
+   * required: adding any source at all failed with "the input does not match what this
+   * capability takes", and no field on screen said what was missing.
+   *
+   * Held at a bank, as the accounts screen reads them — the brokerage wallet is the share
+   * book's own money and no wage is paid into it.
+   */
+  const banked = new Set(data.institutions.map((i) => i.id));
+  const cashAccounts = data.nodes.filter((n) => n.kind === 'cash' && !n.archived
+    && n.parentId && banked.has(n.parentId));
+  /**
+   * The accounts a source paid in one currency can actually land in.
+   *
+   * An account holds one currency, so a salary paid in dollars lands in a dollar account —
+   * offering every account would offer a destination that cannot receive it, and a pound
+   * arriving in a pound account is not the same fact as a pound arriving in an Egyptian one.
+   */
+  const accountsIn = (code: string) => cashAccounts.filter((n) => (n.currency ?? 'EGP') === code);
+  const currencyOf = (v: Record<string, string | number>) =>
+    String(v.currency || currencies[0]?.code || 'EGP');
+  const accountOptions = (code: string) => accountsIn(code).map((n) => ({
+    value: n.id, label: n.name,
+    hint: data.institutions.find((i) => i.id === n.parentId)?.name,
+  }));
+  /**
+   * Which account a draft is actually saying, rather than which one it last said.
+   *
+   * A picker shows its first option when the value it holds is not among them, so changing
+   * the currency leaves the field reading one account while the draft still holds another —
+   * and saving would then write the one nobody can see. This is what the picker is showing:
+   * the chosen account when it is still a choice, and otherwise the first that is.
+   */
+  const accountFor = (v: Record<string, string | number>) => {
+    const mine = accountsIn(currencyOf(v));
+    const chosen = String(v.toAccountId ?? '');
+    return mine.some((n) => n.id === chosen) ? chosen : (mine[0]?.id ?? '');
+  };
   const { run, live, version } = useLive();
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
   const [draftStart, setDraftStart] = useState(new Date().toISOString().slice(0, 10));
@@ -159,10 +201,15 @@ function Body() {
         </div>
       </Panel>
 
-      <Row cols={COLS} style={{ padding: '0 18px' }}>
-        <span /><span className="ov">Source</span><span className="ov">Amount</span>
-        <span className="ov">When it arrives</span><span className="ov">Lands in</span><span />
-      </Row>
+      {/* These head the reading rows below, and only those: the records tab draws its own
+          table with its own headings, and the editor draws a different set of fields again —
+          over which "Lands in" sat above the picker for the asset that earns the money. */}
+      {tab === 'sources' && mode !== 'edit' && (
+        <Row cols={COLS} style={{ padding: '0 18px' }}>
+          <span /><span className="ov">Source</span><span className="ov">Amount</span>
+          <span className="ov">When it arrives</span><span className="ov">Lands in</span><span />
+        </Row>
+      )}
 
       {tab === 'sources' && mode === 'edit' ? (
         <Manager
@@ -178,8 +225,9 @@ function Body() {
             { key: 'currency', label: 'Currency', kind: 'select', width: '130px',
               options: currencies.map((c) => ({ value: c.code, label: c.code, hint: c.name })) },
             { key: 'cadence', label: 'How often', kind: 'select', width: '150px',
+              // every one of these is a cadence the ledger knows. "Daily" was offered here
+              // and is not one of them, so choosing it failed the call rather than the field
               options: [
-                { value: 'daily', label: 'Daily' },
                 { value: 'weekly', label: 'Weekly' },
                 { value: 'monthly', label: 'Monthly' },
                 { value: 'quarterly', label: 'Quarterly' },
@@ -204,6 +252,21 @@ function Body() {
               when: (v) => v.cadence === 'quarterly' || v.cadence === 'annually',
               hint: 'and every three months after' },
             /**
+             * Where it lands.
+             *
+             * The column reading "Lands in" used to sit over the picker for the asset that
+             * earns the money, so the one question it looked like it was answering was the
+             * one it could not answer: the list was of flats and cars, not accounts.
+             */
+            { key: 'toAccountId', label: 'Lands in', kind: 'select', width: '190px',
+              hint: 'accounts held in that currency',
+              options: (_row, values) => {
+                const code = currencyOf(values);
+                const mine = accountOptions(code);
+                return mine.length ? mine
+                  : [{ value: '', label: `No ${code} account`, hint: 'add one under Accounts' }];
+              } },
+            /**
              * Rent has to name the thing that earns it.
              *
              * A let flat is outside zakat itself and what it earns is not, so the earnings
@@ -226,10 +289,16 @@ function Body() {
               cadence: src.scheduled ? src.cadence : 'irregular',
               dayOfMonth: String(src.dayOfMonth ?? 1),
               annualOn: String(src.startDate?.slice(5, 7) ?? 1),
+              toAccountId: src.toNodeId,
               assetId: (src as { assetId?: string | null }).assetId ?? '',
             },
           }))}
-          onSave={(id, patch) => run('income.source.update', {
+          onSave={(id, patch) => {
+            const src = data.incomeSources.find((x) => x.id === id);
+            // what the row is after this edit, so the account follows the currency on screen
+            const after = { currency: src?.currency ?? '', toAccountId: src?.toNodeId ?? '',
+                            ...patch } as Record<string, string | number>;
+            return run('income.source.update', {
             sourceId: id,
             name: patch.name as string | undefined,
             amount: patch.cadence === 'irregular' ? null
@@ -239,8 +308,10 @@ function Body() {
             dayOfMonth: patch.dayOfMonth === 'last' ? 'last'
                       : patch.dayOfMonth != null ? Number(patch.dayOfMonth) : undefined,
             icon: patch.mark as string | undefined,
+            toAccountId: accountFor(after) || undefined,
             assetId: patch.assetId === undefined ? undefined : ((patch.assetId as string) || null),
-          })}
+            });
+          }}
           onAdd={(d) => run('income.source.add', {
             name: d.name as string,
             amount: d.cadence === 'irregular' || d.amount === '' || d.amount == null
@@ -248,10 +319,18 @@ function Body() {
             currency: String(d.currency || currencies[0]?.code || 'EGP'),
             cadence: (d.cadence as string) || 'monthly',
             dayOfMonth: d.dayOfMonth === 'last' ? 'last' : Number(d.dayOfMonth ?? 1),
-            toAccountId: data.settings.incomeAccountId,
+            // the select shows the first account in the chosen currency until one is picked,
+            // so an untouched draft sends what it showed rather than a setting nobody filled in
+            toAccountId: accountFor(d),
             icon: d.mark as string | undefined,
             assetId: (d.assetId as string) || undefined,
           })}
+          addBlocked={cashAccounts.length === 0
+            ? 'Income lands in an account, and this ledger has none yet. Add one under Accounts first.'
+            : undefined}
+          addValid={(d) => (accountFor(d)
+            ? undefined
+            : `Nothing can receive ${currencyOf(d)}: there is no account held in it. Add one under Accounts, or choose another currency.`)}
           onDelete={(id) => run('income.source.retire', { sourceId: id })}
         />
       ) : tab === 'sources' ? (
@@ -334,10 +413,18 @@ function Body() {
               cell: (l) => <span className="mono" style={{ fontSize: 13 }}>{l.date}</span>,
               field: (d, set) => <DateField value={d.date} onChange={(v) => set({ date: v })} ariaLabel="Date" /> },
 
+            /* Choosing the source answers two more questions on its own: what it is paid in,
+               and where it lands. Both were left on whatever the form happened to hold, so a
+               dollar retainer arrived, by default, in an Egyptian account. */
             { key: 'source', label: 'Source', kind: 'pick',
               value: (l) => l.source,
               field: (d, set) => (
-                <Select ariaLabel="Source" value={d.sourceId} onChange={(v) => set({ sourceId: v })}
+                <Select ariaLabel="Source" value={d.sourceId}
+                        onChange={(v) => {
+                          const src = data.incomeSources.find((x) => x.id === v);
+                          set({ sourceId: v,
+                                ...(src ? { currency: src.currency, accountId: src.toNodeId } : {}) });
+                        }}
                         options={occasional.map((x) => ({ value: x.id, label: x.name }))} />
               ) },
 
@@ -390,10 +477,16 @@ function Body() {
           add={{
             label: 'Log income that landed',
             capability: 'income.record',
-            blank: { date: new Date().toISOString().slice(0, 10),
-                     sourceId: occasional[0]?.id ?? '',
-                     accountId: data.settings.incomeAccountId,
-                     currency: display, amount: 0, note: '' },
+            blank: (() => {
+              // the first source is the one the picker shows, so the account and the currency
+              // start as that source's own rather than as a setting nobody has filled in
+              const first = occasional[0];
+              const currency = first?.currency ?? display;
+              return { date: new Date().toISOString().slice(0, 10),
+                       sourceId: first?.id ?? '',
+                       accountId: first?.toNodeId ?? accountsIn(currency)[0]?.id ?? '',
+                       currency, amount: 0, note: '' };
+            })(),
             valid: (d) => d.amount > 0 && !!d.accountId,
             build: (d) => ({ sourceId: d.sourceId || undefined, accountId: d.accountId,
                              amount: d.amount, currency: d.currency, date: d.date,

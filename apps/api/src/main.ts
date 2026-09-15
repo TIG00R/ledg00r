@@ -25,6 +25,20 @@ const DATA = process.env.LEDGER_DATA ?? resolve(process.cwd(), 'data');
 const DB_FILE = process.env.LEDGER_DB ?? resolve(DATA, 'ledger.db');
 const WEB_ROOT = process.env.LEDGER_WEB ?? resolve(process.cwd(), 'apps/web/dist');
 
+/**
+ * Which ledger this is.
+ *
+ * Development is a copy of the demonstration fixture under `.dev/`, and it either opens that
+ * or it does not open at all. Three places take a database path from the environment and a
+ * path is easy to mistype; a ledger opened by accident is someone's actual money.
+ */
+const ENV = process.env.LEDGER_ENV ?? 'prod';
+if (ENV === 'dev' && !DB_FILE.includes('/.dev/')) {
+  console.error(`refusing to start: LEDGER_ENV=dev but the database is ${DB_FILE}`);
+  console.error('development opens only a database under .dev/ — run `npm run dev:reset` first');
+  process.exit(1);
+}
+
 if (!existsSync(DATA)) mkdirSync(DATA, { recursive: true });
 
 const { db, ctx, ambient } = makeApp(DB_FILE);
@@ -86,8 +100,12 @@ async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): Promise
 startMarketRefresh(ctx);
 
 startScheduler(ctx, ({ posted, skipped }) => {
-  for (const p of posted) console.log(`[scheduler] posted ${p.what}: ${p.amount}`);
-  for (const s of skipped) console.warn(`[scheduler] skipped ${s.what} — ${s.because}`);
+  // What was paid and how much is the ledger's business, not the terminal's. Development
+  // says it plainly because the money there is invented; production counts and stays quiet.
+  if (ENV === 'dev') {
+    for (const p of posted) console.log(`[scheduler] posted ${p.what}: ${p.amount}`);
+    for (const s of skipped) console.warn(`[scheduler] skipped ${s.what} — ${s.because}`);
+  } else console.log(`[scheduler] posted ${posted.length}, skipped ${skipped.length}`);
 });
 
 server.listen(PORT, () => {

@@ -3,7 +3,7 @@
     "ledg00r": {
       "command": "npx",
       "args": ["tsx", "apps/mcp/src/stdio.ts"],
-      "env": { "LEDGER_DB": "data/ledger.db" }
+      "env": { "LEDGER_DB": ".dev/ledger.db" }
     }
   }
 }

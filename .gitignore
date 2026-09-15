@@ -29,3 +29,11 @@ notes/
 # claude code: shared config tracked, local overrides not
 .claude/settings.local.json
 *.tsbuildinfo
+
+# which checkout this is: production in ~/prod, development in ~/dev. Untracked on
+# purpose — if it travelled with the repository both checkouts would be the same
+# Compose project again, and dev could stop or delete production.
+.env
+
+# the development ledger: a copy of dummy.db, invented money, thrown away freely
+/.dev/

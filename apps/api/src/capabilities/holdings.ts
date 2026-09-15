@@ -37,6 +37,78 @@ export function settleOwnership(db: Db, propertyId: string): 'owned' | 'installm
   return ownership;
 }
 
+/**
+ * Paying one installment, out of a named account.
+ *
+ * Two capabilities need this: `installment.pay`, where a payment already on the plan is made,
+ * and `plan.upsert`, where a payment is written down as having been made already — the plan a
+ * person types in on Tuesday usually has a row or two behind it that were paid in March.
+ * Sharing the act means the movement, the account, and the settling of ownership are the same
+ * in both, rather than two spellings of "paid" that drift apart.
+ */
+function payInstallment(
+  ctx: AppCtx,
+  input: { installmentId: string; accountId?: string; date?: string; dryRun?: boolean },
+) {
+  const inst = ctx.db.select().from(t.installments).where(eq(t.installments.id, input.installmentId)).get();
+  if (!inst) return refusal('not_found', `${input.installmentId} is not an installment.`);
+  if (inst.paidAt) return refusal('duplicate', 'That installment is already marked paid.', 'Correct it instead, if the payment was wrong.');
+
+  const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
+  const equity = !/maintenance|service|fee/i.test(inst.note);
+  const date = input.date ?? today(ctx);
+
+  // The account named on the call, else the one the payment already names, else the one
+  // this property pays from automatically. Nothing is guessed beyond that.
+  const auto = ctx.db.select().from(t.autopay)
+    .where(eq(t.autopay.propertyId, inst.propertyId)).get();
+  const from = input.accountId ?? inst.payFrom ?? (auto?.enabled ? auto.fromNodeId : null);
+  if (!from) {
+    return refusal('unknown_node', 'This payment does not say which account it comes out of.',
+                   'Choose one on the row, or turn on paying automatically for this property.');
+  }
+
+  return post(ctx, {
+    date, kind: 'installment', note: inst.note || undefined,
+    legs: [equity && property
+      ? { fromNodeId: from, qtyFrom: inst.amountEgp, toNodeId: property.id, qtyTo: inst.amountEgp }
+      : { fromNodeId: from, qtyFrom: inst.amountEgp }],
+  }, `${inst.amountEgp} to ${property?.name ?? inst.propertyId}${equity ? '' : ' — buys no equity'}`,
+  {
+    dryRun: input.dryRun,
+    after: (db, movementId) => {
+      db.update(t.installments).set({ paidAt: date, movementId, payFrom: from })
+        .where(eq(t.installments.id, input.installmentId)).run();
+      settleOwnership(db, inst.propertyId);
+    },
+  });
+}
+
+/**
+ * A metal price as it was quoted, read back in pounds.
+ *
+ * A dealer quotes in whatever currency they trade in, and charges workmanship — مصنعية — per
+ * gram on top of the metal. The two are different kinds of money: the price buys weight, the
+ * making charge buys none of it and cannot be sold back, so it is spending rather than value
+ * moved between two things you own. Both are quoted in the same currency, so both convert at
+ * the same rate, and the rest of the ledger only ever sees pounds.
+ */
+function quoted(
+  market: { fxRates: Record<string, number> },
+  input: { currency?: string; pricePerGram?: number; makingPerGram?: number; grams: number },
+  fallbackPerGramEgp: number,
+) {
+  const currency = input.currency ?? 'EGP';
+  const fx = currency === 'EGP' ? 1 : market.fxRates[currency] ?? 1;
+  const priceNative = input.pricePerGram ?? (fallbackPerGramEgp / fx);
+  const makingNative = input.makingPerGram ?? 0;
+  return {
+    currency, priceNative, makingNative,
+    perGramEgp: priceNative * fx,
+    makingEgp: input.grams * makingNative * fx,
+  };
+}
+
 export const holdingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'metal.buy',
@@ -48,6 +120,10 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       metal: z.enum(['gold', 'silver']).default('gold'),
       grams: z.number().positive(),
       pricePerGram: z.number().positive().optional(),
+      /** the currency the price and the making charge are quoted in; pounds unless said */
+      currency: z.string().length(3).optional(),
+      /** the making charge — مصنعية — per gram, in the same currency as the price */
+      makingPerGram: z.number().min(0).optional(),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
       /**
@@ -68,8 +144,9 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       if (!holding) return refusal('not_found', `This ledger has no ${input.metal} holding to add to.`);
 
       const market = readMarket(ctx.db);
-      const perGram = input.pricePerGram
-        ?? (input.metal === 'silver' ? (market.prices.silver_g ?? 0) : market.goldPerG);
+      const inForce = input.metal === 'silver' ? (market.prices.silver_g ?? 0) : market.goldPerG;
+      const q = quoted(market, input, inForce);
+      const perGram = q.perGramEgp;
       if (!(perGram > 0)) {
         return refusal('missing_rate', `No price is recorded for ${input.metal}.`,
                        'Set one in the Gold and silver screen, or give a price per gram here.');
@@ -77,13 +154,22 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       const costEgp = input.grams * perGram;
       const rate = acct.currency === 'EGP' ? 1 : market.fxRates[acct.currency ?? 'EGP'] ?? 1;
       const costNative = costEgp / rate;
+      // Workmanship leaves the same account and buys no weight, so it rides as the leg's fee
+      // rather than as part of what the metal cost: the money goes, the holding does not grow
+      // by it, and the gram is never valued at a price that included it.
+      const makingNative = q.makingEgp / rate;
       const date = input.date ?? today(ctx);
       const id = newId('lot');
 
       return post(ctx, {
         date, kind: 'purchase', note: input.note,
-        legs: [{ fromNodeId: input.accountId, qtyFrom: costNative, toNodeId: holding.id, qtyTo: input.grams }],
-      }, `${input.grams} g of ${input.metal} at ${perGram} a gram, ${Math.round(costNative)} ${acct.currency ?? ''} out of ${acct.name}`,
+        legs: [{
+          fromNodeId: input.accountId, qtyFrom: costNative, toNodeId: holding.id, qtyTo: input.grams,
+          ...(makingNative > 0 ? { feeQty: makingNative, feeNodeId: input.accountId } : {}),
+        }],
+      }, `${input.grams} g of ${input.metal} at ${q.priceNative} ${q.currency} a gram${
+        q.makingNative > 0 ? ` plus ${q.makingNative} ${q.currency} a gram making` : ''
+      }, ${Math.round(costNative + makingNative)} ${acct.currency ?? ''} out of ${acct.name}`,
       {
         dryRun: input.dryRun,
         index: [{ kind: 'lot', recordId: id, title: `${input.metal} buy ${input.grams} g`, body: input.note ?? '' }],
@@ -94,6 +180,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
             usdPaid: acct.currency === 'USD' ? costNative : costEgp / (market.usdEgp || 1),
             accountId: input.accountId, movementId, note: input.note ?? null,
             intention: input.intention,
+            currency: q.currency, priceNative: q.priceNative,
+            makingPerGram: q.makingNative, makingEgp: q.makingEgp,
           }).run();
         },
       });
@@ -109,6 +197,10 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       metal: z.enum(['gold', 'silver']).default('gold'),
       grams: z.number().positive(),
       pricePerGram: z.number().positive().optional(),
+      /** the currency the price and any deduction are quoted in; pounds unless said */
+      currency: z.string().length(3).optional(),
+      /** what the dealer takes off per gram — the making charge you do not get back */
+      makingPerGram: z.number().min(0).optional(),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
       /** which weight it came out of: the worn jewellery, or the holding */
@@ -130,20 +222,32 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       }
 
       const market = readMarket(ctx.db);
-      const perGram = input.pricePerGram
-        ?? (input.metal === 'silver' ? (market.prices.silver_g ?? 0) : market.goldPerG);
+      const inForce = input.metal === 'silver' ? (market.prices.silver_g ?? 0) : market.goldPerG;
+      const q = quoted(market, input, inForce);
+      const perGram = q.perGramEgp;
       if (!(perGram > 0)) {
         return refusal('missing_rate', `No price is recorded for ${input.metal}.`,
                        'Set one in the Gold and silver screen, or give a price per gram here.');
       }
+      // Selling, workmanship is money you do not get back rather than money you hand over, so
+      // it comes off what arrives instead of riding as a fee. A deduction that swallows the
+      // whole sale is a typed figure, not a sale, and is refused rather than posted as nought.
+      const proceedsEgp = input.grams * perGram - q.makingEgp;
+      if (!(proceedsEgp > 0)) {
+        return refusal('unbalanced',
+                       `A making charge of ${q.makingNative} ${q.currency} a gram takes the whole sale.`,
+                       'Lower the deduction, or raise the price a gram.');
+      }
       const rate = acct.currency === 'EGP' ? 1 : market.fxRates[acct.currency ?? 'EGP'] ?? 1;
-      const proceeds = (input.grams * perGram) / rate;
+      const proceeds = proceedsEgp / rate;
       const date = input.date ?? today(ctx);
 
       return post(ctx, {
         date, kind: 'sale', note: input.note,
         legs: [{ fromNodeId: holding.id, qtyFrom: input.grams, toNodeId: input.accountId, qtyTo: proceeds }],
-      }, `${input.grams} g of ${input.metal} at ${perGram} a gram, ${Math.round(proceeds)} ${acct.currency ?? ''} into ${acct.name}`,
+      }, `${input.grams} g of ${input.metal} at ${q.priceNative} ${q.currency} a gram${
+        q.makingNative > 0 ? ` less ${q.makingNative} ${q.currency} a gram making` : ''
+      }, ${Math.round(proceeds)} ${acct.currency ?? ''} into ${acct.name}`,
       {
         dryRun: input.dryRun,
         index: [{ kind: 'lot', recordId: newId('lot'), title: `${input.metal} sell ${input.grams} g`, body: input.note ?? '' }],
@@ -154,6 +258,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
             totalEgp: input.grams * perGram, usdPaid: 0,
             accountId: input.accountId, movementId, note: input.note ?? null,
             intention: input.intention,
+            currency: q.currency, priceNative: q.priceNative,
+            makingPerGram: q.makingNative, makingEgp: q.makingEgp,
           }).run();
         },
       });
@@ -339,6 +445,10 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       accountId: NodeId.optional(),
       grams: z.number().positive().optional(),
       pricePerGram: z.number().positive().optional(),
+      /** the currency the price is quoted in; the one the lot already carries unless said */
+      currency: z.string().length(3).optional(),
+      /** the making charge — مصنعية — per gram, in that currency */
+      makingPerGram: z.number().min(0).optional(),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
       /** worn or held — the answer that decides whether zakat reaches this weight */
@@ -355,10 +465,19 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       if (!holding) return refusal('not_found', `This ledger has no ${metal} holding.`);
 
       const grams = input.grams ?? lot.grams;
-      const perGram = input.pricePerGram ?? lot.pricePerGram;
       const date = input.date ?? lot.date ?? lot.dateText;
       const note = input.note ?? lot.note ?? undefined;
       const market = readMarket(ctx.db);
+      // What the lot already says is the default for what it is not being asked to change —
+      // correcting the grams must not quietly re-quote the price in pounds or drop the
+      // workmanship that was paid.
+      const q = quoted(market, {
+        grams,
+        currency: input.currency ?? lot.currency ?? 'EGP',
+        pricePerGram: input.pricePerGram ?? lot.priceNative ?? lot.pricePerGram,
+        makingPerGram: input.makingPerGram ?? lot.makingPerGram ?? 0,
+      }, lot.pricePerGram);
+      const perGram = q.perGramEgp;
       const totalEgp = grams * perGram;
       const intention = input.intention
         ?? (lot as { intention?: string | null }).intention ?? 'investment';
@@ -382,6 +501,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
             dateText: date, date, grams, pricePerGram: perGram, totalEgp,
             usdPaid: totalEgp / (market.usdEgp || 1),
             accountId: input.accountId ?? lot.accountId, note: note ?? null, intention,
+            currency: q.currency, priceNative: q.priceNative,
+            makingPerGram: q.makingNative, makingEgp: q.makingEgp,
           }).where(eq(t.goldLots.id, input.lotId)).run();
           return noted(`corrected: ${grams} g of ${metal} at ${perGram} a gram, held from before the ledger`);
         });
@@ -393,7 +514,16 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       if (!acct) return refusal('unknown_node', `${accountId} is not an account in this ledger.`);
       const rate = acct.currency === 'EGP' ? 1 : market.fxRates[acct.currency ?? 'EGP'] ?? 1;
       const native = totalEgp / rate;
+      const makingNative = q.makingEgp / rate;
       const buying = lot.direction === 'buy';
+      // The making charge is spent buying and forgone selling, the same way it is when the
+      // lot is first recorded: a fee on the money going out, a deduction from what comes in.
+      if (!buying && !(totalEgp - q.makingEgp > 0)) {
+        return refusal('unbalanced',
+                       `A making charge of ${q.makingNative} ${q.currency} a gram takes the whole sale.`,
+                       'Lower the deduction, or raise the price a gram.');
+      }
+      const proceeds = (totalEgp - q.makingEgp) / rate;
 
       return atomically(ctx, () => {
         undoMovement(ctx, lot.movementId);
@@ -402,9 +532,12 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         return post(ctx, {
           date, kind: buying ? 'purchase' : 'sale', note,
           legs: [buying
-            ? { fromNodeId: accountId, qtyFrom: native, toNodeId: holding.id, qtyTo: grams }
-            : { fromNodeId: holding.id, qtyFrom: grams, toNodeId: accountId, qtyTo: native }],
-        }, `corrected: ${grams} g of ${metal} at ${perGram} a gram`,
+            ? { fromNodeId: accountId, qtyFrom: native, toNodeId: holding.id, qtyTo: grams,
+                ...(makingNative > 0 ? { feeQty: makingNative, feeNodeId: accountId } : {}) }
+            : { fromNodeId: holding.id, qtyFrom: grams, toNodeId: accountId, qtyTo: proceeds }],
+        }, `corrected: ${grams} g of ${metal} at ${q.priceNative} ${q.currency} a gram${
+          q.makingNative > 0 ? `, ${q.makingNative} ${q.currency} a gram making` : ''
+        }`,
         {
           index: [{ kind: 'lot', recordId: input.lotId,
                     title: `${metal} ${lot.direction} ${grams} g`, body: note ?? '' }],
@@ -414,6 +547,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
               direction: lot.direction, grams, pricePerGram: perGram, totalEgp,
               usdPaid: acct.currency === 'USD' ? native : totalEgp / (market.usdEgp || 1),
               accountId, movementId, note: note ?? null, intention,
+              currency: q.currency, priceNative: q.priceNative,
+              makingPerGram: q.makingNative, makingEgp: q.makingEgp,
             }).run();
           },
         });
@@ -593,41 +728,7 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       installmentId: z.string(), accountId: NodeId.optional(), date: DateOnly.optional(),
     }).merge(DryRun),
     output: Outcome,
-    handler: async (input) => {
-      const ctx = ctxOf();
-      const inst = ctx.db.select().from(t.installments).where(eq(t.installments.id, input.installmentId)).get();
-      if (!inst) return refusal('not_found', `${input.installmentId} is not an installment.`);
-      if (inst.paidAt) return refusal('duplicate', 'That installment is already marked paid.', 'Correct it instead, if the payment was wrong.');
-
-      const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
-      const equity = !/maintenance|service|fee/i.test(inst.note);
-      const date = input.date ?? today(ctx);
-
-      // The account named on the call, else the one the payment already names, else the one
-      // this property pays from automatically. Nothing is guessed beyond that.
-      const auto = ctx.db.select().from(t.autopay)
-        .where(eq(t.autopay.propertyId, inst.propertyId)).get();
-      const from = input.accountId ?? inst.payFrom ?? (auto?.enabled ? auto.fromNodeId : null);
-      if (!from) {
-        return refusal('unknown_node', 'This payment does not say which account it comes out of.',
-                       'Choose one on the row, or turn on paying automatically for this property.');
-      }
-
-      return post(ctx, {
-        date, kind: 'installment', note: inst.note || undefined,
-        legs: [equity && property
-          ? { fromNodeId: from, qtyFrom: inst.amountEgp, toNodeId: property.id, qtyTo: inst.amountEgp }
-          : { fromNodeId: from, qtyFrom: inst.amountEgp }],
-      }, `${inst.amountEgp} to ${property?.name ?? inst.propertyId}${equity ? '' : ' — buys no equity'}`,
-      {
-        dryRun: input.dryRun,
-        after: (db, movementId) => {
-          db.update(t.installments).set({ paidAt: date, movementId, payFrom: from })
-            .where(eq(t.installments.id, input.installmentId)).run();
-          settleOwnership(db, inst.propertyId);
-        },
-      });
-    },
+    handler: async (input) => payInstallment(ctxOf(), input),
   }),
 
   command({
@@ -742,6 +843,10 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       id: z.string(), date: z.string().nullable(), dateText: z.string(),
       metal: z.string(), direction: z.string(), grams: z.number(),
       pricePerGram: z.number(), totalEgp: z.number(),
+      /** what was quoted, and in what — the pound figures above are the reading of it */
+      currency: z.string(), priceNative: z.number(),
+      /** the making charge a gram, in that currency, and what it came to in pounds */
+      makingPerGram: z.number(), makingEgp: z.number(),
       note: z.string().nullable(), movementId: z.string().nullable(),
       accountId: z.string().nullable(),
       intention: z.string(),
@@ -751,7 +856,11 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       return db.select().from(t.goldLots).all()
         .filter((l) => !metal || (l.metal ?? 'gold') === metal)
         .map((l) => ({ ...l, metal: l.metal ?? 'gold',
-                       intention: (l as { intention?: string | null }).intention ?? 'investment' }))
+                       intention: (l as { intention?: string | null }).intention ?? 'investment',
+                       // rows written before metal could be quoted in anything but pounds
+                       currency: l.currency ?? 'EGP',
+                       priceNative: l.priceNative ?? l.pricePerGram,
+                       makingPerGram: l.makingPerGram ?? 0, makingEgp: l.makingEgp ?? 0 }))
         .sort((a, b) => (b.date ?? b.dateText).localeCompare(a.date ?? a.dateText));
     },
   }),
@@ -803,7 +912,7 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
     name: 'plan.upsert',
     context: 'holdings',
     summary: 'Add a payment to a property\'s plan, or change one that is not yet paid.',
-    detail: 'A payment already made cannot be edited — it is a movement, and undoing that movement is what changes it. Everything still ahead is yours to reshape.',
+    detail: 'A payment already made cannot be edited here — it is a movement, and `installment.correct` is what changes it. Everything still ahead is yours to reshape. A payment that was made before the plan was written down can be added as paid, by naming the account it came out of.',
     input: z.object({
       propertyId: z.string(),
       installmentId: z.string().optional(),
@@ -814,6 +923,17 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       kind: z.enum(['installment', 'maintenance', 'fee', 'expense']).optional(),
       /** the account it is meant to come out of, decided ahead of paying it */
       payFrom: z.string().optional(),
+      /**
+       * The account a payment already made came out of.
+       *
+       * A plan is usually written down after some of it has been paid, and saying so at the
+       * moment the row is added is the whole difference between recording what happened and
+       * recording an intention you then have to go back and correct. Naming an account here
+       * writes the movement as well as the row, exactly as `installment.pay` would.
+       */
+      paidFrom: NodeId.optional(),
+      /** the day it was paid; today unless said otherwise */
+      paidOn: DateOnly.optional(),
     }),
     output: Outcome,
     handler: async (input) => {
@@ -840,24 +960,53 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         return refusal('invalid_period', 'A new payment needs an amount and a date.');
       }
       const id = newId('inst');
-      ctx.db.insert(t.installments).values({
-        id, propertyId: input.propertyId, ruleId: null,
-        /*
-         * The label is the month as the engine reads one — "Oct 2026", not "2026-10".
-         * Everything forward-looking works the due date out from this label rather than from
-         * `dueDate`, so a payment labelled the other way parses to no date at all and is
-         * invisible to the reminders, to what is coming, and to the calendar's forward half.
+      const { amountEgp, dueDate } = input;
+      const write = () => {
+        ctx.db.insert(t.installments).values({
+          id, propertyId: input.propertyId, ruleId: null,
+          /*
+           * The label is the month as the engine reads one — "Oct 2026", not "2026-10".
+           * Everything forward-looking works the due date out from this label rather than
+           * from `dueDate`, so a payment labelled the other way parses to no date at all and
+           * is invisible to the reminders, to what is coming, and to the calendar's forward
+           * half.
+           */
+          monthLabel: input.monthLabel ?? monthLabelOf(new Date(`${dueDate}T12:00:00`)),
+          dueDate, dueDayKind: 'day',
+          dueDayNum: Number(dueDate.slice(8, 10)),
+          amountEgp, note: input.note ?? '',
+          kind: input.kind ?? 'installment',
+          payFrom: input.payFrom ?? null,
+        } as any).run();
+
+        /**
+         * A row that is already paid.
+         *
+         * The movement is written here rather than left for a second call, because a plan
+         * typed in on Tuesday usually has rows behind it that were paid in March — and
+         * adding one as unpaid, then editing it to say otherwise, is two acts for one fact.
+         * Paying settles ownership itself, so that is not done twice.
          */
-        monthLabel: input.monthLabel ?? monthLabelOf(new Date(`${input.dueDate}T12:00:00`)),
-        dueDate: input.dueDate, dueDayKind: 'day',
-        dueDayNum: Number(input.dueDate.slice(8, 10)),
-        amountEgp: input.amountEgp, note: input.note ?? '',
-        kind: input.kind ?? 'installment',
-        payFrom: input.payFrom ?? null,
-      } as any).run();
-      const back = settleOwnership(ctx.db, input.propertyId);
-      return noted(`${input.amountEgp} due ${input.dueDate} added to the plan`,
-                   back === 'installments' ? ['It is being paid for again, so it is back on a plan.'] : []);
+        if (input.paidFrom) {
+          return payInstallment(ctx, {
+            installmentId: id, accountId: input.paidFrom,
+            date: input.paidOn ?? dueDate,
+          });
+        }
+
+        const back = settleOwnership(ctx.db, input.propertyId);
+        return noted(`${amountEgp} due ${dueDate} added to the plan`,
+                     back === 'installments' ? ['It is being paid for again, so it is back on a plan.'] : []);
+      };
+
+      /**
+       * The row and the payment stand or fall together.
+       *
+       * A payment refused — an account that is not there, one with nothing in it — used to
+       * leave the row behind as an unpaid one, so a refusal still changed the plan and the
+       * person who read the message had a payment they never asked for.
+       */
+      return input.paidFrom ? atomically(ctx, write) : write();
     },
   }),
 

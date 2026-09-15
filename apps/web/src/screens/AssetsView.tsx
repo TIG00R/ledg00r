@@ -6,7 +6,7 @@ import { ledger } from '../api';
 import { Manager } from '../components/Manager';
 import { ConfirmDelete } from '../components/Confirm';
 import { installmentDueDate, daysUntil, nextInstallment, isPrincipal, MONTHS,
-         shortfall } from '@ledger/engine';
+         toEgp } from '@ledger/engine';
 import { useCallback, useEffect, useState } from 'react';
 import { Page, Panel, Chip, Stat, Stats, Empty, Toggle, Field, AccountName } from '../components/UI';
 import { Icon, type IconName } from '../components/Icon';
@@ -39,7 +39,7 @@ export function Assets() {
 }
 
 function Body() {
-  const { data, values: v, now, dm, autoPay, setAutoPay, balances  } = useApp();
+  const { data, values: v, now, dm, autoPay, setAutoPay, balances, currencies, market } = useApp();
   const { mode } = useMode();
   const { tab } = useSection();
   const { run, live, version } = useLive();
@@ -78,6 +78,11 @@ function Body() {
     (ledger as any)['assets.list']({}).then(setAssets).catch(() => setAssets(null));
   }, [live]);
   useEffect(loadAssets, [loadAssets, version]);
+
+  /** the one currency list the whole ledger offers, so an asset picks from what accounts do */
+  const currencyOptions = currencies.map((c) => ({
+    value: c.code, label: `${c.symbol} ${c.code}`, hint: c.name,
+  }));
 
   /**
    * One card's worth of an owned thing.
@@ -372,11 +377,18 @@ function Body() {
                       </label>
                     )}
                     {auto[id] && next && (() => {
-                      // the promise made by the toggle: say so when the account cannot cover it
+                      // The promise made by the toggle: say so when the account cannot cover it.
+                      // Both figures come off the same balance — the service's, when there is
+                      // a service — because reading what is held from one source and what is
+                      // short from another is how an account with a million in it was told it
+                      // was fifty thousand short of its own next payment.
                       const acct = data.nodes.find((n) => n.id === (payFrom[id] ?? data.settings.burnAccountId));
                       if (!acct) return null;
-                      const short = shortfall(data, acct, next.amountEgp, now);
-                      const held = balances[acct.id] ?? acct.openingQty;
+                      // the installment is in pounds, so the balance is read in pounds too,
+                      // rather than a dollar account's raw count being compared to one
+                      const held = toEgp(balances[acct.id] ?? acct.openingQty, acct.currency ?? 'EGP', market);
+                      // a credit line is meant to be short; only a cash account being short is news
+                      const short = acct.kind === 'cash' ? Math.max(0, next.amountEgp - held) : 0;
                       return short > 0 ? (
                         <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 11,
                                       lineHeight: 1.45, color: 'var(--negative)' }}>
@@ -441,12 +453,24 @@ function Body() {
                 ] },
               { key: 'value', label: 'Worth', kind: 'number', width: '140px',
                 when: (v) => v.ownership !== 'installments' },
+              /**
+               * What the worth is stated in.
+               *
+               * A car bought in dollars is worth dollars, and typing the number without
+               * saying so made it a pound figure — the ledger read twenty thousand dollars
+               * as twenty thousand pounds. It sits beside the amount, and only where there
+               * is an amount to state: a plan is paid in the ledger's own currency.
+               */
+              { key: 'currency', label: 'Currency', kind: 'select', width: '120px',
+                options: currencyOptions,
+                when: (v) => v.ownership !== 'installments' },
               { key: 'colour', label: 'Colour', kind: 'colour', width: '64px' },
             ]}
             rows={(assets ?? []).map((a) => ({
               id: a.id, mark: a.icon ?? undefined, colour: a.color ?? '#8A8578',
               values: { name: a.name, kind: a.kind, ownership: a.ownership,
-                        value: Math.round(a.value), colour: a.color ?? '#8A8578' },
+                        value: Math.round(a.value), currency: a.currency ?? 'EGP',
+                        colour: a.color ?? '#8A8578' },
               trailing: (
                 <span style={{ fontSize: 11, color: 'var(--faint)', whiteSpace: 'nowrap' }}>
                   {a.payments ? `${a.payments} payment${a.payments === 1 ? '' : 's'}` : 'no plan'}
@@ -458,6 +482,7 @@ function Body() {
               name: patch.name as string | undefined,
               kind: patch.kind as string | undefined,
               ownership: patch.ownership as string | undefined,
+              currency: patch.currency as string | undefined,
               icon: patch.mark as string | undefined,
               color: patch.colour as string | undefined,
             }).then(loadAssets)}
@@ -466,6 +491,9 @@ function Body() {
               kind: (d.kind as string) || 'other',
               ownership: (d.ownership as string) || 'owned',
               value: Number(d.value ?? 0),
+              // the select shows the first currency until one is chosen, so an untouched
+              // draft has to send what it showed rather than a guess of its own
+              currency: (d.currency as string) || currencyOptions[0]?.value || 'EGP',
               icon: d.mark as string | undefined,
               color: (d.colour as string) || undefined,
             }).then(loadAssets)}
@@ -564,13 +592,21 @@ function Body() {
                           onChange={(v) => set({ propertyId: v })}
                           options={owned.filter((o) => o.onPlan)
                             .map((o) => ({ value: o.id, label: o.name }))} />) },
+            /**
+             * What the payment is for in money.
+             *
+             * Editable whether or not it has been paid. A paid row showed the figure as text,
+             * which read as "this cannot be changed" — but the ledger corrects a made payment
+             * perfectly well: it reverses the movement and writes it again as you meant it.
+             * The row above already offered its date for editing, so refusing the amount was
+             * not even a consistent refusal.
+             */
             { key: 'amountEgp', label: 'Amount', kind: 'amount', align: 'right',
               value: (r) => r.amountEgp,
               cell: (r) => <span className="mono">{dm(r.amountEgp)}</span>,
-              field: (d, set, row) => (row?.paidAt
-                ? <span className="mono">{dm(row.amountEgp)}</span>
-                : <Amount value={d.amountEgp ?? 0} ariaLabel="Amount"
-                          onChange={(n) => set({ amountEgp: n })} />) },
+              field: (d, set) => (
+                <Amount value={d.amountEgp ?? 0} ariaLabel="Amount"
+                        onChange={(n) => set({ amountEgp: n })} />) },
             /**
              * Which account it comes out of.
              *
@@ -610,11 +646,10 @@ function Body() {
                   {!r.buysEquity && <span style={{ color: 'var(--gold)' }}> · buys no equity</span>}
                 </span>
               ),
-              field: (d, set, row) => (row?.paidAt
-                ? <span className="rt-wrap-text" style={{ fontSize: 12, color: 'var(--muted)' }}>{row.note || '—'}</span>
-                : <textarea aria-label="What this payment is" rows={3}
-                            placeholder="quarterly, annual balloon"
-                            value={d.note ?? ''} onChange={(e) => set({ note: e.target.value })} />) },
+              field: (d, set) => (
+                <textarea aria-label="What this payment is" rows={3}
+                          placeholder="quarterly, annual balloon"
+                          value={d.note ?? ''} onChange={(e) => set({ note: e.target.value })} />) },
             /**
              * Whether it has been paid — and the way to pay it.
              *
@@ -628,26 +663,33 @@ function Body() {
             { key: 'status', label: 'Status', kind: 'pick', width: '108px',
               value: (r) => (r.paidAt ? 'paid' : 'still owed'),
               cell: (r) => <PaymentStatus paidAt={r.paidAt} />,
-              /* A payment being added has not been made — there is nothing to choose yet, so
-                 the row says what it will be rather than offering a control that does nothing.
+              /* Offered while adding as well as while editing. A plan is usually written down
+                 after part of it has been paid, and the row being added said "still owed"
+                 whatever the truth was — so recording a payment made in March took adding it,
+                 saving it, and then editing it to say what it already was.
                  Short labels on the picker: the column is headed Status, and the field has to
                  fit beside five others on one line. */
-              field: (d, set, row) => (row
-                ? <Select ariaLabel="Paid or still owed" value={String(d.status ?? 'owed')}
-                          onChange={(v) => set({ status: v })}
-                          options={[{ value: 'owed', label: 'Owed', hint: 'not paid yet' },
-                                    { value: 'paid', label: 'Paid', hint: 'writes the movement' }]} />
-                : <PaymentStatus paidAt={null} />) },
+              field: (d, set) => (
+                <Select ariaLabel="Paid or still owed" value={String(d.status ?? 'owed')}
+                        onChange={(v) => set({ status: v })}
+                        options={[{ value: 'owed', label: 'Owed', hint: 'not paid yet' },
+                                  { value: 'paid', label: 'Paid', hint: 'writes the movement' }]} />) },
           ]}
           add={{
             label: 'Add a payment', capability: 'plan.upsert',
             blank: { propertyId: owned.find((o) => o.onPlan)?.id ?? '',
                      dueOn: new Date().toISOString().slice(0, 10), amountEgp: 0,
-                     note: '', payFrom: '' },
-            valid: (d) => !!d.propertyId && !!d.dueOn && Number(d.amountEgp) > 0,
+                     note: '', payFrom: '', status: 'owed' },
+            // a payment said to be paid has money on the other side of it, so it has to say
+            // which account that money left — the same thing paying one on the plan asks
+            valid: (d) => !!d.propertyId && !!d.dueOn && Number(d.amountEgp) > 0
+              && (d.status !== 'paid' || !!d.payFrom),
             build: (d) => ({ propertyId: d.propertyId, dueDate: d.dueOn,
                              amountEgp: Number(d.amountEgp), note: d.note || undefined,
-                             payFrom: d.payFrom || undefined }),
+                             payFrom: d.payFrom || undefined,
+                             ...(d.status === 'paid'
+                               ? { paidFrom: d.payFrom, paidOn: d.dueOn }
+                               : {}) }),
             onDone: () => { loadSchedule(); loadAssets(); },
           }}
           /**
@@ -716,14 +758,17 @@ function Body() {
  * says so rather than silently refusing.
  */
 function PlanEditor({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
-  const { dm } = useApp();
+  const { dm, data } = useApp();
   const { run, live, version } = useLive();
   const [plan, setPlan] = useState<any | null>(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({
     dueDate: new Date().toISOString().slice(0, 10), amountEgp: 0,
-    note: '', kind: 'installment',
+    note: '', kind: 'installment', status: 'owed', payFrom: '',
   });
+  const accounts = data.nodes.filter((n) => n.kind === 'cash')
+    .map((n) => ({ value: n.id, label: n.name,
+                   hint: data.institutions.find((x) => x.id === n.parentId)?.name }));
 
   const load = useCallback(() => {
     if (!live) { setPlan(null); return; }
@@ -801,10 +846,35 @@ function PlanEditor({ propertyId, onClose }: { propertyId: string; onClose: () =
             <input aria-label="New payment note" placeholder="quarterly, annual balloon"
                    value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
           </Field>
+          {/**
+            * Whether it has been paid already.
+            *
+            * Most plans are written down after part of them has been paid, so a row being
+            * added had to be saved as owed and then edited to say what it already was. Saying
+            * it here writes the movement with the row — which is why the account it came out
+            * of is asked for in the same breath: there is money on the other side of "paid".
+            */}
+          <Field label="Status">
+            <Select ariaLabel="New payment paid or still owed" value={draft.status}
+                    onChange={(v) => setDraft({ ...draft, status: v })}
+                    options={[{ value: 'owed', label: 'Still owed', hint: 'not paid yet' },
+                              { value: 'paid', label: 'Already paid', hint: 'writes the movement' }]} />
+          </Field>
+          <Field label={draft.status === 'paid' ? 'Paid from' : 'To be paid from'}>
+            <Select ariaLabel="Account the payment comes out of" value={draft.payFrom}
+                    onChange={(v) => setDraft({ ...draft, payFrom: v })}
+                    options={[{ value: '', label: 'not set' }, ...accounts]} />
+          </Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn add" disabled={!(draft.amountEgp > 0)}
+            <button className="btn add"
+              disabled={!(draft.amountEgp > 0) || (draft.status === 'paid' && !draft.payFrom)}
               onClick={async () => {
-                await run('plan.upsert', { propertyId, ...draft });
+                const { status, payFrom, ...rest } = draft;
+                await run('plan.upsert', {
+                  propertyId, ...rest,
+                  payFrom: payFrom || undefined,
+                  ...(status === 'paid' ? { paidFrom: payFrom, paidOn: draft.dueDate } : {}),
+                });
                 setDraft({ ...draft, amountEgp: 0, note: '' });
                 setAdding(false);
                 load();

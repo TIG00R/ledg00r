@@ -4,7 +4,7 @@ import { schema as t, writeMovement, ledgerView, allBalances } from '@ledger/db'
 import { validate } from '@ledger/domain';
 import { desc, eq } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
-import { atomically, noted, post, refusal, today, undoMovement } from './shared.js';
+import { atomically, noted, post, refusal, reversalLegs, today, undoMovement } from './shared.js';
 import { settleOwnership } from './holdings.js';
 
 /**
@@ -98,13 +98,7 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
       }
 
       const legs = ctx.db.select().from(t.legs).where(eq(t.legs.transactionId, tx.id)).all();
-      const flipped = legs.map((l) => ({
-        fromNodeId: l.toNodeId ?? undefined,
-        toNodeId: l.fromNodeId ?? undefined,
-        qtyFrom: l.qtyTo ?? l.qtyFrom ?? 0,
-        qtyTo: l.qtyFrom ?? undefined,
-        categoryId: l.categoryId ?? undefined,
-      }));
+      const flipped = reversalLegs(legs);
 
       try {
         const mv = validate({

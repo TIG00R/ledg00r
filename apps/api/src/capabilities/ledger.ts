@@ -252,7 +252,7 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
     detail: 'One full-text index covers all of them. Partial words match, and diacritics are folded, so an Arabic note is findable typed either way.',
     input: z.object({
       q: z.string().min(1).max(200),
-      kinds: z.array(z.enum(['expense', 'giving', 'income', 'order', 'movement', 'lot'])).optional(),
+      kinds: z.array(z.enum(['expense', 'giving', 'income', 'order', 'movement', 'lot', 'note'])).optional(),
       limit: z.number().int().min(1).max(200).default(50),
     }),
     output: z.array(z.object({

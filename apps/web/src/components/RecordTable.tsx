@@ -333,7 +333,12 @@ export function RecordTable<T>({
             ) : (
               <tr>
                 <td className="rt-c" colSpan={span}>
-                  <button className="btn add sm" onClick={() => setAdding(true)}>
+                  {/* Seeded when the form opens, not when the table first drew. The blank is
+                      worked out from what the ledger holds — which source is first, what it is
+                      paid in, where it lands — and on the first render the service has usually
+                      answered nothing yet, so a form opened later started empty. */}
+                  <button className="btn add sm"
+                          onClick={() => { setDraft(add.blank); setAdding(true); }}>
                     <Icon name="plus" size={14} /> {add.label}
                   </button>
                 </td>

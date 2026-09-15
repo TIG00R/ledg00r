@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { useApp, market } from '../AppState';
 import { Select, opts } from '../components/Select';
@@ -7,6 +7,7 @@ import { Page, Panel, Stat, Stats, Chip, Toggle, Field, Row } from '../component
 import { Donut } from '../components/Donut';
 import { Icon } from '../components/Icon';
 import { ActionButton, useLive } from '../Live';
+import { ledger } from '../api';
 import { ConfirmDelete } from '../components/Confirm';
 import { DateField } from '../components/DateField';
 import { RecordTable } from '../components/RecordTable';
@@ -77,6 +78,9 @@ function Body() {
           editHint: 'Undo an order. It writes the opposite rather than erasing it.' },
         { id: 'intentions', label: 'Intentions', icon: 'bell',
           hint: 'What you mean to do, and the reason — this ledger watches no market.' },
+        { id: 'notebook', label: 'Notebook', icon: 'ledger',
+          hint: 'What you thought about a share, on the day you thought it — held or not.',
+          editHint: 'Rewrite a note, move it to another day, or file it under another ticker.' },
       ]} />
 
       <Panel>
@@ -258,7 +262,149 @@ function Body() {
         />
       </Panel>
       )}
+
+      {tab === 'notebook' && <Notebook knownTickers={tickers} />}
     </Page>
+  );
+}
+
+interface Note {
+  id: string; ticker: string; name: string | null;
+  date: string; note: string; createdAt: string; updatedAt: string | null;
+}
+
+interface Followed {
+  ticker: string; name: string | null; notes: number;
+  latestNote: string | null; latestOn: string | null;
+}
+
+/**
+ * The notebook.
+ *
+ * The order log says what was done. This says what was thought — why a share was passed over,
+ * the dividend that makes a date matter, the thesis that has since aged badly. It is dated by
+ * the day the thought belongs to rather than the day it was typed, because a view read back
+ * without knowing when it was formed is worth very little.
+ *
+ * A note can be written about a ticker this ledger has never traded, which is most of what a
+ * notebook is for: the shares you decided against are the ones worth remembering deciding
+ * against.
+ */
+function Notebook({ knownTickers }: { knownTickers: string[] }) {
+  const { live, version } = useLive();
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [followed, setFollowed] = useState<Followed[]>([]);
+
+  const load = useCallback(() => {
+    if (!live) { setNotes([]); setFollowed([]); return; }
+    (ledger as any)['stock.notes.list']({}).then((rows: Note[]) => setNotes(rows ?? []))
+      .catch(() => setNotes([]));
+    (ledger as any)['stocks.list']({}).then((rows: Followed[]) => setFollowed(rows ?? []))
+      .catch(() => setFollowed([]));
+  }, [live]);
+  useEffect(load, [load, version]);
+
+  // whatever has been traded or priced, plus whatever has been written about
+  const suggestions = [...new Set([...knownTickers, ...followed.map((f) => f.ticker)])].sort();
+  const nameOf = (ticker: string) =>
+    followed.find((f) => f.ticker === ticker.toUpperCase())?.name ?? '';
+  const latest = notes.reduce<string | null>((a, n) => (a && a > n.date ? a : n.date), null);
+
+  return (
+    <>
+      <Panel title="The notebook"
+             hint="One line per thought, under the share it is about. Nothing here moves money or changes a position — it is the reasoning, kept where the reasoning can be found again.">
+        <Stats>
+          <Stat label="Shares followed" value={String(followed.length)}
+                sub={followed.length === 1 ? 'in the notebook' : 'held or not'} />
+          <Stat label="Notes written" value={String(notes.length)} />
+          <Stat label="Last written" value={latest ?? '—'} nowrap />
+        </Stats>
+      </Panel>
+
+      <Panel>
+        <datalist id="notebook-tickers">
+          {suggestions.map((t2) => <option key={t2} value={t2} />)}
+        </datalist>
+        <RecordTable
+          rows={notes}
+          rowKey={(n) => n.id}
+          sort={{ key: 'date', dir: 'desc' }}
+          empty={{ icon: 'ledger', title: 'Nothing written down',
+                   body: live
+                     ? 'Write a note about a share — what you decided, and why it made sense at the time.'
+                     : 'The notebook is kept by the ledger service, and there is none behind this screen.' }}
+          columns={[
+            { key: 'date', label: 'Date', kind: 'date',
+              value: (n) => n.date,
+              cell: (n) => (
+                <span className="mono" style={{ fontSize: 13 }}>
+                  {n.date}
+                  {n.updatedAt && (
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>edited</span>
+                  )}
+                </span>
+              ),
+              field: (d, set) => <DateField value={d.date} onChange={(v) => set({ date: v })} ariaLabel="Date" /> },
+            // Typed rather than picked: a note about a share you have never bought is the
+            // whole point, and a picker can only offer the ones you have.
+            { key: 'ticker', label: 'Ticker', kind: 'pick',
+              value: (n) => n.ticker,
+              choices: suggestions,
+              cell: (n) => <span style={{ fontWeight: 600 }}>{n.ticker}</span>,
+              field: (d, set) => (
+                <input aria-label="Ticker" list="notebook-tickers" value={d.ticker}
+                       placeholder="ABUK" style={{ width: 110, textTransform: 'uppercase' }}
+                       onChange={(e) => set({ ticker: e.target.value.toUpperCase() })} />
+              ) },
+            // The company belongs to the ticker, not to the note: naming it here names it
+            // everywhere the ticker appears, which is what renaming one means.
+            { key: 'name', label: 'Company', kind: 'text', width: '200px',
+              value: (n) => n.name ?? '',
+              cell: (n) => (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  {n.name || <span style={{ color: 'var(--faint)' }}>unnamed</span>}
+                </span>
+              ),
+              field: (d, set) => (
+                <input aria-label="Company" value={d.name} placeholder={nameOf(d.ticker) || 'the company'}
+                       style={{ width: 180 }} onChange={(e) => set({ name: e.target.value })} />
+              ) },
+            { key: 'note', label: 'Note', kind: 'text', width: '460px',
+              value: (n) => n.note,
+              cell: (n) => (
+                <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'pre-wrap' }}>{n.note}</span>
+              ),
+              field: (d, set) => (
+                <textarea aria-label="Note" rows={4} placeholder="what you decided, and why"
+                          value={d.note} onChange={(e) => set({ note: e.target.value })} />
+              ) },
+          ]}
+          add={{
+            label: 'Write a note',
+            capability: 'stock.note.add',
+            blank: { date: new Date().toISOString().slice(0, 10), ticker: '', name: '', note: '' },
+            valid: (d) => !!String(d.ticker).trim() && !!String(d.note).trim(),
+            build: (d) => ({ ticker: d.ticker, date: d.date, note: d.note,
+                             name: String(d.name).trim() || undefined }),
+            onDone: load,
+          }}
+          edit={{
+            capability: 'stock.note.edit',
+            draftOf: (n) => ({ date: n.date, ticker: n.ticker, name: n.name ?? '', note: n.note }),
+            build: (d, n) => ({ noteId: n.id, ticker: d.ticker, date: d.date, note: d.note,
+                                name: String(d.name).trim() || undefined }),
+            onDone: load,
+          }}
+          remove={{
+            capability: 'stock.note.remove',
+            build: (n) => ({ noteId: n.id }),
+            what: (n) => `the ${n.ticker} note of ${n.date}`,
+            onDone: load,
+          }}
+        />
+      </Panel>
+    </>
   );
 }
 

@@ -210,6 +210,25 @@ export const goldLots = sqliteTable('gold_lots', {
   metal: text('metal', { enum: ['gold', 'silver'] }).notNull().default('gold'),
   /** worn, or held as a store of value — the two are not zakated alike */
   intention: text('intention'),
+  /**
+   * The price as it was quoted, and the currency it was quoted in.
+   *
+   * `pricePerGram` and `totalEgp` are always pounds, because every reading in this ledger is.
+   * A dealer quoting in dollars is a fact about the purchase, though, and rounding it into
+   * pounds on the way in loses the number that was actually agreed — so both are kept.
+   */
+  currency: text('currency'),
+  priceNative: real('price_native'),
+  /**
+   * The making charge — مصنعية — per gram, in `currency`.
+   *
+   * Workmanship is charged on top of the metal in Egypt and is not part of what the gram is
+   * worth: it buys no weight and cannot be sold back. So it is money spent rather than value
+   * moved, and it is kept apart from the price so the holding is never valued at it.
+   */
+  makingPerGram: real('making_per_gram').notNull().default(0),
+  /** what that workmanship came to, in pounds — grams times the charge, at the day's rate */
+  makingEgp: real('making_egp').notNull().default(0),
 }, (t) => ({ byDate: index('lot_date').on(t.date) }));
 
 export const orders = sqliteTable('orders', {
@@ -229,6 +248,39 @@ export const orders = sqliteTable('orders', {
 }, (t) => ({
   byTickerDate: index('ord_ticker_date').on(t.ticker, t.date),
   byStatus: index('ord_status').on(t.status, t.date),
+}));
+
+/**
+ * The share notebook.
+ *
+ * A ticker is a code, and six months later a code is not a company. This is the notebook's
+ * own index of what each one is: one row per ticker, the name as the owner writes it. It is
+ * deliberately not a feed from an exchange — nothing here knows a company the owner has not
+ * written down.
+ */
+export const stocks = sqliteTable('stocks', {
+  ticker: text('ticker').primaryKey(),
+  name: text('name'),
+  createdAt: text('created_at').notNull(),
+});
+
+/**
+ * What was thought about a share, on the day it was thought.
+ *
+ * Orders record what was done; this records why, and what was decided against doing — a
+ * rejection, a dividend date, a thesis that has not aged well. Dated, because a view read
+ * back without the day it was formed is worth very little.
+ */
+export const stockNotes = sqliteTable('stock_notes', {
+  id: text('id').primaryKey(),
+  ticker: text('ticker').notNull(),
+  date: text('date').notNull(),          // YYYY-MM-DD, the day the note is about
+  note: text('note').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at'),
+}, (t) => ({
+  byTickerDate: index('stock_note_ticker_date').on(t.ticker, t.date),
+  byDate: index('stock_note_date').on(t.date),
 }));
 
 export const planRules = sqliteTable('plan_rules', {
@@ -456,6 +508,8 @@ export type Charity = typeof charity.$inferSelect;
 export type ZakatYear = typeof zakatYears.$inferSelect;
 export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
+export type Stock = typeof stocks.$inferSelect;
+export type StockNote = typeof stockNotes.$inferSelect;
 export type Installment = typeof installments.$inferSelect;
 export type IncomeSource = typeof incomeSources.$inferSelect;
 export type RecurringTemplate = typeof recurringTemplates.$inferSelect;

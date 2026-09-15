@@ -1,8 +1,9 @@
 import { schema as t, allBalances, type Db } from '@ledger/db';
 import { readPref } from './read.js';
 import {
-  assessAssets, metalBuckets, rentPot, defaultIntention, hawlFrom,
+  assessAssets, metalBuckets, rentPot, defaultIntention, hawlFrom, unitValue,
   NISAB_GOLD_G, NISAB_SILVER_G,
+  type Valuation,
   type AssetForZakat, type AssetClass, type Intention, type MetalLot,
   type Receipt, type ZakatLine, type MarketState,
 } from '@ledger/engine';
@@ -60,15 +61,24 @@ export function assetKindOf(
   return hasPlan ? 'property' : 'other';
 }
 
+/**
+ * What a thing is worth, in the ledger's currency.
+ *
+ * The engine already knows the rule, including that a fixed value stated in another currency
+ * is still another currency — a car bought for twenty thousand dollars is not twenty thousand
+ * pounds. Reading it here rather than restating it keeps the assessment and the holdings
+ * totals from disagreeing about the same car.
+ */
 function valueOf(
   n: { valuation: string; priceKey: string | null; currency: string | null },
   qty: number, market: MarketState,
 ): number {
-  if (n.valuation === 'live_price') return qty * (market.prices[n.priceKey ?? ''] ?? 1);
-  if (n.valuation !== 'fx') return qty;
-  const key = n.priceKey ?? n.currency ?? '';
-  const code = (/^([A-Za-z]{3})_[A-Za-z]{3}$/.exec(key)?.[1] ?? key).toUpperCase();
-  return qty * (market.fxRates[code] ?? 1);
+  return qty * unitValue({
+    id: '', kind: 'asset', name: '', openingQty: 0,
+    valuation: n.valuation as Valuation,
+    priceKey: n.priceKey ?? undefined,
+    currency: n.currency ?? undefined,
+  }, market);
 }
 
 /**

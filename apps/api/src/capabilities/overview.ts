@@ -7,6 +7,7 @@ import { noted } from './shared.js';
 import { buildDataset, readMarket, readPref, writePref } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';
 import { readBase, readCurrencies } from './currencies.js';
+import { assetKindOf } from '../zakat-assets.js';
 
 /**
  * The whole picture, and the settings that shape it.
@@ -192,6 +193,16 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
          */
         valuation: z.enum(['face', 'fx', 'live_price', 'fixed']),
         priceKey: z.string().nullable(),
+        /**
+         * What kind of thing an asset is, and how it was paid for.
+         *
+         * Derived here the same way `assets.list` derives it, so the screens never have to
+         * guess. Guessing is what they did — a name matched against /car|vehicle/ — which
+         * put a car called "BMW" and a flat with no plan against it into neither pile, so
+         * the portfolio counted them in the total and showed nothing for them.
+         */
+        assetKind: z.string().nullable(),
+        ownership: z.string().nullable(),
       })),
       categories: z.array(z.object({
         id: z.string(), domain: z.string(), name: z.string(), color: z.string(),
@@ -212,6 +223,9 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
     }),
     handler: async () => {
       const { db } = ctxOf();
+      // something with a payment plan against it is a property bought on one, whatever its
+      // column says — the same reading the assets list and the assessment take
+      const planned = new Set(db.select().from(t.installments).all().map((i) => i.propertyId));
       return {
         currencies: readCurrencies(db).filter((c) => !c.archived),
         institutions: db.select().from(t.institutions).all(),
@@ -220,6 +234,11 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
           currency: n.currency, unit: n.unit, openingQty: n.openingQty,
           color: n.color, archived: n.archived,
           valuation: n.valuation, priceKey: n.priceKey,
+          assetKind: n.kind === 'asset' && !n.unit
+            ? assetKindOf(n as { id: string; name: string; assetKind?: string | null },
+                          planned.has(n.id))
+            : null,
+          ownership: (n as { ownership?: string | null }).ownership ?? null,
         })),
         categories: db.select().from(t.categories).all(),
         incomeSources: db.select().from(t.incomeSources).all()

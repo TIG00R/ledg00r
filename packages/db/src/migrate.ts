@@ -483,6 +483,47 @@ const STEPS: Step[] = [
       db.$raw.exec('CREATE INDEX IF NOT EXISTS give_year ON charity (zakat_year_id)');
     },
   },
+  {
+    version: 19,
+    name: 'metal quoted in its own currency, with the making charge',
+    up: (db) => {
+      // A dealer quotes in dollars as readily as in pounds, and charges workmanship —
+      // مصنعية — on top of the metal. The pound figures stay what every reading uses; these
+      // say what was actually quoted, and what was paid for the work rather than the gram.
+      for (const sql of [
+        "ALTER TABLE gold_lots ADD COLUMN currency TEXT",
+        "ALTER TABLE gold_lots ADD COLUMN price_native REAL",
+        "ALTER TABLE gold_lots ADD COLUMN making_per_gram REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE gold_lots ADD COLUMN making_egp REAL NOT NULL DEFAULT 0",
+      ]) {
+        try { db.$raw.exec(sql); } catch { /* already there */ }
+      }
+      // Everything recorded before this was quoted in pounds, because nothing else was on
+      // offer — saying so is better than leaving the column empty for a reader to guess at.
+      db.$raw.exec("UPDATE gold_lots SET currency = 'EGP' WHERE currency IS NULL");
+      db.$raw.exec('UPDATE gold_lots SET price_native = price_per_gram WHERE price_native IS NULL');
+    },
+  },
+  {
+    version: 20,
+    name: 'the share notebook',
+    up: (db) => db.$raw.exec(`
+      CREATE TABLE IF NOT EXISTS stocks (
+        ticker     TEXT PRIMARY KEY,
+        name       TEXT,
+        created_at TEXT NOT NULL);
+
+      CREATE TABLE IF NOT EXISTS stock_notes (
+        id         TEXT PRIMARY KEY,
+        ticker     TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        note       TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT);
+      CREATE INDEX IF NOT EXISTS stock_note_ticker_date ON stock_notes (ticker, date);
+      CREATE INDEX IF NOT EXISTS stock_note_date ON stock_notes (date);
+    `),
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

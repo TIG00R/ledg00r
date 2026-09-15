@@ -12,11 +12,23 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
   const style = (k: AssetKey) => appearance.assets[k];
   const a = v.accrual;
 
+  /**
+   * The piles, and only the piles that hold something.
+   *
+   * Every category used to be drawn whether or not anything was in it, so a ledger with one
+   * car in it still showed Real estate, Gold and Stocks at nothing — five headings standing
+   * in for holdings nobody had entered. What is drawn now is what is held; a thing that is
+   * none of the four named kinds lands in "Other", which is a pile rather than a silence:
+   * before it existed such a thing counted towards the total and appeared in no line at all.
+   */
   const slices = ([
-    ['cash', v.cash], ['realestate', v.re], ['gold', v.gold], ['car', v.car], ['stocks', v.stocks],
-  ] as Array<[AssetKey, number]>).map(([key, value]) => ({
-    key, value, label: style(key).label, color: style(key).color,
-  }));
+    ['cash', v.cash], ['realestate', v.re], ['gold', v.gold], ['car', v.car],
+    ['stocks', v.stocks], ['other', v.other],
+  ] as Array<[AssetKey, number]>)
+    .filter(([, value]) => value !== 0)
+    .map(([key, value]) => ({
+      key, value, label: style(key).label, color: style(key).color,
+    }));
 
   const incomeSplit = splitByCurrency(
     data.incomeSources.filter((s) => s.scheduled && s.amount != null),
@@ -52,12 +64,20 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
             </div>
           </div>
 
+          {slices.length === 0 ? (
+            <p style={{ margin: '26px 0 4px', textAlign: 'center', fontSize: 13,
+                        color: 'var(--faint)' }}>
+              Nothing is held yet. What you add under Accounts, Assets, Gold and Stocks is
+              what this splits.
+            </p>
+          ) : (
           <div style={{ display: 'flex', justifyContent: 'center', margin: '26px 0 22px' }}>
             <Pie slices={slices} size={236} format={(n) => dm(n)}
                  caption={<span style={{ fontSize: 12, color: 'var(--faint)' }}>
                    Point at a slice to name it
                  </span>} />
           </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             {slices.map((s) => (

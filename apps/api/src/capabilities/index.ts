@@ -16,6 +16,7 @@ import { assistantCaps } from './assistant.js';
 import { debtCaps } from './debts.js';
 import { marketCaps } from './market.js';
 import { calendarCaps, calendarEntryCaps } from './calendar.js';
+import { notebookCaps } from './notebook.js';
 
 /**
  * The registry.
@@ -43,6 +44,7 @@ export function buildRegistry(ctxOf: () => AppCtx): Registry {
     ...marketCaps(ctxOf),
     ...calendarCaps(ctxOf),
     ...calendarEntryCaps(ctxOf),
+    ...notebookCaps(ctxOf),
   ] as Capability[];
 
   const reg: Registry = {};
