@@ -47,9 +47,18 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
        */
       const h = ledgerHoldings(ctx.db, ctx.now, market);
 
+      /**
+       * The share book is the positions and the wallet behind them.
+       *
+       * Money sitting uninvested at the broker is cash — that is what the holdings say and
+       * what the zakat base counts — but it is not cash at a bank, and every screen that
+       * draws the book draws it as one thing. Reported here the same way, so an agent asking
+       * where things stand and a person looking at the portfolio see the same split.
+       */
       const parts: Array<[string, number]> = [
-        ['Cash', h.cash], ['Real estate', h.realEstate], ['Gold and silver', h.metals],
-        ['Vehicles', h.vehicles], ['Shares', h.shares], ['Other', h.other],
+        ['Cash', h.cash - h.brokerageCash], ['Real estate', h.realEstate],
+        ['Gold and silver', h.metals], ['Vehicles', h.vehicles],
+        ['Shares', h.shares + h.brokerageCash], ['Other', h.other],
       ];
       const owned = parts.reduce((s, [, v]) => s + v, 0);
       return {

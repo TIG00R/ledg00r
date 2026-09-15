@@ -27,7 +27,11 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
     output: z.array(z.object({
       id: z.string(), name: z.string(), kind: z.string(),
       ownership: z.string(), icon: z.string().nullable(), color: z.string().nullable(),
-      value: z.number(), currency: z.string().nullable(), unit: z.string().nullable(),
+      /** what it is worth in the ledger's own currency, converted at today's rate */
+      value: z.number(),
+      /** the same worth as it was actually entered: the number, in the currency beside it */
+      amount: z.number(),
+      currency: z.string().nullable(), unit: z.string().nullable(),
       planTotal: z.number(), paid: z.number(), remaining: z.number(),
       payments: z.number(), nextDue: z.string().nullable(),
       /** why it is held — the answer zakat reads before it reads the value */
@@ -103,7 +107,19 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
             intentionSince: held.intentionSince ?? null,
             acquiredOn: held.acquiredOn ?? null,
             nisabMetOn: held.nisabMetOn ?? null,
+            /**
+             * Two readings of the same holding, and both are needed.
+             *
+             * What is stored is a quantity in the asset's own currency — a car bought for
+             * twenty thousand dollars holds twenty thousand dollars, today and next year,
+             * whatever the rate does. `value` converts that for a total to be drawn from;
+             * `amount` is the figure as it was entered, which is what a form correcting it
+             * has to show. Handing back only the converted one made every editor open on a
+             * pound figure beside a dollar picker, and so read as though choosing a currency
+             * had rewritten the amount in pounds.
+             */
             value: valueOf(n, balances[n.id] ?? n.openingQty),
+            amount: balances[n.id] ?? n.openingQty,
             currency: n.currency, unit: n.unit,
             planTotal, paid, remaining: planTotal - paid,
             payments: mine.length, nextDue: next as string | null,
@@ -166,12 +182,15 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'asset.update',
     context: 'holdings',
-    summary: 'Rename an asset, change its mark, its colour, its currency, or how it was paid for.',
+    summary: 'Rename an asset, change what it is worth, its mark, its colour, its currency, or how it was paid for.',
+    detail: 'The worth is stated in the asset\'s own currency and stored in it. Changing the currency says what the number was always in; it does not restate the number, and nothing is converted until a total has to be drawn.',
     input: z.object({
       assetId: NodeId,
       name: z.string().min(1).max(80).optional(),
       kind: z.enum(['property', 'vehicle', 'equipment', 'other']).optional(),
       ownership: z.enum(['owned', 'installments']).optional(),
+      /** what it is worth, in its own currency — not in the ledger's */
+      value: z.number().min(0).optional(),
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       icon: z.string().max(80).optional(),
       color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
@@ -182,7 +201,7 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       archived: z.boolean().optional(),
     }),
     output: Outcome,
-    handler: async ({ assetId, kind, intention, ...patch }) => {
+    handler: async ({ assetId, kind, intention, value, ...patch }) => {
       const ctx = ctxOf();
       const db = ctx.db;
       const row = db.select().from(t.nodes).where(eq(t.nodes.id, assetId)).get();
@@ -190,6 +209,24 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       const clean: Record<string, unknown> = Object.fromEntries(
         Object.entries(patch).filter(([, v]) => v !== undefined));
       if (kind) clean.assetKind = kind;
+
+      /**
+       * What it is worth is what it is held as, in its own currency.
+       *
+       * The number goes to the node's own quantity untouched — no rate is applied on the way
+       * in, because none was applied on the way out. An asset on a plan is worth what has
+       * been paid towards it and that is worked out from the payments, so a figure typed over
+       * it would be overwritten by the next one and is refused instead of quietly ignored.
+       */
+      if (value !== undefined) {
+        const ownership = patch.ownership ?? row.ownership;
+        if (ownership === 'installments') {
+          return refusal('immutable',
+            `${row.name} is being paid for on a plan, so what it is worth is what has been paid towards it.`,
+            'Change the payments, or mark it as owned outright to state a worth of its own.');
+        }
+        clean.openingQty = value;
+      }
 
       /**
        * Changing your mind starts the year again.

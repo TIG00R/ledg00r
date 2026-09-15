@@ -28,6 +28,19 @@ export interface Holdings {
   other: number;
   /** shares at the last price recorded for each */
   shares: number;
+  /**
+   * Uninvested money sitting at the broker, counted inside `cash` as well.
+   *
+   * It is money, so it belongs in the cash pile that decides net worth and the zakat base.
+   * It is also the other half of the share book — the Stocks screen draws it beside the
+   * positions, the flow screen groups it with them, and the accounts screen leaves it out
+   * because it is not held at a bank. Reported separately so a screen that reads the book
+   * as one thing can add it to the shares without a second definition of which node it is.
+   */
+  brokerageCash: number;
+  /** what is held by weight, in grams — the quantity behind `metals` */
+  goldGrams: number;
+  silverGrams: number;
   /** card balances and money borrowed, as a positive number */
   liabilities: number;
   /**
@@ -47,6 +60,18 @@ export interface Holdings {
 export interface PricedPosition { ticker: string; shares: number; price: number; value: number }
 
 const CODE = /^([A-Za-z]{3})_[A-Za-z]{3}$/;
+
+/** Silver rather than gold, by whichever of the two names the ledger gave the holding. */
+const isSilver = (n: LedgerNode) => n.id === 'silver' || n.priceKey === 'silver_g';
+
+/**
+ * The broker's own cash account.
+ *
+ * Named by its price key, with the id as the fallback for a ledger written before that key
+ * existed — the same two readings the Stocks screen and the transfer capability take.
+ */
+export const isBrokerageCash = (n: LedgerNode) =>
+  n.kind === 'cash' && (n.priceKey === 'brokerage_cash' || /^brokerage/.test(n.id));
 
 /** One unit of what this node holds, in the ledger's currency. */
 export function unitValue(n: LedgerNode, m: MarketState): number {
@@ -86,6 +111,7 @@ export function valueHoldings(
 ): Holdings {
   const out: Holdings = {
     cash: 0, metals: 0, realEstate: 0, vehicles: 0, other: 0, shares: 0,
+    brokerageCash: 0, goldGrams: 0, silverGrams: 0,
     liabilities: 0, contracts: 0, total: 0, byNode: {},
   };
 
@@ -101,8 +127,17 @@ export function valueHoldings(
       else out.liabilities += Math.max(0, value);
       continue;
     }
-    if (n.kind === 'cash') { out.cash += value; continue; }
-    if (n.unit === 'g') { out.metals += value; continue; }
+    if (n.kind === 'cash') {
+      out.cash += value;
+      if (isBrokerageCash(n)) out.brokerageCash += value;
+      continue;
+    }
+    if (n.unit === 'g') {
+      out.metals += value;
+      // the weight itself, which is what a holding of metal is actually reported as
+      if (isSilver(n)) out.silverGrams += qty; else out.goldGrams += qty;
+      continue;
+    }
 
     const kind = opts.kindOf?.(n) ?? 'other';
     if (kind === 'property') out.realEstate += value;

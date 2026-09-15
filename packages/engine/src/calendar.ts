@@ -2,7 +2,7 @@
  * The ledger's calendar.
  *
  * Everything this app knows the date of, in one list: installments due and installments
- * paid, the day each hawl closes, the warnings that run ahead of them, standing charges,
+ * paid, the day the hawl closes, the warnings that run ahead of them, standing charges,
  * income expected. It is assembled here rather than on a screen because two things need it —
  * the calendar view and the feed a phone or a laptop subscribes to — and two assemblies of
  * the same events would drift apart.
@@ -17,10 +17,9 @@ import { upcoming, describeLead, type Reminder } from './reminders.js';
 import type { RecurringTemplate } from './recurring.js';
 import { zakatDates, type ZakatSettings } from './zakat.js';
 import { hijriTextOfIso, toHijri, fromHijri, addHijriYears } from './hijri.js';
-import type { ZakatLine } from './zakat-assets.js';
 
 export type CalendarKind =
-  | 'installment' | 'paid' | 'zakat' | 'hawl' | 'reminder'
+  | 'installment' | 'paid' | 'zakat' | 'reminder'
   | 'sadaqah' | 'income' | 'recurring' | 'stock' | 'own'
   // what has already happened, which is half of what a calendar is for
   | 'expense' | 'giving' | 'metal' | 'order' | 'transfer' | 'debt';
@@ -35,7 +34,6 @@ export const CALENDAR_COLORS: Record<CalendarKind, string> = {
   installment: '#C2603E',
   paid: '#3F7D4F',
   zakat: '#B37E00',
-  hawl: '#8A6D3B',
   reminder: '#6B7BA8',
   sadaqah: '#B0578D',
   income: '#3F7D4F',
@@ -54,7 +52,6 @@ export const CALENDAR_LABELS: Record<CalendarKind, string> = {
   installment: 'Installment due',
   paid: 'Installment paid',
   zakat: 'Zakat',
-  hawl: 'Lunar year closes',
   reminder: 'Warning',
   sadaqah: 'Giving',
   income: 'Income',
@@ -81,7 +78,6 @@ export const CALENDAR_ICONS: Record<CalendarKind, string> = {
   installment: 'building',
   paid: 'check',
   zakat: 'zakat',
-  hawl: 'clock',
   reminder: 'bell',
   sadaqah: 'hands',
   income: 'income',
@@ -219,8 +215,6 @@ export interface CalendarOptions {
   horizonDays?: number;
   /** how far back to carry what has already happened */
   backDays?: number;
-  /** the zakat assessment's own lines, which carry a lunar year each */
-  assetLines?: ZakatLine[];
   /** what the owner put on the calendar themselves */
   entries?: CalendarEntry[];
   /** installments as the ledger holds them, so paid ones can be shown as paid */
@@ -332,23 +326,6 @@ export function calendarEvents(
       now, id: `${e.id}-warn`, date: when, kind: 'reminder',
       title: `${e.title} — ${describeLead(r)}`,
       detail: `falls due ${e.date}`, amount: e.amount, currency: e.currency,
-    }));
-  }
-
-  // Each asset's own lunar year, and the day it closes.
-  for (const line of opts.assetLines ?? []) {
-    if (!line.hawl || line.basis === 'none') continue;
-    const away = daysUntil(new Date(`${line.hawl.dueOn}T12:00:00`), now);
-    if (away > horizon || away < -back) continue;
-    out.push(event({
-      now, id: `cal-hawl-${line.id}`, date: line.hawl.dueOn, kind: 'hawl',
-      title: `${line.name} — lunar year closes`,
-      detail: line.basis === 'rent'
-        ? 'rent earned over this year becomes zakatable'
-        : line.kind === 'metal'
-          ? 'held as a holding, so its weight becomes zakatable'
-          : 'held to sell, so its value becomes zakatable',
-      amount: line.basis === 'rent' ? undefined : line.value, currency: 'EGP',
     }));
   }
 

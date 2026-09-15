@@ -11,7 +11,7 @@ import { nextSeq, rateFor } from './spending.js';
 import { readPref, writePref, buildDataset } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';
 import { assetsForZakat } from '../zakat-assets.js';
-import { zakatBuckets, type BucketSources } from '../zakat-buckets.js';
+import { zakatBuckets, ESTATE, type BucketSources } from '../zakat-buckets.js';
 
 const DEFAULT_ZAKAT: ZakatSettings = {
   anniversaryMonth: 9, anniversaryDay: 1, basis: 'gold', silverPerG: 52, deductDebts: false,
@@ -33,20 +33,30 @@ function bucketSources(ctx: AppCtx): BucketSources {
   const owned = assetsForZakat(ctx.db, ctx.now, market, nisab);
   const receivables = zakatReceivables(data, rate);
 
-  // The day the books start. A ledger opened from a snapshot says so; otherwise the earliest
-  // movement on record is the earliest date anything can be true from.
+  /**
+   * The day the books start.
+   *
+   * A ledger opened from a snapshot says so. Otherwise it is the earliest date anything on
+   * record happened on — a movement, a lot of gold bought, a flat acquired. Reading only the
+   * movements would say a ledger holding nothing but an opening position and a gold lot from
+   * 2019 knows nothing about any year, and no year would ever close on it.
+   */
   const snapshot = readPref<{ effectiveFrom?: string }>(ctx.db, 'snapshot');
-  const firstMovement = ctx.db.select().from(t.transactions).all().map((x) => x.date).sort()[0];
+  const earliest = [
+    ...ctx.db.select().from(t.transactions).all().map((x) => x.date),
+    ...ctx.db.select().from(t.goldLots).all().map((l) => l.dateText),
+    ...ctx.db.select().from(t.nodes).all()
+      .flatMap((n) => [n.acquiredOn, n.intentionSince, n.nisabMetOn]),
+  ].filter((d): d is string => !!d).sort()[0];
 
   return {
     now: ctx.now, settings, nisab,
     cash: held.cash, shares: held.shares,
     receivables,
-    heldBack: Math.min(owned.heldBack, held.cash),
     debts: zakatDebts(data, ctx.now, settings, rate),
     deductDebts: settings.deductDebts,
     owned,
-    ledgerSince: snapshot?.effectiveFrom ?? firstMovement ?? null,
+    ledgerSince: snapshot?.effectiveFrom ?? earliest ?? null,
   };
 }
 
@@ -101,6 +111,8 @@ const BucketShape = z.object({
     id: z.string(), label: z.string(), detail: z.string().optional(),
     sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
     amount: z.number(), note: z.string().optional(),
+    group: z.enum(['counted', 'excluded', 'debt']).optional(),
+    facts: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
   })),
   hawl: z.object({
     startOn: z.string(), startHijriText: z.string(),
@@ -116,6 +128,8 @@ const BucketShape = z.object({
       id: z.string(), label: z.string(), detail: z.string().optional(),
       sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
       amount: z.number(), note: z.string().optional(),
+      group: z.enum(['counted', 'excluded', 'debt']).optional(),
+      facts: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
     })),
   }).nullable(),
 });
@@ -329,12 +343,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         startsOn: z.string(), startsHijri: z.string(),
         dueOn: z.string(), dueHijri: z.string(), daysAway: z.number(),
       }),
-      /** what money itself contributes, before anything held back comes off it */
+      /** what money itself contributes */
       cash: z.number(), stocks: z.number(),
-      /** rent earned but not yet through a full lunar year, so not counted through cash */
-      heldBack: z.number(),
-      /** rent that has carried a lunar year — already in the base, through the account it landed in */
-      countedRent: z.number(),
       /**
        * One line per thing owned: what it is, what it is held for, the dates that decide it,
        * and what it therefore counted. A line that counts nothing says which of the four
@@ -379,12 +389,13 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         basis: z.enum(['gold', 'silver']), silverPerG: z.number(), deductDebts: z.boolean(),
       }),
       /**
-       * Each pot of wealth with its own lunar year.
+       * The estate, under one lunar year.
        *
-       * Wealth of the same kind shares a year — cash earned mid-year joins the cash year
-       * rather than starting its own — so there is one date per kind, not one per purchase.
-       * A bucket's own `base` and `due` are always the figures as they stand today; what is
-       * actually owed sits under `confirmed`, frozen on the day the owner accepted it.
+       * Everything owned is counted together on the anniversary the owner stated, so this is
+       * an array of one — kept as an array because confirmed years are filed per pot and the
+       * years closed under the older per-kind reading are still on record. The bucket's own
+       * `base` and `due` are the figures as they stand today; what is actually owed sits
+       * under `confirmed`, frozen on the day the owner accepted it.
        */
       buckets: z.array(BucketShape),
       totals: z.object({
@@ -425,39 +436,38 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
        * Things, judged one at a time.
        *
        * A flat lived in counts nothing, a flat held to sell counts in full, a flat let out
-       * counts only through the rent it has earned — and each of those turns on dates as well
-       * as on the answer, which is why this is worked out rather than assumed.
-       *
-       * `heldBack` is the other half of the rent rule. Rent that has not yet carried a full
-       * lunar year is sitting in a bank account, and the cash figure above has already counted
-       * it. Taking it off again is what stops the base charging a year early.
+       * counts nothing itself — its rent landed in an account, and cash has it already. Each
+       * of those turns on what the thing is held for, which is why this is worked out rather
+       * than assumed.
        */
       const owned = manual
         ? { lines: [], counted: 0, countedRent: 0, heldBack: 0,
             metal: { zakatableEgp: 0, personalGrams: 0, investmentGrams: 0, lines: [] } }
         : assetsForZakat(ctx.db, ctx.now, market, nisabNow);
-      const heldBack = Math.min(owned.heldBack, cash);
 
-      const included = manual
-        ? manual.cash + manual.gold + manual.stocks
-        : cash - heldBack + held.shares + owedToYou
-          + owned.metal.zakatableEgp + owned.counted;
-
-      const debts = zakatDebts(data, ctx.now, z, rate);
+      const debts = manual ? [] : zakatDebts(data, ctx.now, z, rate);
       const owed = debts.reduce((s, d) => s + d.amountEgp, 0);
-      const base = Math.max(0, z.deductDebts ? included - owed : included);
       const dates = zakatDates(ctx.now, z);
       const nisab = nisabNow;
 
       /**
-       * The same wealth, sorted into pots.
+       * The estate, and the answer.
        *
-       * Working it out a second time rather than reusing what is above is deliberate for the
-       * manual mode only: figures somebody typed do not belong to any pot, so there are no
-       * buckets to show for them.
+       * The headline figure is the bucket's own rather than a second reckoning beside it.
+       * Two sums over the same wealth would disagree the first time either was changed, and
+       * the one an owner is asked to confirm has to be the one they were shown.
        */
       const buckets = manual ? [] : zakatBuckets(ctx.db, bucketSources(ctx));
       const totals = zakatTotals(buckets);
+      const estate = buckets[0];
+
+      const included = manual
+        ? manual.cash + manual.gold + manual.stocks
+        : (estate?.entries ?? []).filter((e) => e.group !== 'debt')
+            .reduce((s2, e) => s2 + e.sign * e.amount, 0);
+      const base = manual
+        ? Math.max(0, z.deductDebts ? included - owed : included)
+        : estate?.base ?? 0;
 
       return {
         buckets: buckets.map(publish),
@@ -466,7 +476,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
           anniversaryMonth: z.anniversaryMonth, anniversaryDay: z.anniversaryDay,
           basis: z.basis, silverPerG: z.silverPerG, deductDebts: z.deductDebts,
         },
-        due: base * 0.025, base, baseBeforeDebts: included,
+        due: base * ZAKAT_RATE, base, baseBeforeDebts: Math.max(0, included),
         nisab, nisabGrams: z.basis === 'silver' ? NISAB_SILVER_G : NISAB_GOLD_G, basis: z.basis,
         aboveNisab: base >= nisab,
         hawl: {
@@ -477,7 +487,6 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         debts, receivables, owedToYou, deductDebts: z.deductDebts,
         cash: manual ? manual.cash : cash,
         stocks: manual ? manual.stocks : held.shares,
-        heldBack, countedRent: owned.countedRent,
         assets: [...owned.lines, ...owned.metal.lines].map((l) => ({
           id: l.id, name: l.name, kind: l.kind,
           intention: l.intention, intentionLabel: l.intentionLabel,
@@ -498,10 +507,11 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'zakat.confirm',
     context: 'giving',
-    summary: 'Close a lunar year: freeze what is owed on one pot of wealth so it stops moving.',
+    summary: 'Close a lunar year: freeze what is owed so it stops moving.',
     detail: 'What is owed was fixed on the day the year closed, but the figure behind it is worked out from today\'s prices and moves every time it is asked for. Confirming writes it down. Supply a base of your own if the ledger has it wrong — the difference is recorded as a line of its own rather than replacing the arithmetic.',
     input: z.object({
-      bucketId: z.string(),
+      /** the estate, which is the only pot a year is closed on now */
+      bucketId: z.string().default(ESTATE),
       base: z.number().min(0).optional(),
       note: z.string().max(500).optional(),
     }).merge(DryRun),
@@ -511,7 +521,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       const src = bucketSources(ctx);
       const bucket = zakatBuckets(ctx.db, src).find((b) => b.id === input.bucketId);
       if (!bucket) return refusal('not_found', `${input.bucketId} is not a pot of wealth in this ledger.`,
-        'Call zakat.assessment and confirm one of the buckets it returns.');
+        `Everything owned is now counted together — confirm '${ESTATE}'.`);
       if (!bucket.closedOn) {
         return refusal('invalid_period',
           `${bucket.label} has no closed lunar year yet${bucket.hawl ? ` — the first closes in ${bucket.hawl.daysRemaining} days` : ''}.`,
@@ -615,6 +625,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         id: z.string(), label: z.string(), detail: z.string().optional(),
         sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]),
         amount: z.number(), note: z.string().optional(),
+        group: z.enum(['counted', 'excluded', 'debt']).optional(),
+        facts: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
       })),
       payments: z.array(z.object({
         id: z.string(), date: z.string(), egp: z.number(), causeId: z.string(),

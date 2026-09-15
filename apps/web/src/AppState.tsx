@@ -348,10 +348,28 @@ export function AppProvider({ children, demo }: {
       kindOf,
       isContract: (n) => !n.parentId || !institutions.has(n.parentId),
     });
+    /**
+     * The share book is the positions and the wallet behind them.
+     *
+     * `valueHoldings` counts the brokerage wallet as cash, because that is what it is and
+     * what the zakat base has to see. The portfolio is splitting holdings by what they are
+     * for, though, and every other screen already treats the wallet as the other half of the
+     * book — the Stocks ring draws it beside the positions, the flow screen groups it with
+     * them, the accounts screen leaves it out because it is not held at a bank. Left in the
+     * cash slice it was the one screen saying otherwise, and the stocks slice read as the
+     * positions alone while the forecast the same screen falls back to counted both.
+     */
     return {
       ...forecast,
-      cash: h.cash, gold: h.metals, re: h.realEstate, car: h.vehicles,
-      stocks: h.shares, other: h.other, total: h.total,
+      cash: h.cash - h.brokerageCash, gold: h.metals, re: h.realEstate, car: h.vehicles,
+      stocks: h.shares + h.brokerageCash, other: h.other, total: h.total,
+      /*
+       * The weight, read from what is held rather than from the opening snapshot. A ledger
+       * kept by the service has no snapshot to roll forward, so the grams beside the gold
+       * slice came from a figure that is nought by construction and every ledger read "0.0 g"
+       * however much metal was in it.
+       */
+      accrual: { ...forecast.accrual, goldGrams: h.goldGrams },
     };
   }, [dayKey, data, market, marketAt, live, liveBalances]); // eslint-disable-line react-hooks/exhaustive-deps
   /**

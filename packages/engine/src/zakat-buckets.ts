@@ -1,13 +1,13 @@
 /**
- * Zakat as the owner reads it: a signed list, per pot of wealth, per lunar year.
+ * Zakat as the owner reads it: one signed list, under one lunar year.
  *
  * Three ideas live here and nothing else does.
  *
- * The first is the bucket. Wealth of the same kind shares one lunar year — cash earned in
- * the seventh month joins the cash year rather than starting its own, and gold added to gold
- * already held joins the gold year. So the ledger carries a handful of dates, one per kind,
- * not one per purchase. Each bucket answers the same questions on its own terms: what it
- * holds, when it passed nisab, whether a year has run since, and what that leaves owed.
+ * The first is that wealth is counted together. Gold, cash, shares, goods held to sell and
+ * money lent out are one estate on one anniversary, not a handful of pots each keeping its
+ * own calendar. The stricter reading gives each kind its own year, and it is defensible — but
+ * it produces several dates, several figures and several things to confirm for an owner with
+ * one obligation, and an obligation nobody can state in one number is one nobody pays.
  *
  * The second is the entry: one line of arithmetic with a sign on it. A line that adds, a line
  * that subtracts, and — the one that makes the list trustworthy — a line that counts nothing
@@ -28,11 +28,27 @@ import type { Hawl } from './zakat-assets.js';
 export const ZAKAT_RATE = 0.025;
 
 /**
+ * Where a line belongs when the list is read as three sections.
+ *
+ * Separate from the sign because the two answer different questions. `sign` is arithmetic:
+ * what the line does to the total. `group` is where an owner expects to find it — and the two
+ * come apart. Rent still inside its lunar year subtracts, but it is not a debt; it belongs
+ * with the things that are not being counted, shown as the deduction it is.
+ */
+export type EntryGroup = 'counted' | 'excluded' | 'debt';
+
+/** one more thing worth knowing about a line, printed under it */
+export interface EntryFact {
+  label: string;
+  value: string;
+}
+
+/**
  * One line of the arithmetic.
  *
- * `sign` is the whole of it: 1 adds, -1 takes away, and 0 is shown and counted for nothing.
- * The amount is always positive, so a screen never has to decide whether to print a minus of
- * its own — the sign says it, once.
+ * `sign` is the whole of the arithmetic: 1 adds, -1 takes away, and 0 is shown and counted for
+ * nothing. The amount is always positive, so a screen never has to decide whether to print a
+ * minus of its own — the sign says it, once.
  */
 export interface ZakatEntry {
   id: string;
@@ -43,9 +59,30 @@ export interface ZakatEntry {
   amount: number;
   /** why a line counts nothing, for the lines that count nothing */
   note?: string;
+  /**
+   * Which of the three sections the line is read under.
+   *
+   * Optional because years confirmed before the list was sectioned have no answer, and
+   * inventing one for them would put old lines in places their owner never saw them. A line
+   * without a group falls back to what its sign implies.
+   */
+  group?: EntryGroup;
+  /** the dates and figures behind the line, for the reader who wants them */
+  facts?: EntryFact[];
 }
 
-export type BucketKind = 'cash' | 'metal' | 'trade' | 'rent';
+/** where a line sits when it does not say — the reading the sign implies */
+export function groupOf(e: ZakatEntry): EntryGroup {
+  return e.group ?? (e.sign === 1 ? 'counted' : e.sign === -1 ? 'debt' : 'excluded');
+}
+
+/**
+ * What a pot is made of.
+ *
+ * `estate` is the whole of it now that wealth is counted together; the narrower kinds are kept
+ * because confirmed years recorded under them are still on file and still have to be read.
+ */
+export type BucketKind = 'estate' | 'cash' | 'metal' | 'trade' | 'rent';
 
 /**
  * Where a bucket's most recent lunar year stands.
@@ -72,7 +109,7 @@ export interface ConfirmedYear {
 }
 
 export interface ZakatBucket {
-  /** `cash`, `gold`, `silver`, `asset:<nodeId>` or `rent:<nodeId>` */
+  /** `wealth` for the estate; older confirmed years are filed under the kind they closed as */
   id: string;
   label: string;
   kind: BucketKind;

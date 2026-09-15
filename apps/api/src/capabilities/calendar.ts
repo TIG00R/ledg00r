@@ -3,7 +3,7 @@ import { command, query, Outcome } from '@ledger/contracts';
 import { eq } from 'drizzle-orm';
 import { schema as t } from '@ledger/db';
 import {
-  calendarEvents, toIcs, installmentDueDate, nisabEgp, hijriTextOfIso,
+  calendarEvents, toIcs, installmentDueDate, hijriTextOfIso,
   CALENDAR_COLORS, CALENDAR_LABELS, CALENDAR_ICONS,
   type Reminder, type RecurringTemplate, type ZakatSettings, type CalendarEvent,
   type CalendarEntry,
@@ -11,7 +11,7 @@ import {
 import { noted, refusal, newId, reversedMovements } from './shared.js';
 import type { AppCtx } from '../context.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
-import { assetsForZakat, assetKindOf } from '../zakat-assets.js';
+import { assetKindOf } from '../zakat-assets.js';
 
 const DEFAULT_ZAKAT: ZakatSettings = {
   anniversaryMonth: 9, anniversaryDay: 1, basis: 'gold', silverPerG: 52, deductDebts: false,
@@ -27,7 +27,6 @@ export function buildCalendar(ctx: AppCtx, opts: { horizonDays?: number; backDay
   const { data } = buildDataset(ctx.db, ctx.now);
   const market = readMarket(ctx.db);
   const zakat = readPref<ZakatSettings>(ctx.db, 'zakat') ?? DEFAULT_ZAKAT;
-  const nisab = nisabEgp(market, zakat);
 
   const reminders: Reminder[] = ctx.db.select().from(t.reminders).all().map((r) => ({
     id: r.id, subject: r.subject as Reminder['subject'], subjectId: r.subjectId ?? undefined,
@@ -77,8 +76,6 @@ export function buildCalendar(ctx: AppCtx, opts: { horizonDays?: number; backDay
     amountEgp: i.amountEgp, note: i.note, paidAt: i.paidAt, icon: markOf(i.propertyId),
   }));
 
-  const owned = assetsForZakat(ctx.db, ctx.now, market, nisab);
-
   const entries: CalendarEntry[] = ctx.db.select().from(t.calendarEntries).all()
     .map((e) => ({
       id: e.id, date: e.date, title: e.title, note: e.note, color: e.color,
@@ -88,7 +85,6 @@ export function buildCalendar(ctx: AppCtx, opts: { horizonDays?: number; backDay
 
   return calendarEvents(data, market, reminders, ctx.now, {
     zakat, recurring, installments, entries, activity: ledgerActivity(ctx, markOf),
-    assetLines: [...owned.lines, ...owned.metal.lines],
     horizonDays: opts.horizonDays ?? 400,
     backDays: opts.backDays ?? 400,
   });

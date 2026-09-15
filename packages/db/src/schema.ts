@@ -168,7 +168,13 @@ export const charity = sqliteTable('charity', {
  */
 export const zakatYears = sqliteTable('zakat_years', {
   id: text('id').primaryKey(),
-  /** which pot of wealth: cash, gold, silver, or one named asset */
+  /**
+   * Which pot the year was closed on.
+   *
+   * `wealth` for every year closed now that everything is counted together. The narrower
+   * pots — cash, gold, silver, one named asset — are years confirmed under the older reading,
+   * and they keep the name they were filed under so they can still be read back.
+   */
   bucket: text('bucket').notNull(),
   label: text('label').notNull(),
   startOn: text('start_on').notNull(),

@@ -452,6 +452,7 @@ function Body() {
                   { value: 'installments', label: 'On a plan', hint: 'grows as you pay' },
                 ] },
               { key: 'value', label: 'Worth', kind: 'number', width: '140px',
+                hint: 'in the currency beside it',
                 when: (v) => v.ownership !== 'installments' },
               /**
                * What the worth is stated in.
@@ -460,6 +461,10 @@ function Body() {
                * saying so made it a pound figure — the ledger read twenty thousand dollars
                * as twenty thousand pounds. It sits beside the amount, and only where there
                * is an amount to state: a plan is paid in the ledger's own currency.
+               *
+               * Choosing it converts nothing. It says what the number already was, and the
+               * number and the currency are both kept as they were entered — the conversion
+               * happens when a total has to be drawn, and nowhere else.
                */
               { key: 'currency', label: 'Currency', kind: 'select', width: '120px',
                 options: currencyOptions,
@@ -468,8 +473,13 @@ function Body() {
             ]}
             rows={(assets ?? []).map((a) => ({
               id: a.id, mark: a.icon ?? undefined, colour: a.color ?? '#8A8578',
+              // The worth as it was entered, in its own currency — `value` is that same worth
+              // converted for the totals, and showing it here read as a dollar car restated
+              // in pounds the moment its currency was chosen. A service too old to say what
+              // was entered falls back to the converted figure, which is what it used to
+              // show: worse than the truth, better than an empty box.
               values: { name: a.name, kind: a.kind, ownership: a.ownership,
-                        value: Math.round(a.value), currency: a.currency ?? 'EGP',
+                        value: Math.round(a.amount ?? a.value), currency: a.currency ?? 'EGP',
                         colour: a.color ?? '#8A8578' },
               trailing: (
                 <span style={{ fontSize: 11, color: 'var(--faint)', whiteSpace: 'nowrap' }}>
@@ -482,6 +492,9 @@ function Body() {
               name: patch.name as string | undefined,
               kind: patch.kind as string | undefined,
               ownership: patch.ownership as string | undefined,
+              // what it is worth, in its own currency — the field was drawn and read and
+              // then dropped on the way out, so correcting a worth changed nothing at all
+              value: patch.value === undefined ? undefined : Number(patch.value),
               currency: patch.currency as string | undefined,
               icon: patch.mark as string | undefined,
               color: patch.colour as string | undefined,

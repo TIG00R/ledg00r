@@ -62,6 +62,25 @@ function Body() {
   const tone = isLent ? 'var(--positive)' : 'var(--negative)';
   const accounts = data.nodes.filter((n) => n.kind === 'cash' && n.parentId);
 
+  /**
+   * The account a new debt starts against, and the currency that goes with it.
+   *
+   * A picker shows the first of what it is offered when the value it was given names nothing,
+   * but it does not choose it — so a blank that pointed at an account this ledger does not
+   * have looked filled in and was not: the row said "A Bank · EGP account" while nothing had
+   * been chosen, Add stayed disabled with nothing to say why, and no debt could be recorded
+   * at all. The one the ledger suggests for spending is used where it exists, and otherwise
+   * whichever account does — and the currency follows it, because a picker offering only
+   * accounts in the draft's currency has nothing to offer when nothing is held in it.
+   */
+  const suggested = accounts.find((n) => n.id === data.settings.burnAccountId)
+                 ?? accounts.find((n) => n.currency === display)
+                 ?? accounts[0];
+  /** the account to fall back to when the currency changes out from under the chosen one */
+  const inCurrency = (currency: string, chosen: string) =>
+    (accounts.find((n) => n.id === chosen && n.currency === currency)
+     ?? accounts.find((n) => n.currency === currency))?.id ?? '';
+
   return (
     <Page>
       <Sections sections={[
@@ -156,8 +175,12 @@ function Body() {
               field: (draft, set) => (
                 <span className="field-money">
                   <Amount value={draft.amount} ariaLabel="Amount" onChange={(n) => set({ amount: n })} />
+                  {/* The account moves with the currency: the picker beside it offers only
+                      accounts held in what is being lent, so a chosen pound account left
+                      standing under a dollar loan is a choice that is no longer on offer. */}
                   <Select ariaLabel="Currency" value={draft.currency} style={{ width: 92 }}
-                          onChange={(v) => set({ currency: v })}
+                          onChange={(v) => set({ currency: v,
+                                                 accountId: inCurrency(v, draft.accountId) })}
                           options={currencies.map((c) => ({ value: c.code, label: c.code }))} />
                 </span>
               ) },
@@ -243,8 +266,9 @@ function Body() {
           add={{
             label: isLent ? 'Lend money to someone' : 'Record something you borrowed',
             capability: 'debt.record',
-            blank: { counterparty: '', amount: 0, currency: display,
-                     accountId: data.settings.burnAccountId,
+            blank: { counterparty: '', amount: 0,
+                     currency: suggested?.currency ?? display,
+                     accountId: suggested?.id ?? '',
                      startedOn: new Date().toISOString().slice(0, 10), note: '' },
             valid: (d) => !!d.counterparty.trim() && d.amount > 0 && !!d.accountId,
             build: (d) => ({ direction: isLent ? 'lent' : 'borrowed',
