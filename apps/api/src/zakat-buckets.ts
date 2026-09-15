@@ -31,6 +31,9 @@ import type { AssetsForZakat } from './zakat-assets.js';
 
 const DAY = 86_400_000;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+/** a figure as a fact reads it: grouped digits, no unit, because the list states its own */
+const num = (n: number) =>
+  new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 }).format(Math.round(n));
 
 /** the one pot every year is confirmed against */
 export const ESTATE = 'wealth';
@@ -41,6 +44,14 @@ export interface BucketSources {
   nisab: number;
   cash: number;
   shares: number;
+  /**
+   * Uninvested money at the broker, which is counted inside `cash` as well.
+   *
+   * Passed separately so the list can draw the share book the way every other screen draws
+   * it — the positions and the wallet behind them as one thing — without changing what the
+   * base comes to. It is moved from one line to the other, never added twice.
+   */
+  brokerageCash: number;
   receivables: ZakatReceivable[];
   debts: ZakatDebt[];
   deductDebts: boolean;
@@ -125,16 +136,24 @@ export function zakatBuckets(db: Db, src: BucketSources): ZakatBucket[] {
   const entries: ZakatEntry[] = [];
 
   // ── what counts ─────────────────────────────────────────────────────────────────────
-  if (src.cash > 0) {
+  // The broker's uninvested cash is money, and the base counts it either way. Which line it
+  // is read under is the question, and the answer is the one the portfolio already gives: the
+  // share book is the positions and the wallet behind them, and cash is what is held at a bank.
+  const bankCash = src.cash - src.brokerageCash;
+  const book = src.shares + src.brokerageCash;
+  if (bankCash > 0) {
     entries.push({
-      id: 'cash', label: 'Cash', sign: 1, amount: src.cash, group: 'counted',
+      id: 'cash', label: 'Cash', sign: 1, amount: bankCash, group: 'counted',
       detail: 'every account, converted at today\'s rates',
     });
   }
-  if (src.shares > 0) {
+  if (book > 0) {
     entries.push({
-      id: 'shares', label: 'Shares and funds', sign: 1, amount: src.shares, group: 'counted',
-      detail: 'the book, at the prices last recorded',
+      id: 'shares', label: 'Shares and funds', sign: 1, amount: book, group: 'counted',
+      detail: 'the whole book — positions at the prices last recorded, and the cash at the broker',
+      facts: src.brokerageCash > 0
+        ? [{ label: 'Uninvested at the broker', value: num(src.brokerageCash) }]
+        : [],
     });
   }
   for (const l of owned.metal.lines) {

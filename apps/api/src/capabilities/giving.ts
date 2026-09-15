@@ -51,7 +51,7 @@ function bucketSources(ctx: AppCtx): BucketSources {
 
   return {
     now: ctx.now, settings, nisab,
-    cash: held.cash, shares: held.shares,
+    cash: held.cash, shares: held.shares, brokerageCash: held.brokerageCash,
     receivables,
     debts: zakatDebts(data, ctx.now, settings, rate),
     deductDebts: settings.deductDebts,
@@ -421,9 +421,14 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
        * Shares come from the same reading rather than from the forecast's own idea of the
        * book, because that idea included the broker's uninvested cash — which is a cash
        * account in this ledger and was therefore being counted on both sides.
+       *
+       * That wallet is split out here rather than left in the cash pile. It is money and the
+       * base counts it either way, but every screen that draws the share book draws the
+       * positions and the wallet behind them as one thing, and an owner comparing the two
+       * pages has to read the same split on both.
        */
       const held = ledgerHoldings(ctx.db, ctx.now, market);
-      const cash = held.cash;
+      const cash = held.cash - held.brokerageCash;
 
       // Money lent out is wealth you happen not to be holding, so it counts — unless you have
       // written it off, in which case it is not wealth at all.
@@ -486,7 +491,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         },
         debts, receivables, owedToYou, deductDebts: z.deductDebts,
         cash: manual ? manual.cash : cash,
-        stocks: manual ? manual.stocks : held.shares,
+        stocks: manual ? manual.stocks : held.shares + held.brokerageCash,
         assets: [...owned.lines, ...owned.metal.lines].map((l) => ({
           id: l.id, name: l.name, kind: l.kind,
           intention: l.intention, intentionLabel: l.intentionLabel,
