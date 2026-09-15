@@ -354,7 +354,7 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
               cell: (n) => <span style={{ fontWeight: 600 }}>{n.ticker}</span>,
               field: (d, set) => (
                 <input aria-label="Ticker" list="notebook-tickers" value={d.ticker}
-                       placeholder="ABUK" style={{ width: 110, textTransform: 'uppercase' }}
+                       placeholder="NVDA" style={{ width: 110, textTransform: 'uppercase' }}
                        onChange={(e) => set({ ticker: e.target.value.toUpperCase() })} />
               ) },
             // The company belongs to the ticker, not to the note: naming it here names it
