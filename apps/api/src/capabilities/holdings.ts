@@ -269,11 +269,25 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'book.transfer',
     context: 'holdings',
-    summary: 'Move cash into the brokerage wallet, or take it back out.',
-    detail: 'Money in sits uninvested until an order uses it. Money out returns to a named account — a broker is somewhere you keep money, not somewhere it disappears into.',
+    summary: 'Move cash into the brokerage wallet, from an account or from a dividend, or take it back out.',
+    detail: 'Money in sits uninvested until an order uses it. Money out returns to a named account — a broker is somewhere you keep money, not somewhere it disappears into. A dividend is the one sort of money that arrives in the wallet without leaving an account of yours, so it comes from outside the ledger and is posted as income rather than as a transfer.',
     input: z.object({
-      accountId: NodeId,
+      /** where the money comes from, or goes back to; not an account when a dividend paid it */
+      accountId: NodeId.optional(),
       direction: z.enum(['in', 'out']).default('in'),
+      /**
+       * What put the money there. An account of yours, or a distribution from a share.
+       *
+       * Taking money out always goes to an account, so this is only read on the way in.
+       */
+      source: z.enum(['account', 'dividends']).default('account'),
+      /**
+       * Which share paid it, when a dividend did; the payout is attributed to that ticker.
+       *
+       * Taken however it was typed, the same as the notebook takes one — a ledger that holds
+       * both `abuk` and `ABUK` holds neither.
+       */
+      ticker: z.string().min(1).max(12).regex(/^[A-Za-z][A-Za-z0-9.]*$/, 'not a ticker').optional(),
       amount: z.number().positive(),
       date: DateOnly.optional(), note: z.string().max(300).optional(),
     }).merge(DryRun),
@@ -283,8 +297,44 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.priceKey, 'brokerage_cash')).get()
                 ?? ctx.db.select().from(t.nodes).where(eq(t.nodes.id, 'brokerage-cash')).get();
       if (!book) return refusal('not_found', 'This ledger has no brokerage account.', 'Add one with account.add first.');
-      const acct = ctx.ledger().node(input.accountId);
       const out = input.direction === 'out';
+      const byDividend = !out && input.source === 'dividends';
+
+      if (!byDividend && !input.accountId) {
+        return refusal('unknown_node', 'Name the account the money moves between.',
+                       out ? 'Money out of the book has to land somewhere.' : 'Or say source: "dividends".');
+      }
+      const acct = input.accountId ? ctx.ledger().node(input.accountId) : undefined;
+      if (input.accountId && !acct) {
+        return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
+      }
+
+      if (byDividend) {
+        /**
+         * Where a dividend comes from.
+         *
+         * It is not a transfer: no account of yours is any lighter for it. So it arrives from
+         * outside the ledger, through an external node made on first payout, and it is posted
+         * as income — which is what puts it in the income totals where it belongs. One node
+         * per payer, so a year can be read back by who paid it.
+         */
+        const payer = input.ticker ? input.ticker.toUpperCase() : null;
+        const extId = payer ? `ext-div-${payer}` : 'ext-dividends';
+        const name = payer ? `${payer} dividends` : 'Dividends';
+        ctx.db.insert(t.nodes).values({
+          id: extId, kind: 'external', name, currency: book.currency,
+          valuation: 'face', openingQty: 0, archived: false,
+        }).onConflictDoNothing().run();
+
+        return post(ctx, {
+          date: input.date ?? today(ctx), kind: 'income', note: input.note,
+          legs: [{ fromNodeId: extId, toNodeId: book.id, qtyFrom: input.amount }],
+        }, `${input.amount} into the book from ${name.toLowerCase()}`,
+        {
+          dryRun: input.dryRun,
+          index: [{ kind: 'income', title: name, body: input.note ?? '' }],
+        });
+      }
 
       return post(ctx, {
         date: input.date ?? today(ctx), kind: 'transfer', note: input.note,

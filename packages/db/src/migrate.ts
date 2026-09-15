@@ -524,6 +524,25 @@ const STEPS: Step[] = [
       CREATE INDEX IF NOT EXISTS stock_note_date ON stock_notes (date);
     `),
   },
+  {
+    version: 21,
+    name: 'what a share paid out',
+    up: (db) => db.$raw.exec(`
+      CREATE TABLE IF NOT EXISTS stock_dividends (
+        id         TEXT PRIMARY KEY,
+        ticker     TEXT NOT NULL,
+        year       INTEGER NOT NULL,
+        months     TEXT NOT NULL DEFAULT '',
+        kind       TEXT NOT NULL,
+        amount     REAL NOT NULL,
+        currency   TEXT,
+        note       TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT);
+      CREATE INDEX IF NOT EXISTS stock_div_ticker_year ON stock_dividends (ticker, year);
+      CREATE UNIQUE INDEX IF NOT EXISTS stock_div_unique ON stock_dividends (ticker, year, kind);
+    `),
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

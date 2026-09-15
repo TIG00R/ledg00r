@@ -5,6 +5,7 @@ import { indexRow, dropRow } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
 import { noted, refusal, today, newId } from './shared.js';
+import { readBase } from './currencies.js';
 
 /**
  * The share notebook.
@@ -24,6 +25,25 @@ const TickerIn = z.string().min(1).max(12).regex(/^[A-Za-z][A-Za-z0-9.]*$/, 'not
 /** One spelling, whatever was typed — a notebook that holds both `abuk` and `ABUK` holds neither. */
 const norm = (ticker: string) => ticker.toUpperCase();
 
+/**
+ * The months a payout came in, one spelling.
+ *
+ * Stored comma-joined so a year reads back in order however it was typed, and de-duplicated
+ * because a company does not distribute twice in the same March.
+ */
+const packMonths = (months: number[]) =>
+  [...new Set(months)].sort((a, b) => a - b).join(',');
+
+const unpackMonths = (packed: string): number[] =>
+  packed.split(',').map((m) => Number(m.trim())).filter((m) => m >= 1 && m <= 12);
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** What a payout is worth, said the way it would be said out loud. */
+const worth = (kind: 'cash' | 'shares', amount: number, currency: string | null) =>
+  (kind === 'shares' ? `${amount} share${amount === 1 ? '' : 's'}` : `${amount} ${currency ?? 'EGP'}`);
+
 /** The company as the notebook knows it, created on first mention. */
 function remember(ctx: AppCtx, ticker: string, name: string | undefined, now: string) {
   const row = ctx.db.select().from(t.stocks).where(eq(t.stocks.ticker, ticker)).get();
@@ -37,6 +57,18 @@ function remember(ctx: AppCtx, ticker: string, name: string | undefined, now: st
     ctx.db.update(t.stocks).set({ name }).where(eq(t.stocks.ticker, ticker)).run();
   }
 }
+
+/** A year a payout belongs to. Wide enough for a ledger that goes back, narrow enough to catch a typo. */
+const Year = z.number().int().min(1900).max(2200);
+const Month = z.number().int().min(1).max(12);
+
+const dividendOut = z.object({
+  id: z.string(), ticker: z.string(), name: z.string().nullable(),
+  year: z.number(), months: z.array(z.number()),
+  kind: z.enum(['cash', 'shares']), amount: z.number(), currency: z.string().nullable(),
+  note: z.string().nullable(),
+  createdAt: z.string(), updatedAt: z.string().nullable(),
+});
 
 const noteOut = z.object({
   id: z.string(), ticker: z.string(), name: z.string().nullable(),
@@ -205,6 +237,161 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
     },
   }),
 
+  query({
+    name: 'stock.dividends.list',
+    context: 'holdings',
+    summary: 'What each share paid out, by year — the months it came in and what it came to.',
+    detail: 'A record and nothing more. It moves no money and changes no position; money that actually reached the brokerage is funded by book.transfer, which is a separate act. This is here so a year can be read back and the next decision made against what arrived rather than what was hoped for.',
+    input: z.object({
+      ticker: TickerIn.optional(),
+      year: z.number().int().optional(),
+      limit: z.number().int().positive().max(500).default(200),
+    }),
+    output: z.array(dividendOut),
+    handler: async ({ ticker, year, limit }) => {
+      const { db } = ctxOf();
+      const names = new Map(db.select().from(t.stocks).all().map((s) => [s.ticker, s.name]));
+      return db.select().from(t.stockDividends).all()
+        .filter((d) => (!ticker || d.ticker === norm(ticker)) && (year == null || d.year === year))
+        .sort((a, b) => b.year - a.year || a.ticker.localeCompare(b.ticker))
+        .slice(0, limit)
+        .map((d) => ({
+          id: d.id, ticker: d.ticker, name: names.get(d.ticker) ?? null,
+          year: d.year, months: unpackMonths(d.months),
+          kind: d.kind, amount: d.amount, currency: d.currency ?? null,
+          note: d.note ?? null, createdAt: d.createdAt, updatedAt: d.updatedAt ?? null,
+        }));
+    },
+  }),
+
+  command({
+    name: 'stock.dividend.add',
+    context: 'holdings',
+    summary: 'Record what a share paid out in a year, and in which months.',
+    detail: 'Money or shares — `kind` says which the value counts. Nothing is moved and nothing is held by recording one: it is a note about the year, kept where the rest of the reasoning about that share is kept. A ticker the notebook has not seen is added to its index, so a payer can be followed before it is ever bought.',
+    input: z.object({
+      ticker: TickerIn,
+      /** the company, when you are naming it for the first time or renaming it */
+      name: z.string().max(120).optional(),
+      year: Year,
+      /** the months it came in, 1-12; a payer that distributes twice names both */
+      months: z.array(Month).max(12).default([]),
+      kind: z.enum(['cash', 'shares']).default('cash'),
+      /** the total for that year: money, or a number of shares */
+      amount: z.number().positive(),
+      /** what the money was in; ignored when the payout was shares */
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      note: z.string().max(2000).optional(),
+    }),
+    output: z.union([z.object({ id: z.string(), summary: z.string() }), Outcome]),
+    handler: async (input) => {
+      const ctx = ctxOf();
+      const ticker = norm(input.ticker);
+      const kind = input.kind;
+      const already = ctx.db.select().from(t.stockDividends).all()
+        .find((d) => d.ticker === ticker && d.year === input.year && d.kind === kind);
+      if (already) {
+        return refusal('duplicate',
+          `${ticker} already has a ${kind === 'shares' ? 'share' : 'cash'} payout recorded for ${input.year}.`,
+          'Edit that record rather than writing a second one for the same year.');
+      }
+
+      const now = new Date().toISOString();
+      remember(ctx, ticker, input.name?.trim() || undefined, now);
+      const id = newId('div');
+      const currency = kind === 'shares' ? null : input.currency ?? readBase(ctx.db);
+      const months = packMonths(input.months);
+
+      ctx.db.insert(t.stockDividends).values({
+        id, ticker, year: input.year, months, kind, amount: input.amount,
+        currency, note: input.note?.trim() || null, createdAt: now, updatedAt: null,
+      }).run();
+      indexRow(ctx.db, { kind: 'note', recordId: id, occurredOn: `${input.year}-12-31`,
+                         title: `${ticker} dividend ${input.year}`,
+                         body: [worth(kind, input.amount, currency),
+                                unpackMonths(months).map((m) => MONTH_NAMES[m - 1]).join(', '),
+                                input.note ?? ''].filter(Boolean).join(' · ') });
+
+      return { id, summary: `${ticker} · ${input.year} paid ${worth(kind, input.amount, currency)}` };
+    },
+  }),
+
+  command({
+    name: 'stock.dividend.edit',
+    context: 'holdings',
+    summary: 'Correct a recorded payout: the year, the months, what it came to.',
+    detail: 'What is not named keeps what it had. Moving one to another ticker moves the record rather than rewriting it, the same as a note.',
+    input: z.object({
+      dividendId: z.string(),
+      ticker: TickerIn.optional(),
+      name: z.string().max(120).optional(),
+      year: Year.optional(),
+      months: z.array(Month).max(12).optional(),
+      kind: z.enum(['cash', 'shares']).optional(),
+      amount: z.number().positive().optional(),
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      note: z.string().max(2000).optional(),
+    }),
+    output: Outcome,
+    handler: async (input) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.stockDividends)
+        .where(eq(t.stockDividends.id, input.dividendId)).get();
+      if (!row) return refusal('not_found', 'There is no recorded payout with that id.');
+
+      const ticker = input.ticker ? norm(input.ticker) : row.ticker;
+      const year = input.year ?? row.year;
+      const kind = input.kind ?? row.kind;
+      const amount = input.amount ?? row.amount;
+      const months = input.months ? packMonths(input.months) : row.months;
+      const currency = kind === 'shares' ? null : input.currency ?? row.currency ?? readBase(ctx.db);
+      const note = input.note === undefined ? row.note : (input.note.trim() || null);
+      const now = new Date().toISOString();
+
+      const clash = ctx.db.select().from(t.stockDividends).all()
+        .find((d) => d.id !== row.id && d.ticker === ticker && d.year === year && d.kind === kind);
+      if (clash) {
+        return refusal('duplicate',
+          `${ticker} already has a ${kind === 'shares' ? 'share' : 'cash'} payout recorded for ${year}.`);
+      }
+
+      if (input.name !== undefined || ticker !== row.ticker) {
+        remember(ctx, ticker, input.name?.trim() || undefined, now);
+      }
+
+      ctx.db.update(t.stockDividends)
+        .set({ ticker, year, months, kind, amount, currency, note, updatedAt: now })
+        .where(eq(t.stockDividends.id, row.id)).run();
+      indexRow(ctx.db, { kind: 'note', recordId: row.id, occurredOn: `${year}-12-31`,
+                         title: `${ticker} dividend ${year}`,
+                         body: [worth(kind, amount, currency),
+                                unpackMonths(months).map((m) => MONTH_NAMES[m - 1]).join(', '),
+                                note ?? ''].filter(Boolean).join(' · ') });
+
+      const moved = ticker !== row.ticker ? `, moved from ${row.ticker}` : '';
+      return noted(`${ticker} · ${year} payout updated${moved}`);
+    },
+  }),
+
+  command({
+    name: 'stock.dividend.remove',
+    context: 'holdings',
+    summary: 'Delete a recorded payout.',
+    effect: 'irreversible',
+    detail: 'The record is gone. Nothing else is: no balance moved when it was written, so nothing moves back.',
+    input: z.object({ dividendId: z.string() }),
+    output: Outcome,
+    handler: async ({ dividendId }) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.stockDividends)
+        .where(eq(t.stockDividends.id, dividendId)).get();
+      if (!row) return refusal('not_found', 'There is no recorded payout with that id.');
+      ctx.db.delete(t.stockDividends).where(eq(t.stockDividends.id, dividendId)).run();
+      dropRow(ctx.db, 'note', dividendId);
+      return noted(`${row.ticker} · ${row.year} payout removed`);
+    },
+  }),
+
   command({
     name: 'stock.forget',
     context: 'holdings',
@@ -217,13 +404,22 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
       const ctx = ctxOf();
       const ticker = norm(raw);
       const rows = ctx.db.select().from(t.stockNotes).where(eq(t.stockNotes.ticker, ticker)).all();
+      const paid = ctx.db.select().from(t.stockDividends)
+        .where(eq(t.stockDividends.ticker, ticker)).all();
       const known = ctx.db.select().from(t.stocks).where(eq(t.stocks.ticker, ticker)).get();
-      if (!known && rows.length === 0) return refusal('not_found', `${ticker} is not in the notebook.`);
+      if (!known && rows.length === 0 && paid.length === 0) {
+        return refusal('not_found', `${ticker} is not in the notebook.`);
+      }
 
       for (const n of rows) dropRow(ctx.db, 'note', n.id);
+      for (const d of paid) dropRow(ctx.db, 'note', d.id);
       ctx.db.delete(t.stockNotes).where(eq(t.stockNotes.ticker, ticker)).run();
+      ctx.db.delete(t.stockDividends).where(eq(t.stockDividends.ticker, ticker)).run();
       ctx.db.delete(t.stocks).where(eq(t.stocks.ticker, ticker)).run();
-      return noted(`${ticker} forgotten, with ${rows.length} note${rows.length === 1 ? '' : 's'}`);
+
+      const said = [`${rows.length} note${rows.length === 1 ? '' : 's'}`];
+      if (paid.length) said.push(`${paid.length} payout${paid.length === 1 ? '' : 's'}`);
+      return noted(`${ticker} forgotten, with ${said.join(' and ')}`);
     },
   }),
 ];

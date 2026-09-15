@@ -283,6 +283,39 @@ export const stockNotes = sqliteTable('stock_notes', {
   byDate: index('stock_note_date').on(t.date),
 }));
 
+/**
+ * What a share paid out, and when.
+ *
+ * A record, not a movement. The company distributed in these months of this year and this is
+ * what came of it — kept so a year can be read back and a decision made against what actually
+ * arrived, rather than against what was hoped for. Nothing here touches a balance or a
+ * position: money that reached the brokerage is funded separately, by the transfer that
+ * actually moved it.
+ *
+ * A distribution can be money or it can be shares, so the value is a number and `kind` says
+ * what the number counts.
+ */
+export const stockDividends = sqliteTable('stock_dividends', {
+  id: text('id').primaryKey(),
+  ticker: text('ticker').notNull(),
+  /** the year distributed for */
+  year: integer('year').notNull(),
+  /** the months it came in, as numbers 1-12 in order, comma-joined: a payer can distribute twice */
+  months: text('months').notNull().default(''),
+  /** what the value counts: pounds and pence, or shares */
+  kind: text('kind', { enum: ['cash', 'shares'] }).notNull(),
+  /** the total for that year — money in `currency`, or a number of shares */
+  amount: real('amount').notNull(),
+  /** what the money was in; nothing, when the payout was shares */
+  currency: text('currency'),
+  note: text('note'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at'),
+}, (t) => ({
+  byTickerYear: index('stock_div_ticker_year').on(t.ticker, t.year),
+  oneRowPerYear: uniqueIndex('stock_div_unique').on(t.ticker, t.year, t.kind),
+}));
+
 export const planRules = sqliteTable('plan_rules', {
   id: text('id').primaryKey(),
   propertyId: text('property_id').notNull(),
@@ -510,6 +543,7 @@ export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Stock = typeof stocks.$inferSelect;
 export type StockNote = typeof stockNotes.$inferSelect;
+export type StockDividend = typeof stockDividends.$inferSelect;
 export type Installment = typeof installments.$inferSelect;
 export type IncomeSource = typeof incomeSources.$inferSelect;
 export type RecurringTemplate = typeof recurringTemplates.$inferSelect;
