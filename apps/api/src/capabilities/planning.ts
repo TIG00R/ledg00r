@@ -5,7 +5,8 @@ import { eq } from 'drizzle-orm';
 import { upcoming, nextOccurrence, type Reminder, type RecurringTemplate,
          type Dismissal, type ZakatSettings } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun } from './shared.js';
+import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun,
+         reversedMovements } from './shared.js';
 import { nextSeq, rateFor } from './spending.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
 
@@ -239,9 +240,11 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
       const insts = new Map(ctx.db.select().from(t.institutions).all().map((i) => [i.id, i.name]));
       const parents = new Map(ctx.db.select().from(t.nodes).all().map((n) => [n.id, n.parentId]));
       const legs = ctx.db.select().from(t.legs).all();
+      // income that was undone did not land, whichever screen it was undone from
+      const undone = reversedMovements(ctx.db);
 
       return ctx.db.select().from(t.transactions).all()
-        .filter((tx) => tx.kind === 'income')
+        .filter((tx) => tx.kind === 'income' && !undone.has(tx.id))
         .sort((a, b) => (a.date === b.date ? b.seq - a.seq : b.date.localeCompare(a.date)))
         .slice(0, limit)
         .map((tx) => {

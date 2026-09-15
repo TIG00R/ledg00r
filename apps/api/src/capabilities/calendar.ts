@@ -8,7 +8,7 @@ import {
   type Reminder, type RecurringTemplate, type ZakatSettings, type CalendarEvent,
   type CalendarEntry,
 } from '@ledger/engine';
-import { noted, refusal, newId } from './shared.js';
+import { noted, refusal, newId, reversedMovements } from './shared.js';
 import type { AppCtx } from '../context.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
 import { assetsForZakat, assetKindOf } from '../zakat-assets.js';
@@ -189,10 +189,14 @@ function ledgerActivity(
   }
 
   // Movements between two of your own things, and income that actually landed. Both are
-  // movements in the log; what separates them is where the value came from.
+  // movements in the log; what separates them is where the value came from. One that has
+  // since been undone is left off the day it happened on, the same as everywhere else that
+  // answers what happened rather than what the log says.
   const legs = ctx.db.select().from(t.legs).all();
+  const undone = reversedMovements(ctx.db);
   for (const tx of ctx.db.select().from(t.transactions).all()) {
     if (tx.kind !== 'transfer' && tx.kind !== 'income') continue;
+    if (undone.has(tx.id)) continue;
     const leg = legs.find((l) => l.transactionId === tx.id);
     if (!leg) continue;
     const from = leg.fromNodeId ? names.get(leg.fromNodeId) ?? leg.fromNodeId : null;
@@ -213,6 +217,7 @@ function ledgerActivity(
   // A purchase or sale against an asset shows that asset's own mark.
   for (const tx of ctx.db.select().from(t.transactions).all()) {
     if (tx.kind !== 'purchase' && tx.kind !== 'sale') continue;
+    if (undone.has(tx.id)) continue;
     const leg = legs.find((l) => l.transactionId === tx.id);
     const assetId = tx.kind === 'purchase' ? leg?.toNodeId : leg?.fromNodeId;
     if (!assetId || assetId === 'gold' || assetId === 'silver') continue; // metal has its lots

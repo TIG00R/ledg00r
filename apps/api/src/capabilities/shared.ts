@@ -126,6 +126,24 @@ export function reversalLegs(legs: Array<{
 }
 
 /**
+ * Movements that no longer stand, because something reversed them.
+ *
+ * Undoing a movement writes its opposite rather than deleting it: the balances come back and
+ * the log keeps both rows, which is what makes a ledger checkable. A list of records is not
+ * the log, though — it answers "what happened", and a payment that has been taken back did
+ * not happen. Lists built straight off the transactions table went on showing undone records
+ * until someone reloaded against a table that knew better, so they ask here instead.
+ *
+ * Records kept in a table of their own — expenses, giving, orders, metal lots — are removed
+ * by the undo itself and never reach this.
+ */
+export function reversedMovements(db: AppCtx['db']): Set<string> {
+  return new Set(db.select().from(t.transactions).all()
+    .map((x) => x.correctsId)
+    .filter((id): id is string => !!id));
+}
+
+/**
  * Reverse a movement, if there is one.
  *
  * Correcting or removing a log row has to undo what it moved, or the balances go on
