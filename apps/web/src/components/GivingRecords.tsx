@@ -4,6 +4,7 @@ import { money, toEgp } from '@ledger/engine';
 import { RecordTable } from './RecordTable';
 import { Icon, type IconName } from './Icon';
 import { Amount } from './Amount';
+import { RecordAmount } from './RecordAmount';
 import { DateField } from './DateField';
 import { AccountName } from './UI';
 import { Select } from './Select';
@@ -42,7 +43,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
    */
   onRows?: (rows: GivingRow[]) => void;
 }) {
-  const { data, dm, currencies } = useApp();
+  const { data, currencies } = useApp();
   /** which institution a node sits at, for the second line under an account's name */
   const bankOf = (id?: string | null) =>
     data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
@@ -114,16 +115,9 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             ) },
           { key: 'amount', label: 'Amount', kind: 'money', align: 'right',
             value: (r) => toEgp(r.amount, r.currency, market),
-            cell: (r) => (
-            <>
-              <div className="mono" style={{ fontSize: 14 }}>
-                {money(r.amount, r.currency, r.currency === 'EGP' ? 0 : 2)}
-              </div>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>
-                {dm(toEgp(r.amount, r.currency, market))}
-              </div>
-            </>
-            ),
+            // Given in the currency the account is held in is not an exchange, and was being
+            // restated in the reader's currency as though it were.
+            cell: (r) => <RecordAmount amount={r.amount} currency={r.currency} accountId={r.from} />,
             field: (d, set) => (
             <span className="field-money">
               <Amount value={d.amount ?? 0} ariaLabel="Amount" onChange={(n) => set({ amount: n })} />

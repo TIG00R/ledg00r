@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Amount } from '../components/Amount';
+import { RecordAmount } from '../components/RecordAmount';
 import { Select, opts } from '../components/Select';
 import { useApp, market } from '../AppState';
-import { money, splitByCurrency, toEgp } from '@ledger/engine';
+import { money, splitByCurrency, toEgp, fromEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Chip, Row, Field, Empty, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
 import { Icon, ICON_FAMILY, type IconName } from '../components/Icon';
@@ -33,11 +34,11 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
                      'July', 'August', 'September', 'October', 'November', 'December'];
 
 const FALLBACK_LOGGED = [
-  { id: 'l1', date: '2026-07-14', source: 'Freelance work', amount: 1800, currency: 'USD', into: 'Nile Bank · USD savings', note: 'Q2 retainer, final invoice' },
-  { id: 'l2', date: '2026-05-02', source: 'Freelance work', amount: 1200, currency: 'USD', into: 'Nile Bank · USD savings', note: 'critical, triaged in 3 days' },
-  { id: 'l3', date: '2026-04-19', source: 'Freelance work', amount: 1500, currency: 'USD', into: 'Nile Bank · USD savings', note: '' },
-  { id: 'l4', date: '2026-03-08', source: 'Freelance work', amount: 600, currency: 'USD', into: 'Nile Bank · USD savings', note: 'medium severity' },
-  { id: 'l5', date: '2026-02-11', source: 'Freelance work', amount: 900, currency: 'USD', into: 'Nile Bank · USD savings', note: '' },
+  { id: 'l1', date: '2026-07-14', source: 'Freelance work', amount: 1800, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: 'Q2 retainer, final invoice' },
+  { id: 'l2', date: '2026-05-02', source: 'Freelance work', amount: 1200, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: 'critical, triaged in 3 days' },
+  { id: 'l3', date: '2026-04-19', source: 'Freelance work', amount: 1500, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: '' },
+  { id: 'l4', date: '2026-03-08', source: 'Freelance work', amount: 600, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: 'medium severity' },
+  { id: 'l5', date: '2026-02-11', source: 'Freelance work', amount: 900, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: '' },
 ];
 
 function Body() {
@@ -110,7 +111,7 @@ function Body() {
         if (off) return;
         setLanded(rows.map((r) => ({
           id: r.id, date: r.date, source: r.source, amount: r.amount,
-          currency: r.currency, into: r.into, note: r.note ?? '',
+          currency: r.currency, into: r.into, intoId: r.intoId ?? null, note: r.note ?? '',
         })));
       })
       .catch(() => { if (!off) setLanded(null); });
@@ -152,6 +153,22 @@ function Body() {
     const mine = occasionalThisYear.filter((l) => l.source === src?.name);
     return mine.reduce((s2, l) => s2 + toEgp(l.amount, l.currency, market), 0);
   };
+  /**
+   * What a source has paid, in the currency that source is paid in.
+   *
+   * A dollar rent landing in a dollar account was being summarised in pounds, which is a
+   * conversion nobody asked for and at today's rate rather than at the rates it arrived on.
+   * The sum is still carried in pounds because a source can be paid in more than one
+   * currency; it is read back in the source's own.
+   */
+  const perSourceNative = (id: string) => {
+    const src = data.incomeSources.find((x) => x.id === id);
+    const cur = src?.currency ?? 'EGP';
+    return { amount: fromEgp(perSource(id), cur, market), currency: cur,
+             count: occasionalThisYear.filter((l) => l.source === src?.name).length };
+  };
+  const nativeMoney = (v: { amount: number; currency: string }) =>
+    money(v.amount, v.currency, v.currency === 'EGP' ? 0 : 2);
   const accountName = (id: string) => {
     const n = data.nodes.find((x) => x.id === id);
     const inst = data.institutions.find((i) => i.id === n?.parentId);
@@ -372,8 +389,10 @@ function Body() {
                 <div style={{ fontSize: 11, color: 'var(--faint)' }}>
                   {s.amount == null
                     ? (() => {
-                        const mine = occasionalThisYear.filter((l) => l.source === s.name);
-                        return mine.length ? `avg ${dm(perSource(s.id) / mine.length)}` : 'varies';
+                        const paid = perSourceNative(s.id);
+                        return paid.count
+                          ? `avg ${nativeMoney({ ...paid, amount: paid.amount / paid.count })}`
+                          : 'varies';
                       })()
                     : 'fixed'}
                 </div>
@@ -383,7 +402,7 @@ function Body() {
                   {s.scheduled ? `Monthly, on the ${s.dayOfMonth === 'last' ? 'last day' : `${s.dayOfMonth}st`}` : 'Whenever it comes'}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-                  {s.scheduled ? 'next 1 Oct' : `${dm(perSource(s.id))} so far this year`}
+                  {s.scheduled ? 'next 1 Oct' : `${nativeMoney(perSourceNative(s.id))} so far this year`}
                 </div>
               </div>
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>
@@ -430,15 +449,11 @@ function Body() {
 
             { key: 'amount', label: 'Amount', kind: 'money',
               value: (l) => toEgp(l.amount, l.currency, market),
+              // Paid in one currency into an account held in the same one is not an exchange,
+              // and was being restated in the reader's currency as though it were.
               cell: (l) => (
-                <>
-                  <div className="mono" style={{ fontSize: 14 }}>{money(l.amount, l.currency)}</div>
-                  {l.currency !== display && (
-                    <div className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>
-                      {dm(toEgp(l.amount, l.currency, market))}
-                    </div>
-                  )}
-                </>
+                <RecordAmount amount={l.amount} currency={l.currency}
+                              accountId={(l as { intoId?: string | null }).intoId} />
               ),
               field: (d, set) => (
                 <span className="field-money">

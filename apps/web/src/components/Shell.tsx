@@ -3,7 +3,7 @@ import { Icon, VIEW_TONE, type IconName } from './Icon';
 import { Select } from './Select';
 import { useLive } from '../Live';
 import { useApp, market } from '../AppState';
-import { fmt, money, toEgp } from '@ledger/engine';
+import { fmt, money } from '@ledger/engine';
 import { useModules } from '../Modules';
 import { BrandMark } from './Brand';
 
@@ -206,7 +206,7 @@ export function TopBar({ title, screen, onRefresh, onNavigate, onMenu }: {
 function NotificationBell({ dueCount, onNavigate }: {
   dueCount: number; onNavigate: (id: string) => void;
 }) {
-  const { events, dm, dismiss } = useApp();
+  const { events, dismiss } = useApp();
   const [open, setOpen] = useState(false);
   const { mobile } = useViewport();
 
@@ -231,7 +231,12 @@ function NotificationBell({ dueCount, onNavigate }: {
     Number(!!b.overdue) - Number(!!a.overdue) || Number(b.due) - Number(a.due) || a.daysAway - b.daysAway);
   const shown = ranked.slice(0, 8);
   const hidden = ranked.length - shown.length;
-  const amountOf = (e: (typeof events)[number]) => dm(toEgp(e.amount ?? 0, e.currency ?? 'EGP', market));
+  const amountOf = (e: (typeof events)[number]) => {
+    // an event states the currency it is in, and there is no account it was exchanged into —
+    // so it is read in its own currency rather than restated in the reader's
+    const cur = e.currency ?? 'EGP';
+    return money(e.amount ?? 0, cur, cur === 'EGP' ? 0 : 2);
+  };
 
   return (
     <div data-bell style={{ position: 'relative' }}>
@@ -380,9 +385,14 @@ export function MarketPanel() {
 
 /** What is coming, and what a reminder has decided you should already be looking at. */
 export function UpcomingPanel({ onNavigate }: { onNavigate: (id: string) => void }) {
-  const { events, dm, dismiss } = useApp();
+  const { events, dismiss } = useApp();
   // an event states the currency it is in; showing 62 dollars as 62 pounds would be a lie
-  const amountOf = (e: (typeof events)[number]) => dm(toEgp(e.amount ?? 0, e.currency ?? 'EGP', market));
+  const amountOf = (e: (typeof events)[number]) => {
+    // an event states the currency it is in, and there is no account it was exchanged into —
+    // so it is read in its own currency rather than restated in the reader's
+    const cur = e.currency ?? 'EGP';
+    return money(e.amount ?? 0, cur, cur === 'EGP' ? 0 : 2);
+  };
   const [all, setAll] = useState(false);
   const shown = all ? events : events.slice(0, 5);
   const hidden = events.length - shown.length;

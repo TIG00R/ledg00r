@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Amount } from '../components/Amount';
+import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
 import { Select, opts } from '../components/Select';
 import { useApp, market } from '../AppState';
@@ -171,15 +172,10 @@ function Body() {
 
             { key: 'amount', label: 'Amount', kind: 'money',
               value: (e) => e.egpAmount,
+              // Spent in the currency the account is held in is not an exchange, and was being
+              // restated in the reader's currency as though it were.
               cell: (e) => (
-                <>
-                  <div className="mono" style={{ fontSize: 14 }}>
-                    {money(e.amount, e.currency, e.currency === 'EGP' ? 0 : 2)}
-                  </div>
-                  {e.currency !== display && (
-                    <div className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>{dm(e.egpAmount)}</div>
-                  )}
-                </>
+                <RecordAmount amount={e.amount} currency={e.currency} accountId={e.accountId} />
               ),
               field: (d, set) => (
                 <span className="field-money">
