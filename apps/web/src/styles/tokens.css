@@ -16,7 +16,6 @@
   --focus: rgba(20, 18, 14, 0.42);
   --focus-edge: rgba(20, 18, 14, 0.48);
   --positive: #00A32E;
-  --positive-ink: #FFFFFF;
   --negative: #E00000;
   --negative-ink: #FFFFFF;
   --gold: #B37E00;
@@ -66,7 +65,6 @@
   --focus: rgba(255, 255, 255, 0.46);
   --focus-edge: rgba(255, 255, 255, 0.52);
   --positive: #5CFF5C;
-  --positive-ink: #0B1A0B;
   --negative: #FF4040;
   --negative-ink: #1A0606;
   --gold: #FFD400;
