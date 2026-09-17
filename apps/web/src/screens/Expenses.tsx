@@ -1,21 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
-import { Select, opts } from '../components/Select';
+import { Select } from '../components/Select';
 import { useApp, market } from '../AppState';
-import { money, splitByCurrency, type DataSet } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Empty, Field, AccountName } from '../components/UI';
+import { splitByCurrency, type DataSet } from '@ledger/engine';
+import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
-import { Icon, ICON_FAMILY, type IconName } from '../components/Icon';
-import { useSort, FilterTh, useFilters } from '../components/Table';
+import { useSort, useFilters } from '../components/Table';
 import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
-import { ActionButton, useLive } from '../Live';
+import { useLive } from '../Live';
 import { Manager } from '../components/Manager';
-import { ConfirmDelete } from '../components/Confirm';
 import { RecordTable } from '../components/RecordTable';
-import { ledger } from '../api';
 import { Mark } from '../components/Mark';
 
 export function Expenses() {

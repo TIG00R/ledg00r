@@ -1,7 +1,7 @@
 import { useAppearance, type AssetKey } from '../Appearance';
-import { Select, opts } from './Select';
+import { Select } from './Select';
 import { useApp } from '../AppState';
-import { Icon, ICON_FAMILY, type IconName } from './Icon';
+import { Icon, ICON_FAMILY } from './Icon';
 import { Field } from './UI';
 
 /** The family a given subject picks from — cars for the car, metal for the metal. */

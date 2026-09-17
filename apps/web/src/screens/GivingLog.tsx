@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp, market } from '../AppState';
-import { money, toEgp } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Chip } from '../components/UI';
-import { Icon, type IconName } from '../components/Icon';
+import { toEgp } from '@ledger/engine';
+import { Page, Panel, Stat, Stats } from '../components/UI';
 import { GivingRecords, type GivingRow } from '../components/GivingRecords';
 import { ModeBar, ModeProvider } from '../components/ModeBar';
 import { useLive } from '../Live';

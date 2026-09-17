@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Icon, VIEW_TONE, type IconName } from './Icon';
-import { Select } from './Select';
 import { useLive } from '../Live';
 import { useApp, market } from '../AppState';
 import { fmt, money } from '@ledger/engine';

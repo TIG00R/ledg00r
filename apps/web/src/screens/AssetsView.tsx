@@ -5,11 +5,11 @@ import { DateField } from '../components/DateField';
 import { ledger } from '../api';
 import { Manager } from '../components/Manager';
 import { ConfirmDelete } from '../components/Confirm';
-import { installmentDueDate, daysUntil, nextInstallment, isPrincipal, MONTHS,
+import { installmentDueDate, daysUntil, nextInstallment, isPrincipal,
          toEgp } from '@ledger/engine';
 import { useCallback, useEffect, useState } from 'react';
-import { Page, Panel, Chip, Stat, Stats, Empty, Toggle, Field, AccountName } from '../components/UI';
-import { Icon, type IconName } from '../components/Icon';
+import { Page, Panel, Chip, Stat, Empty, Toggle, Field, AccountName } from '../components/UI';
+import { Icon } from '../components/Icon';
 import { Mark } from '../components/Mark';
 import { ActionButton, useLive } from '../Live';
 import { RecordTable } from '../components/RecordTable';

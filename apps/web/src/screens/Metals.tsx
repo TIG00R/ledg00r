@@ -6,7 +6,6 @@ import { Page, Panel, Stat, Stats, Chip, Field } from '../components/UI';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { Segmented } from '../components/Segmented';
-import { Icon } from '../components/Icon';
 import { RecordTable } from '../components/RecordTable';
 import { HawlBar } from '../components/Intention';
 import { ModeProvider } from '../components/ModeBar';
