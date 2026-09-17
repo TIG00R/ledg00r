@@ -159,24 +159,6 @@ function General() {
   );
 }
 
-const SUGGESTIONS: Array<{ title: string; body: string; hard?: boolean }> = [
-  { title: 'Which notes mean "not equity"', hard: true,
-    body: 'An installment whose note matches maintenance, service or fee buys no equity. That test is a regular expression buried in the code — it should be a list you can add to, because your developer will eventually invent a word neither of us thought of.' },
-  { title: 'People and counterparties',
-    body: 'Anything held on someone else\u2019s behalf, or owed to you by a person rather than a bank, has nowhere to live. A counterparty record would carry a debt, a share of a property, or a standing arrangement.' },
-  { title: 'Which nisab, and what counts', hard: true,
-    body: 'Gold or silver, whether debts are deducted, how shares are valued. These are positions you hold, not facts the app should assert — the calculator should record which you chose.' },
-  { title: 'Forecast assumptions', hard: true,
-    body: 'Rate drift, gold growth, property appreciation, equity return. Five numbers that decide every projected figure, currently written into the source.' },
-  { title: 'Budget baselines per destination',
-    body: 'One monthly budget stands in for every unlogged month. A baseline per destination would make the estimate honest — and show which parts of it you never actually record.' },
-  { title: 'Tags across everything',
-    body: 'A free label spanning expenses, movements, orders and notes. It is the cheapest way to answer a question the schema did not anticipate.' },
-  { title: 'Dates, numbers and the week',
-    body: 'The app assumes en-US formatting and a Gregorian calendar everywhere except zakat. Where a Hijri date is shown, and which day a week starts on, should be yours.' },
-  { title: 'Default reminder lead times',
-    body: 'Set once per subject rather than per property — a new plan then arrives already warning you at the interval you actually want.' },
-];
 
 function Reminders() {
   const { data, reminders, setReminders, recurring } = useApp();

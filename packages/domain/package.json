@@ -9,7 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@ledger/contracts": "*",
-    "@ledger/engine": "*"
+    "@ledger/contracts": "*"
   }
 }

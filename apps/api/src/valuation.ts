@@ -12,7 +12,7 @@ import { assetKindOf, isDebtNode } from './zakat-assets.js';
  * whether a thing is a property or a car. Anything that reports a total goes through this, so
  * two screens cannot disagree about the same ledger.
  */
-export function ledgerHoldings(db: Db, now: Date, market: MarketState): Holdings {
+export function ledgerHoldings(db: Db, market: MarketState): Holdings {
   const balances = allBalances(db);
   const rows = db.select().from(t.nodes).all();
   const planned = new Set(db.select().from(t.installments).all().map((i) => i.propertyId));

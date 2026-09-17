@@ -28,7 +28,7 @@ function bucketSources(ctx: AppCtx): BucketSources {
   const settings = (readPref(ctx.db, 'zakat') as ZakatSettings | undefined) ?? DEFAULT_ZAKAT;
   const { data, market } = buildDataset(ctx.db, ctx.now);
   const rate = (c: string) => (c === 'EGP' ? 1 : market.fxRates[c] ?? 1);
-  const held = ledgerHoldings(ctx.db, ctx.now, market);
+  const held = ledgerHoldings(ctx.db, market);
   const nisab = nisabEgp(market, settings);
   const owned = assetsForZakat(ctx.db, ctx.now, market, nisab);
   const receivables = zakatReceivables(data, rate);
@@ -427,7 +427,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
        * positions and the wallet behind them as one thing, and an owner comparing the two
        * pages has to read the same split on both.
        */
-      const held = ledgerHoldings(ctx.db, ctx.now, market);
+      const held = ledgerHoldings(ctx.db, market);
       const cash = held.cash - held.brokerageCash;
 
       // Money lent out is wealth you happen not to be holding, so it counts — unless you have

@@ -5,5 +5,5 @@
   "type": "module",
   "bin": { "ledg00r-mcp": "./src/stdio.ts" },
   "scripts": { "start": "tsx src/stdio.ts" },
-  "dependencies": { "@ledger/api": "*", "@ledger/db": "*" }
+  "dependencies": { "@ledger/api": "*" }
 }

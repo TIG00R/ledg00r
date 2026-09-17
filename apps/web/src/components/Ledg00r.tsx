@@ -38,10 +38,10 @@ function useTheme(): 'light' | 'dark' {
 
 /**
  * Both files of a pair are the same size, so the one that replaces the other on a change of
- * theme occupies exactly the space it was given and nothing on the page moves.
+ * theme occupies exactly the space it was given and nothing on the page moves. The mascot is
+ * square and needs no such figure; the wordmark is not, so its ratio is written down.
  */
 const LOGO = { w: 670, h: 266 };
-const MASCOT = { w: 330, h: 330 };
 
 /**
  * The application.

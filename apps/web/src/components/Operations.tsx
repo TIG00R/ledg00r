@@ -103,7 +103,7 @@ export function MoveMoney() {
         <Select value={dst.id} ariaLabel="To account" onChange={setTo}
                 options={accountOptions(data).filter((o) => o.value !== from)} />
       </Field>
-      <Balance node={dst} delta={arrives} arriving />
+      <Balance node={dst} delta={arrives} />
 
       <Field label={`Amount to send · ${src.currency}`}>
         <input className="mono" type="number" aria-label={`Amount to send in ${src.currency}`}
@@ -257,7 +257,7 @@ export function FundFrom({ what, unitLabel, unitPrice, icon, action, capability 
   );
 }
 
-function Balance({ node, delta, arriving }: { node: DataSet['nodes'][number]; delta: number; arriving?: boolean }) {
+function Balance({ node, delta }: { node: DataSet['nodes'][number]; delta: number }) {
   const { balances } = useApp();
   // the opening figure is where the account started; what it holds now is that plus every
   // movement recorded against it since

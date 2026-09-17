@@ -45,7 +45,7 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
        * different question and produced a net worth the zakat assessment — reading the same
        * ledger's balances — openly contradicted.
        */
-      const h = ledgerHoldings(ctx.db, ctx.now, market);
+      const h = ledgerHoldings(ctx.db, market);
 
       /**
        * The share book is the positions and the wallet behind them.

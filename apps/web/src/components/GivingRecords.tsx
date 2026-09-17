@@ -189,7 +189,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
                         amount: Number(d.amount), currency: d.currency,
                         causeId: d.causeId, isZakat: !!d.isZakat,
                         date: d.date, note: d.note ?? '' }),
-          blocked: (r) => (live_ ? undefined
+          blocked: () => (live_ ? undefined
             : 'This screen is showing the figures it ships with. Start the ledger to correct one.'),
           onDone: loadGiving,
         }}
@@ -197,7 +197,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
           capability: 'giving.remove',
           build: (r) => ({ givingId: r.id }),
           what: (r) => `${r.kind === 'zakat' ? 'zakat' : 'sadaqat'} of ${money(r.amount, r.currency)} on ${r.date}`,
-          blocked: (r) => (live_ ? undefined
+          blocked: () => (live_ ? undefined
             : 'This screen is showing the figures it ships with. Start the ledger to remove one.'),
           onDone: loadGiving,
         }}

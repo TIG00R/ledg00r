@@ -24,7 +24,6 @@ function Body() {
   const { data, dm } = useApp();
   const { live, version } = useLive();
   const [kind, setKind] = useState<'all' | Kind>('all');
-  const [q] = useState('');
 
   /**
    * What the screen shows with no ledger behind it: a ledger with no records in it.
@@ -105,7 +104,7 @@ function Body() {
           ))}
         </div>
 
-        <GivingRecords only={kind} search={q} fallback={fallback} onRows={setShown} />
+        <GivingRecords only={kind} fallback={fallback} onRows={setShown} />
       </Panel>
     </Page>
   );

@@ -819,7 +819,7 @@ function PlanEditor({ propertyId, onClose }: { propertyId: string; onClose: () =
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {plan?.installments.map((i: any) => (
-          <PlanRow key={i.id} row={i} dm={dm}
+          <PlanRow key={i.id} row={i}
                    onSave={(patch) => run(
                      // a payment already made is corrected through its movement; one still
                      // owed is only a line on a plan, and the plan is where it changes
@@ -930,8 +930,8 @@ function PaymentStatus({ paidAt }: { paidAt: string | null }) {
   );
 }
 
-function PlanRow({ row, dm, onSave, onRemove }: {
-  row: any; dm: (n: number) => string;
+function PlanRow({ row, onSave, onRemove }: {
+  row: any;
   onSave: (patch: Record<string, unknown>) => void;
   onRemove: () => void;
 }) {

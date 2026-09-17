@@ -74,7 +74,7 @@ export async function runTurn(
       }
       try {
         const out = await invoke(cap, call.input, { ...ctx, source: 'assistant' });
-        used.push({ tool: cap.name, summary: describe(cap.name, out) });
+        used.push({ tool: cap.name, summary: describe(out) });
         results.push({ id: call.id, name: call.name, content: JSON.stringify(out).slice(0, 12_000) });
       } catch (e) {
         const err = e as Error & { issues?: unknown };
@@ -106,7 +106,7 @@ export async function runTurn(
 }
 
 /** A line a person can read, rather than the raw result. */
-function describe(tool: string, out: unknown): string {
+function describe(out: unknown): string {
   const o = out as Record<string, any>;
   if (Array.isArray(out)) return `${out.length} row${out.length === 1 ? '' : 's'}`;
   if (o?.ok === false) return `refused: ${o.message}`;
