@@ -170,6 +170,17 @@ export function AppProvider({ children, demo }: {
    * screen and the portfolio's share of it both read zero however many orders were logged.
    */
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
+  /**
+   * The logs of what was spent and what was given.
+   *
+   * These used to be left empty against a live service, on the reasoning that the screen
+   * that shows a log fetches it for itself. Two things read them anyway and both were
+   * quietly wrong: the portfolio's "Expenses, all time" and "Charity, all time" said nothing
+   * was recorded however much was, and a destination with records pointing at it offered
+   * itself for deletion because nothing could be found that used it.
+   */
+  const [liveExpenses, setLiveExpenses] = useState<DataSet['expenses'] | null>(null);
+  const [liveCharity, setLiveCharity] = useState<DataSet['charity'] | null>(null);
   /** bumped when the outside world has been re-read, so the figures recompute */
   const [marketAt, setMarketAt] = useState(0);
 
@@ -207,8 +218,38 @@ export function AppProvider({ children, demo }: {
   }, [live, version]);
 
   useEffect(() => {
-    if (!live) { setLiveBalances(null); setCatalogue(null); setLiveOrders(null); return; }
+    if (!live) {
+      setLiveBalances(null); setCatalogue(null); setLiveOrders(null);
+      setLiveExpenses(null); setLiveCharity(null);
+      return;
+    }
     let cancelled = false;
+
+    Promise.resolve((ledger as any)['expense.list']?.({ limit: 500 }) ?? [])
+      .then((rows: any[]) => {
+        if (cancelled) return;
+        setLiveExpenses((rows ?? []).map((r, i) => ({
+          id: r.id, seq: i, date: r.date, amount: r.amount, currency: r.currency,
+          fxAtEntry: 1, egpAmount: r.egpAmount, categoryId: r.destinationId,
+          accountId: r.accountId ?? undefined, place: r.place ?? '', note: r.note ?? '',
+        })) as DataSet['expenses']);
+      })
+      .catch(() => { if (!cancelled) setLiveExpenses([]); });
+
+    Promise.resolve((ledger as any)['giving.list']?.({ limit: 500 }) ?? [])
+      .then((rows: any[]) => {
+        if (cancelled) return;
+        setLiveCharity((rows ?? []).map((r, i) => ({
+          id: r.id, seq: i, date: r.date,
+          // what was given, in the currency it was given in — and the older pair beside it,
+          // still filled so anything reading them keeps working
+          amount: r.amount, currency: r.currency,
+          egp: r.egp, usd: r.currency === 'USD' ? r.amount : null,
+          categoryId: r.causeId, accountId: r.accountId ?? undefined,
+          note: r.note ?? '', isZakat: r.isZakat,
+        })) as DataSet['charity']);
+      })
+      .catch(() => { if (!cancelled) setLiveCharity([]); });
     /**
      * The order log, newest first, renumbered oldest-first.
      *
@@ -283,7 +324,8 @@ export function AppProvider({ children, demo }: {
     return {
       ...base,
       transactions: [], installments: [], planRules: [], goldLots: [],
-      orders: liveOrders ?? [], expenses: [], charity: [], debts: [],
+      orders: liveOrders ?? [], expenses: liveExpenses ?? [], charity: liveCharity ?? [],
+      debts: [],
       snapshot: { ...base.snapshot, cashEgp: 0, goldGramsOwn: 0, reEgp: 0,
                   paidByProperty: {}, totalByProperty: {} },
       institutions: catalogue.institutions.map((i: any) => ({ ...i, logo: i.logo ?? undefined })),
@@ -299,7 +341,9 @@ export function AppProvider({ children, demo }: {
       })),
       categories: catalogue.categories
         .filter((c: any) => !c.archived)
-        .map((c: any) => ({ ...c, icon: c.icon ?? undefined, note: c.note ?? undefined })),
+        .map((c: any) => ({ ...c, icon: c.icon ?? undefined, note: c.note ?? undefined,
+                            // which account this kind of spending usually comes out of
+                            accountId: c.accountId ?? undefined })),
       incomeSources: catalogue.incomeSources
         .filter((s2: any) => !s2.archived)
         .map((s2: any) => ({
@@ -309,7 +353,7 @@ export function AppProvider({ children, demo }: {
           icon: s2.icon ?? undefined,
         })),
     } as DataSet;
-  }, [catalogue, liveOrders]);
+  }, [catalogue, liveOrders, liveExpenses, liveCharity]);
 
   // the figures only depend on the calendar day, so recompute per day rather than per tick
   const dayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;

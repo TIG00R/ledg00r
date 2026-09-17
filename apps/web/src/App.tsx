@@ -19,6 +19,8 @@ import { Settings } from './screens/Settings';
 import { Assistant } from './screens/Assistant';
 import { Debts } from './screens/Debts';
 import { Calendar } from './screens/Calendar';
+import { Logs } from './screens/Logs';
+import { Budgets } from './screens/Budgets';
 
 /**
  * The screen lives in the URL.
@@ -86,6 +88,8 @@ function Frame() {
         {active === 'giving' && <Giving />}
         {active === 'debts' && <Debts />}
         {active === 'calendar' && <Calendar />}
+        {active === 'logs' && <Logs />}
+        {active === 'budgets' && <Budgets />}
         {active === 'assistant' && <Assistant />}
         {active.startsWith('settings') && <Settings view={active} onNavigate={setActive} />}
       </div>

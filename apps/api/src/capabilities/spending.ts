@@ -17,10 +17,11 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'expense.record',
     context: 'spending',
-    summary: 'Record money spent, out of a named account, against a destination.',
-    detail: 'Every expense names the account it came from — that is what keeps the balances honest. Call destinations.list for the category ids.',
+    summary: 'Record money spent, against a destination, out of the account it came from.',
+    detail: 'Every expense names the account it came from — that is what keeps the balances honest. The account may be left out, and then the destination\'s usual account answers for it, or the ledger\'s own default where the destination has none. Call destinations.list for the category ids and the usual account each one carries.',
     input: z.object({
-      accountId: NodeId,
+      /** left out, the destination's usual account answers for it */
+      accountId: NodeId.optional(),
       amount: z.number().positive(),
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       destinationId: CategoryId,
@@ -32,11 +33,25 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
     handler: async (input) => {
       const ctx = ctxOf();
       const ledger = ctx.ledger();
-      const acct = ledger.node(input.accountId);
-      if (!acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`, 'Call accounts.list for the ids.');
 
       const cat = ctx.db.select().from(t.categories).where(eq(t.categories.id, input.destinationId)).get();
       if (!cat) return refusal('not_found', `${input.destinationId} is not a destination.`, 'Call destinations.list, or add one with destination.add.');
+
+      /**
+       * Which account it came out of.
+       *
+       * Said outright, or answered by the destination — groceries off the debit card, a
+       * flight off the dollar account — and only then by the ledger's one default. The rule
+       * lives here rather than in the screen that draws the form, so an expense recorded by
+       * an agent lands in the same account as one typed in.
+       */
+      const accountId = input.accountId ?? cat.accountId ?? defaultAccount(ctx.db);
+      if (!accountId) {
+        return refusal('unknown_node', 'No account was named, and nothing answers for one.',
+                       `Name one, give ${cat.name} a usual account with destination.update, or set the ledger's own under Settings.`);
+      }
+      const acct = ledger.node(accountId);
+      if (!acct) return refusal('unknown_node', `${accountId} is not an account in this ledger.`, 'Call accounts.list for the ids.');
 
       const date = input.date ?? today(ctx);
       const currency = input.currency ?? acct.currency ?? 'EGP';
@@ -44,8 +59,8 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
 
       return post(ctx, {
         date, kind: 'expense', note: input.note,
-        legs: [{ fromNodeId: input.accountId, qtyFrom: input.amount, categoryId: input.destinationId }],
-      }, `${input.amount} ${currency} on ${cat.name}${input.place ? ` at ${input.place}` : ''}`,
+        legs: [{ fromNodeId: accountId, qtyFrom: input.amount, categoryId: input.destinationId }],
+      }, `${input.amount} ${currency} on ${cat.name}${input.place ? ` at ${input.place}` : ''}, out of ${acct.name}`,
       {
         dryRun: input.dryRun,
         index: [{ kind: 'expense', recordId: id, title: input.place ?? cat.name, body: input.note ?? '' }],
@@ -53,7 +68,7 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
           const rate = currency === 'EGP' ? 1 : rateFor(db, currency);
           db.insert(t.expenses).values({
             id, seq: nextSeq(db, 'expenses'), date, amount: input.amount, currency,
-            egpAmount: input.amount * rate, rate, accountId: input.accountId,
+            egpAmount: input.amount * rate, rate, accountId,
             categoryId: input.destinationId, place: input.place ?? null,
             note: input.note ?? null, movementId,
           }).run();
@@ -203,6 +218,8 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       name: z.string().min(1).max(60),
       color: z.string().regex(/^#[0-9a-f]{6}$/i).default('#8A8578'),
       icon: z.string().max(32).optional(),
+      /** which account this kind of spending usually comes out of; the ledger's default otherwise */
+      accountId: NodeId.optional(),
       note: z.string().max(200).optional(),
       domain: z.enum(['expense', 'charity', 'income']).default('expense'),
     }),
@@ -212,7 +229,8 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       const id = newId(input.domain === 'charity' ? 'cha' : 'out');
       db.insert(t.categories).values({
         id, domain: input.domain, name: input.name, color: input.color,
-        icon: input.icon ?? null, note: input.note ?? null, archived: false,
+        icon: input.icon ?? null, accountId: input.accountId ?? null,
+        note: input.note ?? null, archived: false,
       }).run();
       return { id, summary: `${input.name} added` };
     },
@@ -225,25 +243,31 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
     input: z.object({ domain: z.enum(['expense', 'charity', 'income']).optional() }),
     output: z.array(z.object({
       id: z.string(), domain: z.string(), name: z.string(),
-      color: z.string(), icon: z.string().nullable(), archived: z.boolean(),
+      color: z.string(), icon: z.string().nullable(),
+      /** the account this kind of spending usually comes out of, where one is set */
+      accountId: z.string().nullable(), archived: z.boolean(),
     })),
     handler: async ({ domain }) => {
       const { db } = ctxOf();
       return db.select().from(t.categories).all()
         .filter((c) => !domain || c.domain === domain)
-        .map((c) => ({ id: c.id, domain: c.domain, name: c.name, color: c.color, icon: c.icon, archived: c.archived }));
+        .map((c) => ({ id: c.id, domain: c.domain, name: c.name, color: c.color, icon: c.icon,
+                       accountId: c.accountId ?? null, archived: c.archived }));
     },
   }),
 
   command({
     name: 'destination.update',
     context: 'spending',
-    summary: 'Rename a destination, or change its mark, colour or archived state.',
+    summary: 'Rename a destination, or change its mark, colour, usual account or archived state.',
+    detail: 'The usual account is a default for what comes next and nothing more — every expense already recorded keeps the account it actually came out of. Pass an empty string to take the default away again, leaving the ledger\'s own.',
     input: z.object({
       destinationId: CategoryId,
       name: z.string().min(1).max(60).optional(),
       color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
       icon: z.string().max(32).optional(),
+      /** '' clears it, so the ledger's own default applies again */
+      accountId: z.union([NodeId, z.literal('')]).optional(),
       archived: z.boolean().optional(),
     }),
     output: Outcome,
@@ -252,11 +276,27 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       const cat = db.select().from(t.categories).where(eq(t.categories.id, destinationId)).get();
       if (!cat) return refusal('not_found', `${destinationId} is not a destination.`);
       const clean = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      // an empty account is the way to say "no usual account", which is null and not ''
+      if (clean.accountId === '') clean.accountId = null as unknown as string;
       if (Object.keys(clean).length) db.update(t.categories).set(clean).where(eq(t.categories.id, destinationId)).run();
       return noted(`${cat.name} updated`);
     },
   }),
 ];
+
+/**
+ * The ledger's own default account — the last answer to "out of what", after the expense
+ * itself and the destination it points at. Empty on a ledger where nobody has chosen one.
+ */
+function defaultAccount(db: any): string | null {
+  const settings = db.$raw.prepare("SELECT value FROM preferences WHERE key = 'settings'").get() as
+    { value: string } | undefined;
+  if (!settings) return null;
+  try {
+    const parsed = JSON.parse(settings.value) as { burnAccountId?: string };
+    return parsed.burnAccountId || null;
+  } catch { return null; }
+}
 
 /** The seq columns exist so the original import order survives; keep filling them. */
 export function nextSeq(db: any, table: string): number {

@@ -27,6 +27,11 @@ export interface CallOptions {
 export interface ClientOptions {
   baseUrl?: string;
   token?: string;
+  /**
+   * Who is calling, for the ledger's log of what was done — 'web', 'mcp', a script's own
+   * name. A log that says every act came from "api" answers nothing a reader is asking.
+   */
+  source?: string;
   fetch?: typeof globalThis.fetch;
   /** called when the ledger refuses or the network does */
   onError?: (name: string, error: LedgerError) => void;
@@ -47,6 +52,7 @@ export function createClient<R extends Registry>(opts: ClientOptions = {}): Clie
     get: (_, name: string) => async (input: unknown, call: CallOptions = {}) => {
       const headers: Record<string, string> = { 'content-type': 'application/json' };
       if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+      if (opts.source) headers['x-ledger-source'] = opts.source;
       if (call.idempotencyKey) headers['idempotency-key'] = call.idempotencyKey;
       if (call.dryRun) headers['x-dry-run'] = 'true';
 

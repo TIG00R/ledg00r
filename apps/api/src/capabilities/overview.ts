@@ -219,7 +219,9 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
       })),
       categories: z.array(z.object({
         id: z.string(), domain: z.string(), name: z.string(), color: z.string(),
-        icon: z.string().nullable(), note: z.string().nullable(), archived: z.boolean(),
+        icon: z.string().nullable(), note: z.string().nullable(),
+        /** the account this kind of spending usually comes out of, where one is set */
+        accountId: z.string().nullable(), archived: z.boolean(),
       })),
       currencies: z.array(z.object({
         code: z.string(), name: z.string(), symbol: z.string(), minorUnits: z.number(),

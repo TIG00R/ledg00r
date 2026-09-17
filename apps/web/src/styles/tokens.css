@@ -157,8 +157,18 @@ a { color: var(--accent); }
  * is the same button underneath: same radius, same padding, same type, same lift on hover.
  * They were inline styles repeated in eight files, which is how Save came to be green in one
  * table and gold in the bar above it.
+ *
+ * Saving says green in its lettering rather than in a slab of fill. Save and Cancel are one
+ * pair and always appear together, and a solid green block beside a quiet grey one made the
+ * two look like a warning and an escape from it rather than the two ends of one small
+ * decision. Same surface as Cancel, same border; the word is what carries the colour.
  */
-.btn.go { background-color: var(--positive); color: var(--positive-ink); }
+.btn.go {
+  background-color: var(--control);
+  color: var(--positive);
+  border-color: var(--control-border);
+}
+.btn.go:hover { background-color: var(--control-hover); }
 .btn.danger { background-color: var(--negative); color: var(--negative-ink); }
 /* `add` is the default fill, named so a caller can say which of the three it means */
 .btn.add { background-color: var(--accent); color: var(--accent-ink); }
@@ -476,11 +486,9 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 /* a plug goes in */
 :where(button, a, label):hover .ico-plug.ico-parts > * { transform: translateY(1.4px); }
 
-/* filter — settles */
-:where(button, a, label):hover .ico-filter.ico-parts > * { transform: none; animation: settle 420ms var(--ease); }
-@keyframes settle { 0% { transform: translateY(-2px); } 60% { transform: translateY(0.8px); } 100% { transform: translateY(0); } }
-
-:where(button, a, label):active .ico { transform: scale(0.94); }
+/* No rule scales `.ico` itself. A press is the control's to show — the button already has
+   its own active state — and an icon that shrinks as one object is the exact thing every
+   rule above is written to avoid. */
 
 @media (prefers-reduced-motion: reduce) {
   .ico > *, .ico { transition: none !important; animation: none !important; }
@@ -583,11 +591,6 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   25%, 75%      { transform: scaleX(0.06); }
 }
 
-@keyframes pocket-give {
-  0%, 100% { transform: scaleY(1); }
-  40%      { transform: scaleY(1.06); }
-  75%      { transform: scaleY(0.99); }
-}
 
 
 /* Real estate — the roof lifts, the walls step out from under it */
@@ -667,37 +670,63 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
 
 
-/* Income — the bill travels in from the left and disappears into the pocket */
-.anim-income [data-part='cash'] { transform-origin: 5.8px 12px; }
-:where(button, a, label):hover .anim-income [data-part='cash'] { animation: bill-in 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
-:where(button, a, label):hover .anim-income [data-part='pouch'] { animation: pouch-give 1050ms cubic-bezier(0.34, 0, 0.2, 1) 420ms; }
-@keyframes bill-in {
-  0%   { transform: translate(-5.6px, 2.6px); opacity: 0; }
-  16%  { transform: translate(-3.4px, 1.6px); opacity: 1; }
-  56%  { transform: translate(3.4px, -0.6px); opacity: 1; }
-  74%  { transform: translate(5.8px, -1.2px); opacity: 0.7; }
-  88%  { transform: translate(7.4px, -1.6px); opacity: 0.15; }
-  96%  { transform: translate(8.2px, -1.8px); opacity: 0; }
-  100% { transform: translate(-5.6px, 2.6px); opacity: 0; }
-}
-@keyframes pouch-give {
-  0%, 100% { transform: scaleX(1); }
-  40%      { transform: scaleX(1.05); }
-  75%      { transform: scaleX(0.99); }
-}
+/* Income and expenses.
 
-/* Expenses — the same bill drawn back out to the left */
-.anim-expenses [data-part='cash'] { transform-origin: 5.8px 12px; }
-:where(button, a, label):hover .anim-expenses [data-part='cash'] { animation: bill-out 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
-:where(button, a, label):hover .anim-expenses [data-part='pouch'] { animation: pouch-give 1050ms cubic-bezier(0.34, 0, 0.2, 1); }
-@keyframes bill-out {
-  0%   { transform: translate(8.2px, -1.8px); opacity: 0; }
-  14%  { transform: translate(6.4px, -1.4px); opacity: 0.4; }
-  36%  { transform: translate(3.8px, -0.8px); opacity: 1; }
-  68%  { transform: translate(-2.2px, 1px);   opacity: 1; }
-  88%  { transform: translate(-4.8px, 2.2px); opacity: 0.3; }
-  96%  { transform: translate(-6px, 2.8px);   opacity: 0; }
-  100% { transform: translate(8.2px, -1.8px); opacity: 0; }
+   One wallet, drawn identically in both, and it does not move in either — no rule here names
+   `body`. What moves is a note that is nothing at rest: it comes in from outside the frame,
+   crosses the rim and fades through it, because a stroked drawing has no fill to hide a thing
+   behind. The card slot flexes as the note passes, which is the wallet answering with one of
+   its parts instead of the picture nodding. The chevron only appears and leaves along its own
+   axis; it is the direction, and it says so without travelling anywhere.
+
+   The two are the same sentence read the other way round, so the timings match and only the
+   signs differ. */
+.anim-income [data-part='cash'],
+.anim-expenses [data-part='cash'] { transform-origin: 11.3px 7.2px; }
+.anim-income [data-part='clasp'],
+.anim-expenses [data-part='clasp'] { transform-origin: 19px 15.1px; }
+
+:where(button, a, label):hover .anim-income [data-part='cash'] { animation: note-in 1150ms cubic-bezier(0.32, 0, 0.24, 1); }
+:where(button, a, label):hover .anim-income [data-part='clasp'] { animation: clasp-give 1150ms ease-in-out 520ms; }
+:where(button, a, label):hover .anim-income [data-part='cue'] { animation: cue-in 1150ms ease-out; }
+
+:where(button, a, label):hover .anim-expenses [data-part='cash'] { animation: note-out 1150ms cubic-bezier(0.32, 0, 0.24, 1); }
+:where(button, a, label):hover .anim-expenses [data-part='clasp'] { animation: clasp-give 1150ms ease-in-out 120ms; }
+:where(button, a, label):hover .anim-expenses [data-part='cue'] { animation: cue-out 1150ms ease-out; }
+
+/* The note is at home at rest. Hovering carries it the rest of the way, and the next one
+   comes in behind it from where the first arrived — so the loop is money arriving, not one
+   note sliding back across a gap it just crossed. */
+@keyframes note-in {
+  0%        { transform: translate(0, 0);          opacity: 1; }
+  32%       { transform: translate(0.4px, 3.2px);  opacity: 0.3; }
+  44%       { transform: translate(0.6px, 4.6px);  opacity: 0; }
+  56%       { transform: translate(-5.2px, -5.4px); opacity: 0; }
+  76%       { transform: translate(-3.4px, -3.6px); opacity: 1; }
+  100%      { transform: translate(0, 0);          opacity: 1; }
+}
+/* and the other way: out through the top and away, the next one rising from inside */
+@keyframes note-out {
+  0%        { transform: translate(0, 0);          opacity: 1; }
+  36%       { transform: translate(3.4px, -3.6px); opacity: 1; }
+  52%       { transform: translate(5.2px, -5.4px); opacity: 0; }
+  62%       { transform: translate(-0.6px, 4.6px); opacity: 0; }
+  82%       { transform: translate(-0.4px, 1.6px); opacity: 0.55; }
+  100%      { transform: translate(0, 0);          opacity: 1; }
+}
+/* the slot takes what went past it */
+@keyframes clasp-give {
+  0%, 100% { transform: scaleX(1); }
+  38%      { transform: scaleX(1.09); }
+  72%      { transform: scaleX(0.985); }
+}
+@keyframes cue-in {
+  0%, 100% { transform: translateY(0);     opacity: 0.55; }
+  40%      { transform: translateY(1.3px); opacity: 1; }
+}
+@keyframes cue-out {
+  0%, 100% { transform: translateY(0);      opacity: 0.55; }
+  40%      { transform: translateY(-1.3px); opacity: 1; }
 }
 
 /* Gold — the stack separates a little and a glint passes across it */
@@ -748,6 +777,106 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   0% { transform: translateY(0); }      18% { transform: translateY(-1.7px); }
   42% { transform: translateY(1.2px); }  64% { transform: translateY(-0.7px); }
   82% { transform: translateY(0.3px); }  100% { transform: translateY(0); }
+}
+
+/* The pie's surface.
+   A polished solid lit from one side has a single soft highlight, and it is a property of
+   the surface — so when the wedges come apart the surface is no longer there and the
+   highlight goes with it. The bevel is the seam along the near rim; it brightens as the
+   thickness is what the movement is showing off. Neither part travels. */
+.anim-portfolio [data-part='sheen'],
+.anim-portfolio [data-part='bevel'] { transition: opacity 380ms var(--ease); }
+:where(button, a, label):hover .anim-portfolio [data-part='sheen'] { opacity: 0.25; }
+:where(button, a, label):hover .anim-portfolio [data-part='bevel'] { opacity: 0.78; }
+
+/* Budgets — the band runs at the limit, and the limit answers.
+   It grows from its own left edge, so the track stays exactly as long as it was while only
+   the band's far end moves. Nothing else has a rule: a ceiling that shifted would not be a
+   ceiling, so the line only brightens as the band arrives under it. */
+.anim-budgets [data-part='fill'] {
+  transform-origin: 4.3px 12px;
+  transition: transform 780ms cubic-bezier(0.3, 1.02, 0.32, 1);
+}
+.anim-budgets [data-part='limitCap'] { transition: opacity 320ms var(--ease); }
+:where(button, a, label):hover .anim-budgets [data-part='fill'] { transform: scaleX(1.78); }
+:where(button, a, label):hover .anim-budgets [data-part='limit'] { animation: limit-warn 900ms ease-in-out 420ms; }
+:where(button, a, label):hover .anim-budgets [data-part='limitCap'] { opacity: 0.9; }
+@keyframes limit-warn {
+  0%, 100% { opacity: 1; }
+  45%      { opacity: 0.35; }
+}
+
+/* Logs — each entry arrives in the order it was written.
+   The rail carries no rule at all. A mark appears, then its line writes itself out to the
+   right; three of them, one after another, which is what a list of writes looks like as it
+   happens. */
+.anim-logs [data-part] circle { transform-box: fill-box; transform-origin: center; }
+.anim-logs [data-part] path { stroke-dasharray: 11; }
+:where(button, a, label):hover .anim-logs [data-part='e1'] circle { animation: entry-mark 640ms var(--ease); }
+:where(button, a, label):hover .anim-logs [data-part='e1'] path { animation: entry-write 640ms var(--ease) 70ms; }
+:where(button, a, label):hover .anim-logs [data-part='e2'] circle { animation: entry-mark 640ms var(--ease) 130ms; }
+:where(button, a, label):hover .anim-logs [data-part='e2'] path { animation: entry-write 640ms var(--ease) 200ms; }
+:where(button, a, label):hover .anim-logs [data-part='e3'] circle { animation: entry-mark 640ms var(--ease) 260ms; }
+:where(button, a, label):hover .anim-logs [data-part='e3'] path { animation: entry-write 640ms var(--ease) 330ms; }
+@keyframes entry-mark {
+  0%   { transform: scale(0.35); opacity: 0.2; }
+  55%  { transform: scale(1.14); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes entry-write { from { stroke-dashoffset: 11; } to { stroke-dashoffset: 0; } }
+
+/* Debts — the promise is signed, then paid against.
+   The slip does not move: it is the undertaking, and an undertaking that shifted would be a
+   different one. Both halves are drawn at rest, so what hovering adds is the order they
+   happen in — the signature writes itself, and the coin presses up against the corner after
+   it, because you sign before you pay. */
+.anim-debts [data-part='sig'] { stroke-dasharray: 15; }
+.anim-debts [data-part='coin'] {
+  transform-origin: 18.4px 17.4px;
+  transition: transform 460ms cubic-bezier(0.26, 1.06, 0.32, 1) 320ms;
+}
+:where(button, a, label):hover .anim-debts [data-part='sig'] { animation: sign 620ms var(--ease); }
+:where(button, a, label):hover .anim-debts [data-part='coin'] { transform: translate(-1.1px, -1.3px); }
+@keyframes sign { from { stroke-dashoffset: 15; } to { stroke-dashoffset: 0; } }
+
+/* Charity — the coin falls into the heart, and the heart registers it.
+   The heart is the fixed thing, in this icon and in the whole set: it means charity and it
+   means nothing else, so it holds still and lets the gift be the thing that moves. What comes
+   up inside it as the coin lands is the only other part with a rule. */
+.anim-charity [data-part='coin'] { transform-origin: 12px 7.2px; }
+:where(button, a, label):hover .anim-charity [data-part='coin'] { animation: give 1180ms cubic-bezier(0.34, 0, 0.3, 1); }
+:where(button, a, label):hover .anim-charity [data-part='beat'] { animation: registered 1180ms ease-out; }
+@keyframes give {
+  0%        { transform: translate(-6.4px, -5.2px); opacity: 0; }
+  16%       { transform: translate(-4.6px, -3.6px); opacity: 1; }
+  52%       { transform: translate(-0.4px, 0.5px);  opacity: 1; }
+  68%       { transform: translate(0, 2.6px);       opacity: 0.4; }
+  84%, 100% { transform: translate(0, 4px);         opacity: 0; }
+}
+@keyframes registered {
+  0%, 56%   { opacity: 0; transform: scale(0.88); }
+  70%       { opacity: 1; transform: scale(1.04); }
+  100%      { opacity: 0; transform: scale(1); }
+}
+
+/* Sadaqat — the coin leaves the hands, and the hands give as it goes.
+   Giving that is chosen: the coin goes up and out rather than falling in, which is the one
+   thing that tells this apart from the heart at a glance. The cup and its thumbs stay. */
+.anim-hands [data-part='coin'] { transform-origin: 12px 6.4px; }
+.anim-hands [data-part='cup'] { transform-origin: 12px 14.4px; }
+:where(button, a, label):hover .anim-hands [data-part='coin'] { animation: offered 1150ms cubic-bezier(0.3, 0, 0.26, 1); }
+:where(button, a, label):hover .anim-hands [data-part='cup'] { animation: cup-release 1150ms ease-in-out 120ms; }
+@keyframes offered {
+  0%, 12%   { transform: translateY(0); opacity: 1; }
+  56%       { transform: translateY(-3.4px); opacity: 1; }
+  76%       { transform: translateY(-5.2px); opacity: 0; }
+  84%       { transform: translateY(1.2px); opacity: 0; }
+  100%      { transform: translateY(0); opacity: 1; }
+}
+@keyframes cup-release {
+  0%, 100% { transform: scaleY(1); }
+  34%      { transform: scaleY(0.9); }
+  68%      { transform: scaleY(1.03); }
 }
 
 /* Settings — the handles run along their tracks and settle somewhere new */
@@ -835,86 +964,6 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .panel tbody td { border-bottom: 1px solid var(--hairline); }
 .panel tbody tr:last-child td { border-bottom: none; }
 
-/* ── Ledg00r ──────────────────────────────────────────────────────────────────────────
-   One character, five moods, and each mood is the same parts moved differently. He breathes
-   at rest so the screen never looks frozen; everything else is switched on by the mood the
-   assistant is actually in, so the animation says something rather than decorating. */
-.tiger { overflow: visible; }
-.tiger * { transform-box: fill-box; transform-origin: center; }
-
-.tiger .t-thought, .tiger .t-lens { opacity: 0; transition: opacity 260ms var(--ease); }
-.tiger .t-tail { transform-origin: 8% 90%; }
-.tiger .t-head { transform-origin: 50% 80%; }
-.tiger .t-armR { transform-origin: 50% 8%; }
-.tiger .t-specs { transform-origin: 50% 60%; }
-
-/* at rest: breathing, a blink now and then, a tail that will not sit still */
-.tiger-idle .t-body   { animation: t-breathe 3.6s ease-in-out infinite; }
-.tiger-idle .t-head   { animation: t-bob 3.6s ease-in-out infinite; }
-.tiger-idle .t-tail   { animation: t-swish 2.8s ease-in-out infinite; }
-.tiger-idle .t-eyes   { animation: t-blink 6.5s infinite; }
-.tiger-idle .t-specs  { animation: t-nudge 9s infinite; }
-
-/* thinking: head tilted, glasses pushed up, three dots counting */
-.tiger-thinking .t-head    { animation: t-tilt 2.4s ease-in-out infinite; }
-.tiger-thinking .t-tail    { animation: t-swish 1.6s ease-in-out infinite; }
-.tiger-thinking .t-armR    { animation: t-chin 2.4s ease-in-out infinite; }
-.tiger-thinking .t-thought { opacity: 1; }
-.tiger-thinking .t-dot1    { animation: t-pulse 1.4s infinite; }
-.tiger-thinking .t-dot2    { animation: t-pulse 1.4s infinite 0.18s; }
-.tiger-thinking .t-dot3    { animation: t-pulse 1.4s infinite 0.36s; }
-.tiger-thinking .t-eyes    { animation: t-squint 2.4s ease-in-out infinite; }
-
-/* searching: the glass sweeps, the head follows it, the lenses catch the light */
-.tiger-searching .t-lens  { opacity: 1; animation: t-sweep 2.1s ease-in-out infinite; }
-.tiger-searching .t-head  { animation: t-look 2.1s ease-in-out infinite; }
-.tiger-searching .t-glint { animation: t-glint 2.1s ease-in-out infinite; }
-.tiger-searching .t-tail  { animation: t-swish 1.3s ease-in-out infinite; }
-
-/* talking: the mouth moves, one paw makes a point */
-.tiger-talking .t-mouth { animation: t-speak 0.42s ease-in-out infinite; }
-.tiger-talking .t-head  { animation: t-bob 1.5s ease-in-out infinite; }
-.tiger-talking .t-armR  { animation: t-point 1.5s ease-in-out infinite; }
-.tiger-talking .t-tail  { animation: t-swish 1.9s ease-in-out infinite; }
-
-/* pleased: a hop, ears up */
-.tiger-pleased .t-body { animation: t-hop 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 2; }
-.tiger-pleased .t-head { animation: t-hop 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) 2; }
-.tiger-pleased .t-tail { animation: t-swish 0.9s ease-in-out infinite; }
-.tiger-pleased .t-earL, .tiger-pleased .t-earR { animation: t-perk 0.7s ease-out 2; }
-
-/* sorry: head down, ears flat, tail still */
-.tiger-sorry .t-head { transform: translateY(3px) rotate(-4deg); }
-.tiger-sorry .t-earL { transform: translateY(4px) rotate(-22deg); }
-.tiger-sorry .t-earR { transform: translateY(4px) rotate(22deg); }
-.tiger-sorry .t-mouth { transform: translateY(2px) scaleY(-0.7); }
-
-@keyframes t-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
-@keyframes t-bob     { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.4px); } }
-@keyframes t-swish   { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(11deg); } }
-@keyframes t-blink   { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
-@keyframes t-squint  { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.62); } }
-@keyframes t-nudge   { 0%, 88%, 100% { transform: translateY(0); } 93% { transform: translateY(-2.6px); } }
-@keyframes t-tilt    { 0%, 100% { transform: rotate(-5deg) translateY(-1px); }
-                       50%      { transform: rotate(-9deg) translateY(-3px); } }
-@keyframes t-chin    { 0%, 100% { transform: rotate(-52deg) translate(-9px, -6px); }
-                       50%      { transform: rotate(-58deg) translate(-9px, -8px); } }
-@keyframes t-point   { 0%, 100% { transform: rotate(-18deg); } 50% { transform: rotate(-34deg); } }
-@keyframes t-pulse   { 0%, 100% { opacity: 0.25; transform: scale(0.8); }
-                       50%      { opacity: 1;    transform: scale(1.15); } }
-@keyframes t-sweep   { 0%, 100% { transform: translate(0, 0) rotate(0deg); }
-                       50%      { transform: translate(-13px, 9px) rotate(-16deg); } }
-@keyframes t-look    { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(-4deg); } }
-@keyframes t-glint   { 0%, 100% { opacity: 0; } 45% { opacity: 0.9; } }
-@keyframes t-speak   { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.42) translateY(1px); } }
-@keyframes t-hop     { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-9px); } }
-@keyframes t-perk    { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-3px) scale(1.12); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .tiger * { animation: none !important; }
-  .tiger-thinking .t-thought, .tiger-searching .t-lens { opacity: 1; }
-}
-
 /*
  * The record table.
  *
@@ -938,7 +987,8 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
   background: var(--surface);
-  overflow: hidden auto;
+  /* sideways when the columns together need more room than the panel has — never clipped */
+  overflow: auto;
 }
 .rt-h, .rt-c { padding: 11px 14px; }
 .rt-h { padding-top: 13px; padding-bottom: 11px; }
@@ -1029,13 +1079,22 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 .field-money > input { flex: 1 1 auto; min-width: 0; }
 .field-money > :not(input) { flex: 0 0 auto; }
 
+/*
+ * A cell holding a value.
+ *
+ * It is read whole or not at all. This used to clip to the column and add an ellipsis, which
+ * turned "Groceries" into "Grocerie" and "Bills & Utilities" into "Bills & Ut" — a column
+ * narrower than its own contents, quietly hiding the difference. It stays on one line and
+ * the column grows to hold it; when the columns together are wider than the panel, the table
+ * scrolls, which is the honest outcome.
+ */
 .rt-cell {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* the columns that hold a sentence rather than a value — a note, a place, a description */
+.rt-cell-wrap { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
 /* every date in every log wears the same small calendar */
 .rt-date { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .rt-date > svg { flex: 0 0 auto; color: var(--faint); }
@@ -1131,8 +1190,3 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   /* two columns of figures read better than one column of squeezed ones */
   .panel :where(div[style*='repeat(auto-fit']) { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important; }
 }
-
-/* The mark is black line art on a transparent ground: one file, inverted on a dark page
-   rather than kept as a second drawing. */
-.brand-logo { display: block; }
-:root[data-theme='dark'] .brand-logo { filter: invert(1); }

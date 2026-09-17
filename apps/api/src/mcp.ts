@@ -146,6 +146,8 @@ export function createMcpHandler(registry: Registry, ctxOf: (over?: Partial<AppC
         try {
           const out = await invoke(cap, msg.params?.arguments ?? {}, ctxOf({
             idempotencyKey: msg.params?._meta?.idempotencyKey,
+            // so the log of what was done can say an agent did it, not a person at a screen
+            source: 'mcp',
           }));
           return reply({ content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] });
         } catch (e) {

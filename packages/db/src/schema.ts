@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  sqliteTable, text, integer, real, blob, index, uniqueIndex,
+  sqliteTable, text, integer, real, blob, index, uniqueIndex, primaryKey,
 } from 'drizzle-orm/sqlite-core';
 
 /**
@@ -107,6 +107,13 @@ export const categories = sqliteTable('categories', {
   color: text('color').notNull(),
   icon: text('icon'),
   note: text('note'),
+  /**
+   * Which account this kind of spending usually comes out of.
+   *
+   * Null falls back to the ledger's own default. It is a default and nothing more: what an
+   * expense actually came out of is on the expense, because that is what happened.
+   */
+  accountId: text('account_id'),
   archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
 }, (t) => ({ byDomain: index('cat_domain').on(t.domain, t.archived) }));
 
@@ -458,6 +465,71 @@ export const scenarios = sqliteTable('scenarios', {
   usdEgp: real('usd_egp'),
   goldPerG: real('gold_per_g'),
 });
+
+/**
+ * A ceiling on spending, over a period, covering a set of destinations.
+ *
+ * A pool rather than a figure attached to one destination: a ceiling over one destination is
+ * a pool with one member, and the same object holds "Food" over both groceries and eating
+ * out. The ceiling keeps the currency it was decided in — a ceiling is a decision, not a
+ * figure to be restated whenever the display currency changes.
+ */
+export const budgets = sqliteTable('budgets', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  color: text('color').notNull().default('#8A8578'),
+  icon: text('icon'),
+  period: text('period', { enum: ['monthly', 'quarterly', 'annual'] }).notNull(),
+  amount: real('amount').notNull(),
+  currency: text('currency').notNull(),
+  /** the date the periods are counted from: which day a month turns over, which month a year does */
+  anchor: text('anchor').notNull(),
+  /** how close to the ceiling is close enough to be warned, as a fraction of it */
+  warnAt: real('warnAt').notNull().default(0.8),
+  note: text('note'),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+}, (t) => ({ byArchived: index('budget_archived').on(t.archived) }));
+
+/** Which destinations a pool covers. A destination may belong to more than one. */
+export const budgetMembers = sqliteTable('budget_members', {
+  budgetId: text('budget_id').notNull(),
+  categoryId: text('category_id').notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.budgetId, t.categoryId] }),
+  byCategory: index('budget_member_cat').on(t.categoryId),
+}));
+
+/**
+ * Everything the ledger was asked to do, whether or not it moved money.
+ *
+ * The movements are the record of what happened to the money, and they are silent about
+ * everything else: a rename, an archive, a reminder switched off, a refusal, a balance
+ * restated — that last one especially, since restating a balance deliberately writes no
+ * movement. One row per command, written by the dispatcher rather than by each handler, so
+ * nothing added later can forget to record itself.
+ */
+export const actions = sqliteTable('actions', {
+  id: text('id').primaryKey(),
+  at: text('at').notNull(),
+  capability: text('capability').notNull(),
+  context: text('context').notNull(),
+  summary: text('summary').notNull(),
+  /** 'ok', 'refused' or 'failed' — a refusal is a thing that was tried */
+  outcome: text('outcome', { enum: ['ok', 'refused', 'failed'] }).notNull(),
+  /** what it was called with, as given, so a correction can be read back in full */
+  input: text('input', { mode: 'json' }),
+  /** the movement it wrote, where it wrote one */
+  movementId: text('movement_id'),
+  /** the account, asset, destination or record it acted on, where there is a single one */
+  subjectId: text('subject_id'),
+  /** where the request came from: the screens, an agent over MCP, the HTTP API */
+  source: text('source').notNull().default('api'),
+}, (t) => ({
+  byAt: index('action_at').on(t.at),
+  byCapability: index('action_cap_at').on(t.capability, t.at),
+  byOutcome: index('action_outcome_at').on(t.outcome, t.at),
+}));
 
 /** One row per key. Settings, appearance and modules are documents, not columns. */
 export const preferences = sqliteTable('preferences', {

@@ -4,7 +4,7 @@ import { nextInstallment } from './accrual.js';
 import { nextOccurrence, isRunning, type RecurringTemplate } from './recurring.js';
 import { zakatDates, type ZakatSettings } from './zakat.js';
 
-export type ReminderSubject = 'installment' | 'zakat' | 'sadaqah' | 'stock' | 'income' | 'recurring';
+export type ReminderSubject = 'installment' | 'zakat' | 'sadaqah' | 'stock' | 'income' | 'recurring' | 'budget';
 
 export interface Reminder {
   id: string;

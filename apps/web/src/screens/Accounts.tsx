@@ -421,9 +421,11 @@ function Body() {
  * fields of one thing look like two different things — and left the currency out entirely,
  * offering a colour cycle in its place.
  *
- * The balance is the exception that has to be explained: correcting it writes a correction
- * movement, because a balance that changed with no movement behind it is a figure the log
- * cannot account for.
+ * The balance is the exception that has to be explained: restating it moves no money and
+ * says nothing about where the difference came from. It used to write a movement from an
+ * adjustment account so the log could "account for" it, which accounted for nothing — the
+ * money flow read that account as a source and reported income nobody had earned. The act
+ * itself is kept under Logs.
  */
 function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
   node: { id: string; name: string };
@@ -458,7 +460,7 @@ function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
     if (restated) {
       const res = await run('account.correctBalance', { accountId: node.id, actual: draft.balance });
       if (!res.ok) { setSaid(res.message ?? 'The balance could not be corrected.'); setBusy(false); return; }
-      said.push('balance corrected');
+      said.push('balance restated');
     }
     setSaid(said.join(' · '));
     setBusy(false);
@@ -480,10 +482,11 @@ function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
       </div>
 
       {restated && (
-        <span style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.45 }}>
-          Saving writes a correction of {(draft.balance - held) > 0 ? '+' : '−'}
-          {Math.abs(draft.balance - held).toLocaleString()} {draft.currency}, so the log can
-          account for the difference.
+        <span style={{ fontSize: 11, color: 'var(--gold)', lineHeight: 1.45 }}>
+          Saving restates this balance by {(draft.balance - held) > 0 ? '+' : '−'}
+          {Math.abs(draft.balance - held).toLocaleString()} {draft.currency}. No movement is
+          recorded, so nothing in the ledger says where the difference came from — the change
+          itself is kept under Logs.
         </span>
       )}
       {isCredit && restated && (

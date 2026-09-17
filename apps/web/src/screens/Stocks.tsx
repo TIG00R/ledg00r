@@ -621,7 +621,8 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
               ) },
             // The company belongs to the ticker, not to the note: naming it here names it
             // everywhere the ticker appears, which is what renaming one means.
-            { key: 'name', label: 'Company', kind: 'text', width: '200px',
+            // a company's name is a value, not a sentence: it is read whole, on one line
+            { key: 'name', label: 'Company', kind: 'text', width: '200px', wrap: false,
               value: (n) => n.name ?? '',
               cell: (n) => (
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>

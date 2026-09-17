@@ -73,7 +73,7 @@ export async function runTurn(
         continue;
       }
       try {
-        const out = await invoke(cap, call.input, ctx);
+        const out = await invoke(cap, call.input, { ...ctx, source: 'assistant' });
         used.push({ tool: cap.name, summary: describe(cap.name, out) });
         results.push({ id: call.id, name: call.name, content: JSON.stringify(out).slice(0, 12_000) });
       } catch (e) {

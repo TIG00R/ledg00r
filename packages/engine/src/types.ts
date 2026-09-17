@@ -158,9 +158,24 @@ export interface ExpenseRecord {
 export interface CharityRecord {
   id: string; seq: number; date: string; egp: number; usd: number | null;
   categoryId: string; note: string; isZakat?: boolean;
+  /**
+   * What was actually given, in the currency it was given in.
+   *
+   * `egp` and `usd` predate a ledger that holds more than two currencies, and a gift in
+   * pounds sterling read through them is either counted as Egyptian pounds or lost. These
+   * are what the service records; the older pair stay for a dataset that has no service
+   * behind it.
+   */
+  amount?: number; currency?: Currency;
+  accountId?: string;
 }
 
-export interface Category { id: string; domain: 'expense' | 'charity' | 'brainstorm'; name: string; color: string; icon?: string; }
+export interface Category {
+  id: string; domain: 'expense' | 'charity' | 'brainstorm'; name: string;
+  color: string; icon?: string;
+  /** the account this kind of spending usually comes out of; absent means the ledger's own default */
+  accountId?: string;
+}
 
 export interface Snapshot {
   label: string;              // "May 2026"

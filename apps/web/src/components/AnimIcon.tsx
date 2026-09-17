@@ -11,9 +11,10 @@
  */
 
 export type AnimName =
-  | 'portfolio' | 'accounts' | 'income' | 'expenses' | 'realestate'
+  | 'portfolio' | 'accounts' | 'income' | 'expenses'
   | 'gold' | 'stocks' | 'zakat' | 'settings' | 'flow' | 'assets'
-  | 'dashboards';
+  | 'dashboards' | 'budgets' | 'logs' | 'debts'
+  | 'charity' | 'hands' | 'realestate';
 
 const COMMON = {
   fill: 'none' as const,
@@ -53,25 +54,40 @@ const SCENES: Record<AnimName, React.ReactNode> = {
    */
   portfolio: (
     <g strokeWidth="1.35">
+      {/* What the solid stands on. A disc this faint is not a shadow anyone reads as a
+          shadow; it is the reason the pie sits on the grid instead of floating in it. */}
+      <ellipse cx="12" cy="19.7" rx="7.4" ry="1.4"
+               stroke="none" fill="currentColor" fillOpacity="0.055" />
       {/* the far wedge shows no rim: its own top face stands in front of it */}
       <g data-part="s4">
-        <path d="M12 11.4 4.39 8.63A8.4 6.55 0 0 1 12 4.85Z" fill="currentColor" fillOpacity="0.05" />
+        <path d="M12 11.4 4.39 8.63A8.4 6.55 0 0 1 12 4.85Z" fill="currentColor" fillOpacity="0.08" />
       </g>
       <g data-part="s1">
         <path d="M20.4 11.4A8.4 6.55 0 0 1 17.94 16.03L17.94 18.33A8.4 6.55 0 0 0 20.4 13.7Z"
-              stroke="none" fill="currentColor" fillOpacity="0.38" />
-        <path d="M12 11.4 12 4.85A8.4 6.55 0 0 1 17.94 16.03Z" fill="currentColor" fillOpacity="0.17" />
+              stroke="none" fill="currentColor" fillOpacity="0.4" />
+        <path d="M12 11.4 12 4.85A8.4 6.55 0 0 1 17.94 16.03Z" fill="currentColor" fillOpacity="0.2" />
       </g>
       <g data-part="s3">
         <path d="M6.6 16.42A8.4 6.55 0 0 1 3.6 11.4L3.6 13.7A8.4 6.55 0 0 0 6.6 18.72Z"
-              stroke="none" fill="currentColor" fillOpacity="0.42" />
-        <path d="M12 11.4 6.6 16.42A8.4 6.55 0 0 1 4.39 8.63Z" fill="currentColor" fillOpacity="0.27" />
+              stroke="none" fill="currentColor" fillOpacity="0.44" />
+        <path d="M12 11.4 6.6 16.42A8.4 6.55 0 0 1 4.39 8.63Z" fill="currentColor" fillOpacity="0.3" />
       </g>
       <g data-part="s2">
         <path d="M17.94 16.03A8.4 6.55 0 0 1 6.6 16.42L6.6 18.72A8.4 6.55 0 0 0 17.94 18.33Z"
-              stroke="none" fill="currentColor" fillOpacity="0.32" />
-        <path d="M12 11.4 17.94 16.03A8.4 6.55 0 0 1 6.6 16.42Z" fill="currentColor" fillOpacity="0.1" />
+              stroke="none" fill="currentColor" fillOpacity="0.34" />
+        <path d="M12 11.4 17.94 16.03A8.4 6.55 0 0 1 6.6 16.42Z" fill="currentColor" fillOpacity="0.13" />
       </g>
+      {/* The bevel: the seam where the top faces meet the side, on the near half only,
+          because that is the only half whose side you can see. One stroke, a little
+          brighter than the wedge outlines, which is the whole of the "dimensional" claim —
+          a glow would say the same thing louder and be wrong in both themes. */}
+      <path data-part="bevel" d="M3.6 11.4A8.4 6.55 0 0 0 20.4 11.4"
+            strokeWidth="1.1" opacity="0.5" />
+      {/* The surface. A polished solid lit from the upper left has one soft highlight and
+          no more; it fades as the pie comes apart, because a broken surface has no gloss. */}
+      <ellipse data-part="sheen" cx="9.5" cy="8.9" rx="4.4" ry="1.9"
+               transform="rotate(-17 9.5 8.9)"
+               stroke="none" fill="currentColor" fillOpacity="0.085" />
     </g>
   ),
 
@@ -165,34 +181,62 @@ const SCENES: Record<AnimName, React.ReactNode> = {
     </g>
   ),
 
-  /* a hand reaching a note into the side pocket of a pair of trousers */
+  /**
+   * Income and expenses: one wallet, two directions.
+   *
+   * The pair has to read as a pair and still never be mistaken for one another, so the
+   * wallet is the same object in both — same body, same card slot, drawn at the same place —
+   * and everything that distinguishes them is the money and the way it goes. The wallet
+   * itself never moves in either: it is the thing money happens to.
+   *
+   * The note is there at rest, and it is there on opposite sides: coming down on the left for
+   * income, going up on the right for expenses, each leaning the way it travels. That is
+   * deliberate and it is the whole difference — the two sat in the same sidebar drawn as the
+   * same wallet, and a pair you can only tell apart by hovering is one icon used twice.
+   *
+   * Hovering completes the movement rather than starting it. The note carries on the way it
+   * was already leaning, fades through the rim — which is how a stroked drawing says "behind"
+   * without a fill to hide anything under — and the next one takes its place from where the
+   * first came. The card slot flexes as it passes: the wallet answering with one of its
+   * parts, not the picture nodding.
+   *
+   * The chevron is the only part that is not a thing. It is the direction, and it sits on the
+   * side the money is going.
+   */
   income: (
     <g>
-      <path data-part="waist" d="M10 3.2h9.4v2.4H10z" />
-      <path data-part="legs" d="M10 5.6 9.4 20.8H13l1.7-8.8 1.7 8.8h3.6l-.6-15.2" />
-      <path data-part="slit" d="M11.5 7c-.8 2-.9 4-.4 5.9" />
-      <path data-part="slitIn" d="M12.6 7.4c-.7 1.8-.8 3.5-.3 5.1" opacity="0.4" />
+      <rect data-part="body" x="3.2" y="9.6" width="17.6" height="10.8" rx="2.6" />
+      <path data-part="clasp" d="M20.8 13.4h-3.7a1.7 1.7 0 0 0 0 3.4h3.7" />
+      {/* the note, leaning in from the left, already on its way down */}
       <g data-part="cash">
-        <g transform="rotate(-12 5 11.6)">
-          <rect x="1.9" y="9.8" width="6.6" height="3.8" rx="0.6" />
-          <path d="M4.6 11.7h1.2" />
+        <g transform="rotate(-13 10 7.2)">
+          <rect x="5.4" y="4.9" width="7.4" height="4.6" rx="0.7" />
+          <path d="M8.4 7.2h1.4" />
         </g>
+      </g>
+      {/* in */}
+      <g data-part="cue" opacity="0.55">
+        <path d="M18.4 3.9v3.4" />
+        <path d="M17.1 6 18.4 7.3 19.7 6" />
       </g>
     </g>
   ),
 
-  /* the same hand drawing a note back out of it */
   expenses: (
     <g>
-      <path data-part="waist" d="M10 3.2h9.4v2.4H10z" />
-      <path data-part="legs" d="M10 5.6 9.4 20.8H13l1.7-8.8 1.7 8.8h3.6l-.6-15.2" />
-      <path data-part="slit" d="M11.5 7c-.8 2-.9 4-.4 5.9" />
-      <path data-part="slitIn" d="M12.6 7.4c-.7 1.8-.8 3.5-.3 5.1" opacity="0.4" />
+      <rect data-part="body" x="3.2" y="9.6" width="17.6" height="10.8" rx="2.6" />
+      <path data-part="clasp" d="M20.8 13.4h-3.7a1.7 1.7 0 0 0 0 3.4h3.7" />
+      {/* the same note on the other side, leaning out and already on its way up */}
       <g data-part="cash">
-        <g transform="rotate(-12 5 11.6)">
-          <rect x="1.9" y="9.8" width="6.6" height="3.8" rx="0.6" />
-          <path d="M4.6 11.7h1.2" />
+        <g transform="rotate(13 14 7.2)">
+          <rect x="11.2" y="4.9" width="7.4" height="4.6" rx="0.7" />
+          <path d="M14.2 7.2h1.4" />
         </g>
+      </g>
+      {/* out */}
+      <g data-part="cue" opacity="0.55">
+        <path d="M5.6 7.3V3.9" />
+        <path d="M4.3 5.2 5.6 3.9 6.9 5.2" />
       </g>
     </g>
   ),
@@ -249,16 +293,6 @@ const SCENES: Record<AnimName, React.ReactNode> = {
         <circle cx="4" cy="19.9" r="1.25" />
         <circle cx="9.4" cy="19.9" r="1.25" />
       </g>
-    </g>
-  ),
-
-  realestate: (
-    <g>
-      <path data-part="roof" d="M2.9 11.4 12 4.2l9.1 7.2" />
-      <path data-part="wallL" d="M5.6 10.6V20.2" />
-      <path data-part="wallR" d="M18.4 10.6V20.2" />
-      <path data-part="floor" d="M4.2 20.2h15.6" />
-      <path data-part="door" d="M9.9 20.2v-4.8h4.2v4.8" />
     </g>
   ),
 
@@ -441,6 +475,133 @@ const SCENES: Record<AnimName, React.ReactNode> = {
       <circle data-part="k1" cx="8" cy="7" r="2.1" />
       <circle data-part="k2" cx="15" cy="12" r="2.1" />
       <circle data-part="k3" cx="10" cy="17" r="2.1" />
+    </g>
+  ),
+  /**
+   * A property.
+   *
+   * The asset class, not the screen: `assets` is everything owned and draws a car at the
+   * house to say so, and this is the house alone — what a flat under an installment plan is
+   * marked as, wherever one appears. The roof lifts off the walls and the walls step out from
+   * under it; the floor stays, because the floor is the ground.
+   */
+  realestate: (
+    <g>
+      <path data-part="roof" d="M2.9 11.4 12 4.2l9.1 7.2" />
+      <path data-part="wallL" d="M5.6 10.6V20.2" />
+      <path data-part="wallR" d="M18.4 10.6V20.2" />
+      <path data-part="floor" d="M4.2 20.2h15.6" />
+      <path data-part="door" d="M9.9 20.2v-4.8h4.2v4.8" />
+    </g>
+  ),
+
+  /**
+   * Budgets: a ceiling, and how near the spending is to it.
+   *
+   * A budget is not a period and not a category — it is a limit, and what a limit needs is
+   * something running at it. The track and the line at the end of it are the fixed facts; the
+   * band inside is the only part that is actually a number, so it is the only part that
+   * moves. It grows from its own left edge rather than from the middle, and the limit answers
+   * with light as the band closes on it, because a limit that moved would not be one.
+   *
+   * Drawn along rather than up. Standing it on end made a lidded column, which at seventeen
+   * pixels is a bin, and there is already a bin in this set.
+   */
+  budgets: (
+    <g>
+      {/* the allowance, and the limit standing at the end of it */}
+      <rect x="2.9" y="9.2" width="18.2" height="5.6" rx="2.8" />
+      <rect data-part="fill" x="4.3" y="10.6" width="6.4" height="2.8" rx="1.4"
+            stroke="none" fill="currentColor" fillOpacity="0.34" />
+      <path data-part="limit" d="M17.6 6.4v11.2" />
+      <path data-part="limitCap" d="M16.5 6.4h2.2M16.5 17.6h2.2" opacity="0.5" />
+    </g>
+  ),
+
+  /**
+   * Logs: everything the ledger was asked to write, newest at the top.
+   *
+   * A clock stood here before, and a clock is a time, not a record — the screen is a list of
+   * entries, so the mark is a list of entries. The rail is the thing they are all hung on and
+   * it never moves; each entry's mark appears and its line writes itself out to the right, in
+   * the order they were made.
+   */
+  logs: (
+    <g>
+      <path d="M5.6 4.9v14.4" />
+      <g data-part="e1"><circle cx="5.6" cy="7.4" r="1.45" /><path d="M9.2 7.4h9.2" /></g>
+      <g data-part="e2"><circle cx="5.6" cy="12" r="1.45" /><path d="M9.2 12h7" /></g>
+      <g data-part="e3"><circle cx="5.6" cy="16.6" r="1.45" /><path d="M9.2 16.6h8.4" /></g>
+    </g>
+  ),
+
+  /**
+   * Debts: a signed note, and the money against it.
+   *
+   * Lent or borrowed, a debt is a promise written down — which is a different thing from the
+   * handshake that used to stand here, and the handshake means agreement, which the money
+   * flow also needs. Both halves are there at rest — a slip with money against it is the
+   * mark, and a mark that is only legible while a cursor is on it is not a mark. The slip
+   * never moves: it is the undertaking. The signature writes itself and the coin presses up
+   * against the corner, which is the other half, the paying.
+   */
+  debts: (
+    <g>
+      <rect data-part="slip" x="3.2" y="5.8" width="15.6" height="11.4" rx="2" />
+      <path d="M6.4 9.4h6.8" opacity="0.5" />
+      <path data-part="sig" d="M6.4 13.6c1.4-2 2.5-2 3.3 0 .8 2 1.9 2 3.3 0" />
+      <g data-part="coin">
+        <circle cx="18.4" cy="17.4" r="3.1" />
+        <path d="M18.4 15.8v3.2" />
+      </g>
+    </g>
+  ),
+
+  /**
+   * Charity: the heart, and what is put into it.
+   *
+   * The heart is this application's mark for giving and for nothing else — not health, not a
+   * favourite, not a thing you liked. It is drawn once, here, and it holds still: what moves
+   * is the coin that falls into the notch at the top of it, and the answering shape inside
+   * that comes up as the coin arrives. That is the whole sentence — something given, and
+   * something that registers it.
+   */
+  charity: (
+    <g>
+      <g transform="translate(12 16) scale(0.82) translate(-12 -16)">
+        <path data-part="heart" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+        <g data-part="beat" opacity="0" transform="translate(12 14.6) scale(0.52) translate(-12 -14.6)">
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
+                stroke="none" fill="currentColor" fillOpacity="0.24" />
+        </g>
+      </g>
+      <g data-part="coin" opacity="0">
+        <circle cx="12" cy="7.2" r="2.2" />
+        <path d="M12 5.9v2.6" />
+      </g>
+    </g>
+  ),
+
+  /**
+   * Sadaqat: cupped hands, and the coin leaving them.
+   *
+   * Giving that is chosen rather than owed. It shared a heart with charity before, which made
+   * two different obligations look like the same one — so this one keeps the hands and
+   * charity keeps the heart, and neither borrows the other's.
+   *
+   * The fingers are not decoration. Cupped hands drawn as one arc with a coin sitting in them
+   * is an eye with a pupil, which is what the first attempt was; four fingers coming up out
+   * of the rim, and the coin held clear above them, is a hand offering something. The hands
+   * stay put — the coin rises out and goes, and the cup gives a little as it lets go.
+   */
+  hands: (
+    <g>
+      <path data-part="cup" d="M4.2 14.4a7.8 4.6 0 0 0 15.6 0" />
+      <path data-part="fingers" d="M4.2 14.4 5.5 11.1M8.4 13.6 9 10.2M15.6 13.6 15 10.2M19.8 14.4 18.5 11.1" />
+      <g data-part="coin">
+        <circle cx="12" cy="6.4" r="2.8" />
+        <path d="M12 4.8v3.2" />
+      </g>
     </g>
   ),
 };

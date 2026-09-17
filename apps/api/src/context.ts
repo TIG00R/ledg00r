@@ -14,6 +14,8 @@ export interface AppCtx {
   now: Date;
   idempotencyKey?: string;
   dryRun?: boolean;
+  /** where the call came from, for the log of what was done: the screens, MCP, the API */
+  source?: string;
   ledger: () => ReturnType<typeof ledgerView>;
 }
 
@@ -45,6 +47,7 @@ export function makeApp(file: string): {
     now: over.now ?? new Date(),
     idempotencyKey: over.idempotencyKey,
     dryRun: over.dryRun,
+    source: over.source,
     ledger: () => ledgerView(db),
   });
 

@@ -594,7 +594,7 @@ const GROUPED = {
   giving: { label: 'Zakat and Sadaqat', one: 'cause', many: 'causes',
             icon: 'zakat' as IconName, tone: 'out' as Kind },
   debts: { label: 'Debt payments', one: 'counterparty', many: 'counterparties',
-           icon: 'handshake' as IconName, tone: 'internal' as Kind },
+           icon: 'debts' as IconName, tone: 'internal' as Kind },
 };
 
 function shape(
@@ -699,7 +699,7 @@ function shape(
       : n?.kind === 'external' ? 'income'
       : cat && hasIcon(cat.icon) ? cat.icon
       : cat?.domain === 'charity' ? 'hands'
-      : debt ? 'handshake'
+      : debt ? 'debts'
       : n?.kind === 'asset' ? 'realestate'
       : 'expenses';
 

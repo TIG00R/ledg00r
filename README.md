@@ -17,6 +17,15 @@ A personal ledger: what you own, what you owe, what moves between them, and what
   outside it, something bought to resell counts whole, jewellery worn is outside it. Nothing
   is owed until the amount passes nisab and a full lunar year has run.
 - **Installments and standing charges**, with plans that can post themselves on the due date.
+- **Budgets as pools.** A ceiling over a month, a quarter or a year, covering one destination
+  or several that share the one figure — with a warning the moment a pool passes its ceiling,
+  and the whole of it drawn over time, a line per destination in its own colour. Each ceiling
+  keeps the currency it was set in, and each expense the currency it was paid in; conversion
+  happens when a figure is drawn and nowhere else.
+- **A log of what was done**, beside the log of what the money did. A rename, an archive, a
+  restated balance, a refusal — none of those move anything, so none of them appear in the
+  movements. Restating a balance in particular writes no movement at all: it says so, and the
+  act is on the record here.
 - **One calendar** for everything dated — paid and due, each asset's lunar year, the zakat
   date, your own entries — on screen and at `/calendar.ics` for a phone or a laptop.
 - **Search across every log at once**, through one full-text index. Arabic is folded before

@@ -2,13 +2,14 @@ import { z } from 'zod';
 import { command, query, DateOnly, NodeId, SourceId, TemplateId, Outcome } from '@ledger/contracts';
 import { schema as t } from '@ledger/db';
 import { eq } from 'drizzle-orm';
-import { upcoming, nextOccurrence, type Reminder, type RecurringTemplate,
-         type Dismissal, type ZakatSettings } from '@ledger/engine';
+import { upcoming, nextOccurrence, type Reminder, type ReminderSubject,
+         type RecurringTemplate, type Dismissal, type ZakatSettings } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun,
          reversedMovements } from './shared.js';
 import { nextSeq, rateFor } from './spending.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
+import { readBudgets } from './budgets.js';
 
 /**
  * Everything forward-looking.
@@ -48,7 +49,7 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
         date: e.date.toISOString().slice(0, 10), daysAway: e.daysAway,
         amount: e.amount, currency: e.currency, due: e.due, overdue: e.overdue,
         reminderLead: e.reminderLead, internal: e.internal,
-      }));
+      })).concat(budgetWarnings(ctx));
     },
   }),
 
@@ -529,6 +530,59 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
     },
   }),
 ];
+
+/**
+ * A ceiling passed, or close to it.
+ *
+ * Unlike everything else on this list, a budget warning is not a dated thing coming towards
+ * you — it is a state the period is already in, which is exactly why it has to be surfaced
+ * rather than waited for. The date it carries is the day the period ends, because that is
+ * when the warning stops being true, and its id names the pool and the period so silencing
+ * one month's warning does not silence next month's.
+ *
+ * Only one warning per pool: once the ceiling is passed, being told you are near it is no
+ * longer the news.
+ */
+function budgetWarnings(ctx: AppCtx): Array<{
+  id: string; kind: ReminderSubject; label: string; detail: string | undefined; date: string;
+  daysAway: number; amount: number | undefined; currency: string | undefined;
+  due: boolean; overdue: boolean | undefined;
+  reminderLead: string | undefined; internal: boolean | undefined;
+}> {
+  const on = ctx.now.toISOString().slice(0, 10);
+  const silenced = new Set(ctx.db.select().from(t.dismissals).all()
+    .filter((d) => !d.until || d.until >= on)
+    .map((d) => d.eventId));
+
+  return readBudgets(ctx, on)
+    .filter((b) => !b.archived && b.standing !== 'within')
+    .map((b) => {
+      const over = b.standing === 'over';
+      const by = Math.abs(b.remaining);
+      return {
+        id: `budget-${b.id}-${b.from}-${b.standing}`,
+        kind: 'budget' as const,
+        label: over ? `${b.name} is over its ceiling` : `${b.name} is close to its ceiling`,
+        detail: over
+          ? `${Math.round(b.share * 100)}% of ${b.amount} ${b.currency} spent, ${by} ${b.currency} over, with ${b.daysLeft} day${b.daysLeft === 1 ? '' : 's'} of this period left.`
+          : `${Math.round(b.share * 100)}% of ${b.amount} ${b.currency} spent, ${by} ${b.currency} left, with ${b.daysLeft} day${b.daysLeft === 1 ? '' : 's'} of this period left.`,
+        date: b.to,
+        daysAway: b.daysLeft,
+        // how far over, where it is over. What is left of a ceiling is not a payment due,
+        // and printed in the column of amounts owed it read as one.
+        amount: over ? by : undefined,
+        currency: over ? b.currency : undefined,
+        // a ceiling passed is not something to prepare for; it has happened. It is not
+        // overdue either — nothing is late — so it says how much of the period is left.
+        due: true,
+        overdue: undefined,
+        // a budget warning answers to no reminder and moves nothing between your own things
+        reminderLead: undefined,
+        internal: undefined,
+      };
+    })
+    .filter((e) => !silenced.has(e.id));
+}
 
 export function readReminders(ctx: AppCtx): Reminder[] {
   return ctx.db.select().from(t.reminders).all().map((r) => ({

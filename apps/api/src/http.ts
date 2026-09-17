@@ -4,6 +4,7 @@ import { join, extname, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { z } from 'zod';
 import type { Registry, Capability } from '@ledger/contracts';
+import { schema as t } from '@ledger/db';
 import { withCtx, type AppCtx } from './context.js';
 import { authorise } from './auth.js';
 import { buildCalendar } from './capabilities/calendar.js';
@@ -155,6 +156,8 @@ export function createApp(opts: ServeOptions) {
         return json(res, 200, await invoke(cap, body, ctxOf({
           idempotencyKey: header(req, 'idempotency-key'),
           dryRun: header(req, 'x-dry-run') === 'true',
+          // the caller says who it is; anything that does not say is the bare API
+          source: (header(req, 'x-ledger-source') ?? 'api').slice(0, 24),
         })));
       }
 
@@ -183,8 +186,56 @@ export function createApp(opts: ServeOptions) {
  */
 export async function invoke(cap: Capability, raw: unknown, ctx: AppCtx): Promise<unknown> {
   const input = cap.input.parse(coerce(cap.input, raw));
-  const out = await withCtx(ctx, () => cap.handler(input, ctx as any));
-  return cap.output.parse(out);
+  try {
+    const out = await withCtx(ctx, () => cap.handler(input, ctx as any));
+    const parsed = cap.output.parse(out);
+    record(cap, input, ctx, parsed);
+    return parsed;
+  } catch (e) {
+    // A command that threw is still something that was attempted, and the log is the only
+    // place that can say so — the ledger itself is unchanged, which is exactly what makes
+    // the attempt invisible everywhere else.
+    record(cap, input, ctx, undefined, e as Error);
+    throw e;
+  }
+}
+
+/**
+ * The log of what was done, written once, here.
+ *
+ * Here rather than inside each handler, because a handler added later is a handler that can
+ * forget. Reads are not recorded — looking at a ledger changes nothing and a log of every
+ * screen refresh buries the log of every act. A dry run is not recorded either: nothing was
+ * asked for, only costed.
+ */
+function record(cap: Capability, input: unknown, ctx: AppCtx, out?: unknown, error?: Error): void {
+  if (cap.effect === 'reads' || ctx.dryRun) return;
+  const receipt = (out ?? {}) as {
+    ok?: boolean; summary?: string; message?: string; movementId?: string; dryRun?: boolean;
+  };
+  if (receipt.dryRun) return;
+  const given = (input ?? {}) as Record<string, unknown>;
+  const subject = ['accountId', 'assetId', 'destinationId', 'expenseId', 'givingId', 'orderId',
+                   'debtId', 'budgetId', 'sourceId', 'institutionId', 'movementId', 'lotId']
+    .map((k) => given[k]).find((v) => typeof v === 'string') as string | undefined;
+  try {
+    ctx.db.insert(t.actions).values({
+      id: `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      at: new Date().toISOString(),
+      capability: cap.name,
+      context: cap.context,
+      summary: error ? error.message
+        : receipt.summary ?? receipt.message ?? `${cap.name} ran`,
+      outcome: error ? 'failed' : receipt.ok === false ? 'refused' : 'ok',
+      input: given,
+      movementId: receipt.movementId ?? null,
+      subjectId: subject ?? null,
+      source: ctx.source ?? 'api',
+    }).run();
+  } catch {
+    // The log is a record of the work, never a gate on it. A ledger whose write succeeded
+    // and whose log row did not is a ledger with one act unrecorded, not a failed write.
+  }
 }
 
 /**

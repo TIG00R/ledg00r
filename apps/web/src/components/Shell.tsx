@@ -5,9 +5,15 @@ import { useLive } from '../Live';
 import { useApp, market } from '../AppState';
 import { fmt, money } from '@ledger/engine';
 import { useModules } from '../Modules';
-import { BrandMark } from './Brand';
+import { Ledg00rLogo, Ledg00rMascot } from './Ledg00r';
 
-export interface NavItem { id: string; label: string; icon: IconName }
+export interface NavItem {
+  id: string; label: string;
+  /** absent only where the mascot stands in its place — Ledg00r's own screen */
+  icon?: IconName;
+  /** the one section that is a who rather than a what, and so wears his own face */
+  mascot?: true;
+}
 
 export const NAV: NavItem[] = [
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
@@ -19,10 +25,12 @@ export const NAV: NavItem[] = [
   { id: 'gold', label: 'Gold and silver', icon: 'gold' },
   { id: 'stocks', label: 'Stocks', icon: 'stocks' },
   { id: 'expenses', label: 'Expenses', icon: 'expenses' },
-  { id: 'debts', label: 'Debts', icon: 'handshake' },
+  { id: 'budgets', label: 'Budgets', icon: 'budgets' },
+  { id: 'debts', label: 'Debts', icon: 'debts' },
   { id: 'giving', label: 'Zakat and Sadaqat', icon: 'zakat' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
-  { id: 'assistant', label: 'Ledg00r', icon: 'chat' },
+  { id: 'logs', label: 'Logs', icon: 'logs' },
+  { id: 'assistant', label: 'Ledg00r', mascot: true },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -76,12 +84,12 @@ export function Sidebar({ active, onNavigate, collapsed, onToggle, overlay, open
       transition: 'width 200ms var(--ease)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px' }}>
-        <BrandMark size={28} alt="" />
-        {(!collapsed || overlay) && (
-          <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>
-            Ledg<span className="mono" style={{ fontSize: 15 }}>00</span>r
-          </span>
-        )}
+        {/* The logo is one picture, wordmark included. Collapsed there is no width for a
+            word, so what is left standing is the mascot rather than a logo squeezed to
+            forty pixels and unreadable. */}
+        {!collapsed || overlay
+          ? <Ledg00rLogo width={140} />
+          : <Ledg00rMascot size={30} alt="Ledg00r" />}
         <button onClick={overlay ? () => onClose?.() : onToggle}
           aria-label={overlay ? 'Close the menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer',
@@ -107,7 +115,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggle, overlay, open
                   fontSize: 14, fontWeight: 500, boxShadow: on ? 'var(--inner-top)' : 'none',
                   transition: 'background 150ms var(--ease), color 150ms var(--ease)',
                 }}>
-                <Icon name={n.icon} />
+                {n.mascot ? <Ledg00rMascot size={18} alt="" /> : n.icon ? <Icon name={n.icon} /> : null}
                 {(!collapsed || overlay) && n.label}
               </button>
             </li>
@@ -153,13 +161,19 @@ export function TopBar({ title, screen, onRefresh, onNavigate, onMenu }: {
           <Icon name="menu" size={16} />
         </button>
       )}
-      <span style={{
-        width: 30, height: 30, borderRadius: 9, flex: '0 0 30px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: `color-mix(in srgb, ${tone.color} 14%, transparent)`,
-      }}>
-        <Icon name={tone.icon} size={17} color={tone.color} />
-      </span>
+      {/* Ledg00r's own screen is headed by Ledg00r, not by a picture of a speech bubble.
+          The drawing brings its own ground, so it wants no tinted square behind it. */}
+      {screen.split('-')[0] === 'assistant' ? (
+        <Ledg00rMascot size={30} alt="" />
+      ) : (
+        <span style={{
+          width: 30, height: 30, borderRadius: 9, flex: '0 0 30px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: `color-mix(in srgb, ${tone.color} 14%, transparent)`,
+        }}>
+          <Icon name={tone.icon} size={17} color={tone.color} />
+        </span>
+      )}
       <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</h1>
             {asOf && <button className="btn ghost" onClick={() => setAsOf(null)}>Back to today</button>}
       {/* Reading works from the fixtures with no service behind the screen, but nothing can be
@@ -297,14 +311,21 @@ function NotificationBell({ dueCount, onNavigate }: {
                   }}>
                     <Icon name={e.kind === 'zakat' ? 'zakat' : e.kind === 'stock' ? 'stocks'
                               : e.kind === 'sadaqah' ? 'charity' : e.kind === 'income' ? 'income'
-                              : e.kind === 'recurring' ? 'refresh' : 'building'} size={14} />
+                              : e.kind === 'recurring' ? 'refresh'
+                              // a ceiling passed is a warning, not a building
+                              : e.kind === 'budget' ? 'warn' : 'building'} size={14} />
                   </span>
                   <button onClick={() => { setOpen(false); onNavigate('calendar'); }}
                     style={{ minWidth: 0, flex: 1, textAlign: 'left', padding: 0, cursor: 'pointer',
                              background: 'transparent', border: 'none', color: 'inherit' }}>
                     <div style={{ fontSize: 12, fontWeight: 500 }}>{e.label}</div>
                     <div style={{ fontSize: 11, color: e.overdue ? 'var(--negative)' : 'var(--faint)' }}>
-                      {e.overdue ? `${-e.daysAway} days late`
+                      {/* A ceiling is not late and not coming: it is a state the period is
+                          already in, so what matters is how much of the period is left. */}
+                      {e.kind === 'budget'
+                        ? (e.daysAway === 0 ? 'the last day of this period'
+                            : `${e.daysAway} day${e.daysAway === 1 ? '' : 's'} of this period left`)
+                        : e.overdue ? `${-e.daysAway} days late`
                         : e.daysAway === 0 ? 'today' : `in ${e.daysAway} days`}
                       {e.reminderLead ? ` · ${e.reminderLead}` : ''}
                     </div>
@@ -316,7 +337,7 @@ function NotificationBell({ dueCount, onNavigate }: {
                       {e.kind === 'income' ? '+' : e.internal ? '' : '−'}{amountOf(e)}
                     </span>
                   )}
-                  {(e.kind === 'stock' || e.overdue) && (
+                  {(e.kind === 'stock' || e.kind === 'budget' || e.overdue) && (
                     <button className="btn quiet" aria-label={`Dismiss ${e.label}`}
                             title="Dismiss until tomorrow"
                             onClick={() => dismiss(e.id, isoTomorrow())}
@@ -423,12 +444,19 @@ export function UpcomingPanel({ onNavigate }: { onNavigate: (id: string) => void
               }}>
                 <Icon name={e.kind === 'zakat' ? 'zakat' : e.kind === 'stock' ? 'stocks'
                           : e.kind === 'sadaqah' ? 'charity' : e.kind === 'income' ? 'income'
-                          : e.kind === 'recurring' ? 'refresh' : 'building'} size={14} />
+                          : e.kind === 'recurring' ? 'refresh'
+                              // a ceiling passed is a warning, not a building
+                              : e.kind === 'budget' ? 'warn' : 'building'} size={14} />
               </span>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 500 }}>{e.label}</div>
                 <div style={{ fontSize: 11, color: e.overdue ? 'var(--negative)' : 'var(--faint)' }}>
-                  {e.overdue ? `${-e.daysAway} days late`
+                  {/* A ceiling is not late and not coming: it is a state the period is
+                      already in, so what matters is how much of the period is left. */}
+                  {e.kind === 'budget'
+                    ? (e.daysAway === 0 ? 'the last day of this period'
+                        : `${e.daysAway} day${e.daysAway === 1 ? '' : 's'} of this period left`)
+                    : e.overdue ? `${-e.daysAway} days late`
                     : e.daysAway === 0 ? 'today' : `in ${e.daysAway} days`}
                   {e.reminderLead ? ` · ${e.reminderLead}` : ''}
                 </div>
@@ -441,7 +469,7 @@ export function UpcomingPanel({ onNavigate }: { onNavigate: (id: string) => void
                 </span>
               )}
               {/* A price alert has no date to expire on, so it needs a way to be answered. */}
-              {(e.kind === 'stock' || e.overdue) && (
+              {(e.kind === 'stock' || e.kind === 'budget' || e.overdue) && (
                 <button className="btn quiet" aria-label={`Dismiss ${e.label}`}
                         title="Dismiss until tomorrow"
                         onClick={() => dismiss(e.id, isoTomorrow())}

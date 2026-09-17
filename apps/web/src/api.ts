@@ -17,6 +17,8 @@ function makeLedger() {
   return createClient<any>({
     baseUrl: import.meta.env.VITE_LEDGER_API ?? '/api',
     token: import.meta.env.VITE_LEDGER_TOKEN,
+    // so the log of what was done can tell a person at a screen from an agent over MCP
+    source: 'web',
     onError: (name, err) => console.error(`[ledger] ${name}: ${err.message}`),
   });
 }

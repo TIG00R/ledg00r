@@ -543,6 +543,127 @@ const STEPS: Step[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS stock_div_unique ON stock_dividends (ticker, year, kind);
     `),
   },
+  {
+    version: 22,
+    name: 'a restated balance is not a movement',
+    /**
+     * Correcting a balance used to write a movement between the account and an adjustment
+     * node called "Corrections", whose kind is `external` — and the money flow draws
+     * anything external as a source of income, so every correction was reported as earnings
+     * from a source nobody has.
+     *
+     * The movements are folded back into the accounts they restated: each account's opening
+     * figure absorbs what its corrections moved, so every balance reads exactly what it read
+     * before this ran, and the legs, the transactions and the adjustment node go.
+     */
+    up: (db) => db.$raw.exec(`
+      UPDATE nodes SET opening_qty = opening_qty + COALESCE((
+        SELECT SUM(COALESCE(l.qty_to, l.qty_from, 0))
+        FROM legs l WHERE l.to_node_id = nodes.id AND l.from_node_id = 'adj-correction'
+      ), 0) - COALESCE((
+        SELECT SUM(COALESCE(l.qty_from, l.qty_to, 0))
+        FROM legs l WHERE l.from_node_id = nodes.id AND l.to_node_id = 'adj-correction'
+      ), 0)
+      WHERE id IN (
+        SELECT to_node_id FROM legs WHERE from_node_id = 'adj-correction'
+        UNION
+        SELECT from_node_id FROM legs WHERE to_node_id = 'adj-correction');
+
+      DELETE FROM transactions WHERE id IN (
+        SELECT transaction_id FROM legs
+        WHERE from_node_id = 'adj-correction' OR to_node_id = 'adj-correction');
+      DELETE FROM legs WHERE from_node_id = 'adj-correction' OR to_node_id = 'adj-correction';
+      DELETE FROM nodes WHERE id = 'adj-correction';
+    `),
+  },
+  {
+    version: 23,
+    name: 'a log of what was done',
+    /**
+     * Every command the ledger runs, recorded where it can be read back.
+     *
+     * The movements say what happened to the money. They cannot say what happened to
+     * anything else — a rename, an archive, a restated balance, a refusal — and a restated
+     * balance in particular now writes no movement at all. This is where those go.
+     */
+    up: (db) => db.$raw.exec(`
+      CREATE TABLE IF NOT EXISTS actions (
+        id          TEXT PRIMARY KEY,
+        at          TEXT NOT NULL,
+        capability  TEXT NOT NULL,
+        context     TEXT NOT NULL,
+        summary     TEXT NOT NULL,
+        outcome     TEXT NOT NULL,
+        input       TEXT,
+        movement_id TEXT,
+        subject_id  TEXT,
+        source      TEXT NOT NULL DEFAULT 'api');
+      CREATE INDEX IF NOT EXISTS action_at ON actions (at DESC);
+      CREATE INDEX IF NOT EXISTS action_cap_at ON actions (capability, at DESC);
+      CREATE INDEX IF NOT EXISTS action_outcome_at ON actions (outcome, at DESC);
+    `),
+  },
+  {
+    version: 24,
+    name: 'budget pools',
+    /**
+     * A budget is a pool: a ceiling over a period, and the destinations it covers.
+     *
+     * A ceiling over one destination is a pool with one member, so nothing has to be
+     * redesigned the first time two destinations belong to one ceiling — "Food" over both
+     * groceries and eating out is the same object as "Groceries" alone. A destination may
+     * sit in more than one pool; the screens say so rather than hiding the overlap.
+     *
+     * The ceiling carries the currency it was set in, because a ceiling is a decision made
+     * in a currency and not a figure to be restated every time the display currency changes.
+     */
+    up: (db) => db.$raw.exec(`
+      CREATE TABLE IF NOT EXISTS budgets (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        color      TEXT NOT NULL DEFAULT '#8A8578',
+        icon       TEXT,
+        period     TEXT NOT NULL,
+        amount     REAL NOT NULL,
+        currency   TEXT NOT NULL,
+        -- the date the periods are counted from: which day a month turns over, which month
+        -- a year does. Without it a quarterly ceiling has no answer to "which quarter".
+        anchor     TEXT NOT NULL,
+        -- how close to the ceiling is close enough to be warned, as a fraction
+        warnAt     REAL NOT NULL DEFAULT 0.8,
+        note       TEXT,
+        archived   INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS budget_archived ON budgets (archived);
+
+      CREATE TABLE IF NOT EXISTS budget_members (
+        budget_id   TEXT NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+        category_id TEXT NOT NULL,
+        PRIMARY KEY (budget_id, category_id));
+      CREATE INDEX IF NOT EXISTS budget_member_cat ON budget_members (category_id);
+    `),
+  },
+  {
+    version: 25,
+    name: 'a destination says where it is usually paid from',
+    /**
+     * Which account a kind of spending normally comes out of.
+     *
+     * There was one answer for the whole ledger — the living-burn account in Settings — so
+     * groceries off the debit card and a flight off the dollar account both opened on the
+     * same account and one of them was corrected every time. The destination is the thing
+     * that knows: it is chosen first, and everything else about the expense follows it.
+     *
+     * Null means the ledger's own default still applies, which is what every existing
+     * destination keeps.
+     */
+    up: (db) => {
+      // guarded the way every other added column here is: a step must survive being replayed
+      // against a database whose version table was lost or rolled back
+      try { db.$raw.exec('ALTER TABLE categories ADD COLUMN account_id TEXT'); }
+      catch { /* already there */ }
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

@@ -26,6 +26,8 @@ export interface SectionDef {
   id: string;
   label: string;
   icon?: IconName;
+  /** a picture that stands where the icon would, for a section that has one of its own */
+  art?: ReactNode;
   /** shown under the bar while this section is open */
   hint?: string;
   /** what Edit means here; absent means this section cannot be edited */
@@ -83,7 +85,7 @@ export function Sections({ sections }: { sections: SectionDef[] }) {
                   boxShadow: on ? 'var(--shadow-sm)' : 'none',
                   transition: 'background 150ms var(--ease), color 150ms var(--ease)',
                 }}>
-                {s.icon && <Icon name={s.icon} size={14} />}
+                {s.art ?? (s.icon && <Icon name={s.icon} size={14} />)}
                 {s.label}
               </button>
             );

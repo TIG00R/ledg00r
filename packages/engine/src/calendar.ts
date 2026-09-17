@@ -89,7 +89,7 @@ export const CALENDAR_ICONS: Record<CalendarKind, string> = {
   metal: 'goldbar',
   order: 'chartline',
   transfer: 'flow',
-  debt: 'handshake',
+  debt: 'debts',
 };
 
 export interface CalendarEvent {

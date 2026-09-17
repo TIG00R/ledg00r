@@ -26,7 +26,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
     stocks:     { icon: 'stocks',   color: 'var(--stocks)',  label: 'Stocks' },
     /* Money lent out and still owed back. Owned, so it is part of the total, but it is not a
        thing on a shelf — without a pile of its own a loan was drawn among the machines. */
-    debt:       { icon: 'handshake', color: 'var(--sadaqat)', label: 'Debt' },
+    debt:       { icon: 'debts',    color: 'var(--sadaqat)', label: 'Debt' },
     /* A machine, a thing, anything owned that is none of the five above. Without a pile of
        its own such a thing counted towards the total and appeared in no line of the split. */
     other:      { icon: 'assets',   color: 'var(--accent)',   label: 'Other' },

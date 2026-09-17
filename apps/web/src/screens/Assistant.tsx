@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Page, Panel, Field, Empty } from '../components/UI';
 import { Select } from '../components/Select';
 import { Icon } from '../components/Icon';
-import { type Mood } from '../components/Tiger';
-import { BrandMark } from '../components/Brand';
+import { Ledg00rMascot } from '../components/Ledg00r';
+
+/** What the assistant is doing between a question and an answer. */
+type Mood = 'idle' | 'thinking' | 'searching' | 'talking' | 'pleased' | 'sorry';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { ModeProvider } from '../components/ModeBar';
 import { useLive } from '../Live';
@@ -19,8 +21,9 @@ interface Said { role: 'user' | 'assistant'; text: string; used?: Array<{ tool: 
  * calls the same capabilities the screens call — or you hand the ledger to an assistant you
  * already have, as an MCP server it connects to.
  *
- * The tiger is not decoration. He is the only honest indicator of what is happening between
- * asking and answering: thinking, looking something up, or telling you.
+ * The mascot marks what Ledg00r says, and nothing else. What is happening between asking
+ * and answering is said in words, under his picture, because a word can say "looking it up
+ * in your ledger" and a moving drawing cannot.
  */
 export function Assistant() {
   return (
@@ -35,7 +38,7 @@ function Body() {
   return (
     <Page>
       <Sections sections={[
-        { id: 'talk', label: 'Talk to Ledg00r', icon: 'chat',
+        { id: 'talk', label: 'Talk to Ledg00r', art: <Ledg00rMascot size={15} alt="" />,
           hint: 'Ask about your own figures. He reads this ledger rather than guessing.' },
         { id: 'connect', label: 'Use your own assistant', icon: 'plug',
           hint: 'Hand this ledger to something you already run, over MCP.' },
@@ -113,98 +116,82 @@ function Talk() {
   ];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 280px', gap: 20,
-                  alignItems: 'start' }}>
-      <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 460 }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14,
-                      maxHeight: 520, overflowY: 'auto', paddingRight: 4 }}>
-          {said.length === 0 && (
-            <div style={{ padding: '8px 0 4px' }}>
-              <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--muted)', lineHeight: 1.6 }}>
-                Ask about your own figures. He has the same tools the screens do, so he reads
-                what is actually recorded — and he will tell you before he changes anything.
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {suggestions.map((q) => (
-                  <button key={q} className="btn ghost" onClick={() => ask(q)}
-                          style={{ fontSize: 12, padding: '8px 13px' }}>{q}</button>
+    <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 460 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14,
+                    maxHeight: 520, overflowY: 'auto', paddingRight: 4 }}>
+        {said.length === 0 && (
+          <div style={{ padding: '8px 0 4px' }}>
+            <Ledg00rMascot size={40} alt="Ledg00r" />
+            <p style={{ margin: '14px 0 16px', fontSize: 14, color: 'var(--muted)', lineHeight: 1.6 }}>
+              Ask about your own figures. He has the same tools the screens do, so he reads
+              what is actually recorded — and he will tell you before he changes anything.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {suggestions.map((q) => (
+                <button key={q} className="btn ghost" onClick={() => ask(q)}
+                        style={{ fontSize: 12, padding: '8px 13px' }}>{q}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {said.map((s, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6,
+                                alignItems: s.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            {s.role === 'assistant' && <Ledg00rMascot size={28} alt="Ledg00r" />}
+            <div style={{
+              maxWidth: '82%', padding: '11px 14px', borderRadius: 'var(--r-card)',
+              fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+              background: s.role === 'user' ? 'var(--accent)' : 'var(--raised)',
+              color: s.role === 'user' ? 'var(--accent-ink)' : 'var(--ink)',
+              border: s.role === 'user' ? 'none' : '1px solid var(--hairline)',
+            }}>{s.text}</div>
+
+            {/* What he actually looked at. A figure with no provenance is a guess. */}
+            {s.used && s.used.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: '82%' }}>
+                {s.used.map((u, j) => (
+                  <span key={j} className="chip" title={u.summary}
+                        style={{ fontSize: 10, background: 'var(--raised)', color: 'var(--faint)' }}>
+                    <Icon name="check" size={10} motion="none" /> {u.tool}
+                  </span>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        ))}
 
-          {said.map((s, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6,
-                                  alignItems: s.role === 'user' ? 'flex-end' : 'flex-start' }}>
-              <div style={{
-                maxWidth: '82%', padding: '11px 14px', borderRadius: 'var(--r-card)',
-                fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
-                background: s.role === 'user' ? 'var(--accent)' : 'var(--raised)',
-                color: s.role === 'user' ? 'var(--accent-ink)' : 'var(--ink)',
-                border: s.role === 'user' ? 'none' : '1px solid var(--hairline)',
-              }}>{s.text}</div>
-
-              {/* What he actually looked at. A figure with no provenance is a guess. */}
-              {s.used && s.used.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: '82%' }}>
-                  {s.used.map((u, j) => (
-                    <span key={j} className="chip" title={u.summary}
-                          style={{ fontSize: 10, background: 'var(--raised)', color: 'var(--faint)' }}>
-                      <Icon name="check" size={10} motion="none" /> {u.tool}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {doing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12,
-                          color: 'var(--faint)' }}>
-              <Icon name={mood === 'searching' ? 'search' : 'clock'} size={13} />
-              {doing}…
-            </div>
-          )}
-          <div ref={foot} />
-        </div>
-
-        <form style={{ display: 'flex', gap: 10, marginTop: 18, paddingTop: 16,
-                       borderTop: '1px solid var(--hairline)' }}
-              onSubmit={(e) => { e.preventDefault(); ask(question); }}>
-          <input value={question} onChange={(e) => setQuestion(e.target.value)}
-                 aria-label="Ask Ledg00r" placeholder="Ask about your money…"
-                 disabled={mood === 'thinking' || mood === 'searching'}
-                 style={{ flex: 1, fontSize: 14, padding: '11px 13px' }} />
-          <button className="btn" type="submit"
-                  disabled={!question.trim() || mood === 'thinking' || mood === 'searching'}
-                  style={{ padding: '11px 18px' }}>
-            <Icon name="send" size={15} /> Ask
-          </button>
-        </form>
-
-        {ready && !ready.hasKey && (
-          <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--gold)', lineHeight: 1.5 }}>
-            He has no key yet, so he cannot answer. Give him one under Provider — or hand the
-            ledger to an assistant you already run, under “Use your own assistant”.
-          </p>
+        {doing && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12,
+                        color: 'var(--faint)' }}>
+            <Ledg00rMascot size={20} alt="Ledg00r" />
+            {doing}…
+          </div>
         )}
-      </Panel>
+        <div ref={foot} />
+      </div>
 
-      <Panel style={{ position: 'sticky', top: 82, textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}>
-          <BrandMark size={190} alt="" />
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>Ledg00r</div>
-        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4, lineHeight: 1.5 }}>
-          {mood === 'thinking' ? 'Working it out…'
-            : mood === 'searching' ? 'Looking through your records…'
-            : mood === 'talking' ? 'Explaining…'
-            : mood === 'pleased' ? 'That should be right.'
-            : mood === 'sorry' ? 'That did not go well.'
-            : 'Ready when you are.'}
-        </div>
-      </Panel>
-    </div>
+      <form style={{ display: 'flex', gap: 10, marginTop: 18, paddingTop: 16,
+                     borderTop: '1px solid var(--hairline)' }}
+            onSubmit={(e) => { e.preventDefault(); ask(question); }}>
+        <input value={question} onChange={(e) => setQuestion(e.target.value)}
+               aria-label="Ask Ledg00r" placeholder="Ask about your money…"
+               disabled={mood === 'thinking' || mood === 'searching'}
+               style={{ flex: 1, fontSize: 14, padding: '11px 13px' }} />
+        <button className="btn" type="submit"
+                disabled={!question.trim() || mood === 'thinking' || mood === 'searching'}
+                style={{ padding: '11px 18px' }}>
+          <Icon name="send" size={15} /> Ask
+        </button>
+      </form>
+
+      {ready && !ready.hasKey && (
+        <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--gold)', lineHeight: 1.5 }}>
+          He has no key yet, so he cannot answer. Give him one under Provider — or hand the
+          ledger to an assistant you already run, under “Use your own assistant”.
+        </p>
+      )}
+    </Panel>
   );
 }
 

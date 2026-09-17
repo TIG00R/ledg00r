@@ -37,8 +37,13 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
   const incomeSplit = splitByCurrency(
     data.incomeSources.filter((s) => s.scheduled && s.amount != null),
     (s) => ({ amount: s.amount as number, currency: s.currency }), market);
+  // What was given, in the currency it was given in. Read through the older `egp`/`usd`
+  // pair, a gift in pounds sterling was counted as Egyptian pounds; the service records the
+  // currency, and only a dataset with no service behind it falls back to the pair.
   const charitySplit = splitByCurrency(data.charity,
-    (c) => (c.usd != null ? { amount: c.usd, currency: 'USD' } : { amount: c.egp, currency: 'EGP' }), market);
+    (c) => (c.currency ? { amount: c.amount ?? c.egp, currency: c.currency }
+          : c.usd != null ? { amount: c.usd, currency: 'USD' }
+          : { amount: c.egp, currency: 'EGP' }), market);
   const expenseSplit = splitByCurrency(data.expenses,
     (e) => ({ amount: e.amount, currency: e.currency }), market);
 

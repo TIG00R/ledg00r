@@ -43,6 +43,16 @@ export interface Column<T> {
   width?: string;
   align?: 'left' | 'right';
   /**
+   * Whether this column may wrap onto a second line.
+   *
+   * A column of sentences — a note, a place, a description — should wrap and take whatever
+   * room is left. Everything else is a value that has to be read whole: a date, an amount
+   * and its unit, an account, a destination, a status. Those never wrap and are never cut;
+   * the column grows to hold them and the table scrolls if it must. Left unsaid, a column
+   * of the `text` kind wraps and every other kind does not.
+   */
+  wrap?: boolean;
+  /**
    * What a 'pick' filter offers.
    *
    * Left alone it offers the values the loaded rows happen to contain, which answers "what is
@@ -160,22 +170,17 @@ export function RecordTable<T>({
   };
 
   /**
-   * How wide a column is.
+   * How wide a column is — as a floor, never as a ceiling.
    *
-   * Left to itself the browser sizes a column by its widest contents, which meant a date
-   * column ballooned to fit two calendars in its filter while a note was crushed to sixty
-   * pixels — and then everything moved again the moment a row turned into fields, because
-   * the fields are wider than the text they replace. So the width follows the kind of thing
-   * the column holds, the table lays out on those widths and nothing else, and a column of
-   * words takes whatever is left. A screen that knows better still says so.
-   */
-  /**
-   * How wide a column is.
+   * The table used to lay out on stated widths and nothing else, which made every width a
+   * ceiling as well: "Groceries" became "Grocerie", "Bills & Utilities" became "Bills & Ut",
+   * and an account and its bank were cut mid-word. A column that cannot show its value is
+   * not narrower, it is wrong.
    *
-   * These are the widths a row being *edited* needs, not the ones a row being read would like
-   * — an edited row carries a date field, pickers and an amount box where the read row has
-   * text, and it is the wider of the two. Sized for the reading row, the editing row ran off
-   * the side of the table and took Save and Cancel with it.
+   * So these are the widths a row being *edited* needs — an edited row carries a date field,
+   * pickers and an amount box where the read row has text, and it is the wider of the two —
+   * and the browser is free to give a column more when its contents ask for more. What it
+   * may never do is give it less than it needs and hide the difference.
    */
   const WIDTH: Partial<Record<FilterKind, number>> = {
     date: 138, amount: 108, money: 176, pick: 112, none: 64,
@@ -186,8 +191,16 @@ export function RecordTable<T>({
    * and stating it lower only decides when the table starts to scroll instead of crushing
    * every column beside it.
    */
-  const WORDS = 112;
+  const WORDS = 144;
   const widthOf = (c: Column<T>) => c.width ?? (WIDTH[kindOf(c)] ? `${WIDTH[kindOf(c)]}px` : undefined);
+  /**
+   * Which columns hold a sentence rather than a value.
+   *
+   * Only these wrap, and only these absorb the room left over once every other column has
+   * taken what its contents need. Everything else is read on one line, whole.
+   */
+  const wraps = (c: Column<T>) => c.wrap ?? kindOf(c) === 'text';
+  const wrapping = columns.filter(wraps).length;
 
   /**
    * The narrowest the table can be drawn without a column collapsing.
@@ -251,9 +264,22 @@ export function RecordTable<T>({
       )}
 
       <div className="rt-wrap" style={{ overflowX: 'auto' }}>
-        <table className="rt" style={{ width: '100%', minWidth: floor, tableLayout: 'fixed' }}>
+        {/*
+          * Automatic layout, not fixed.
+          *
+          * Fixed layout hands every column exactly what it was promised and clips whatever
+          * does not fit, which is how a destination lost the end of its name. Automatic
+          * layout treats the stated width as a starting point and lets a column grow to its
+          * contents; the columns of sentences are told to take everything left over, and the
+          * table's own floor decides when the panel scrolls sideways instead.
+          */}
+        <table className="rt" style={{ width: '100%', minWidth: floor }}>
           <colgroup>
-            {columns.map((c) => <col key={c.key} style={{ width: widthOf(c) }} />)}
+            {columns.map((c) => (
+              <col key={c.key}
+                   style={{ width: c.width
+                     ?? (wraps(c) ? `${Math.floor(100 / wrapping)}%` : widthOf(c)) }} />
+            ))}
             {trailing && <col style={{ width: trailingWidth }} />}
             {actions && <col style={{ width: `${actionsWidth}px` }} />}
           </colgroup>
@@ -264,8 +290,12 @@ export function RecordTable<T>({
                 const f = filters[c.key] ?? {};
                 const on = sort?.key === c.key;
                 return (
-                  <th key={c.key} className="rt-h" style={{ textAlign: c.align ?? 'left',
-                                                            verticalAlign: 'top' }}>
+                  <th key={c.key} className="rt-h"
+                      /* The floor the column may not go below. Automatic layout will happily
+                         starve a column that wraps in favour of ones that cannot, which left
+                         a note four characters wide beside six comfortable columns. */
+                      style={{ textAlign: c.align ?? 'left', verticalAlign: 'top',
+                               minWidth: c.width ?? (wraps(c) ? `${WORDS}px` : widthOf(c)) }}>
                     <button
                       onClick={() => setSort((s) => (s?.key === c.key
                         ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
@@ -381,7 +411,12 @@ export function RecordTable<T>({
                         : (
                           /* A column of dates wears a calendar, so a date is recognisable as
                              one at a glance rather than by its shape. */
-                          <span className={kindOf(c) === 'date' ? 'rt-cell rt-date' : 'rt-cell'}>
+                          <span className={[
+                            'rt-cell',
+                            kindOf(c) === 'date' ? 'rt-date' : '',
+                            // a sentence wraps; a value is read whole, on one line
+                            wraps(c) ? 'rt-cell-wrap' : '',
+                          ].filter(Boolean).join(' ')}>
                             {kindOf(c) === 'date' && <Icon name="calendar" size={12} motion="none" />}
                             <span>{c.cell ? c.cell(row) : String(c.value(row))}</span>
                           </span>

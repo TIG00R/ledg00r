@@ -42,10 +42,12 @@ first), or cannot be undone from here.
 | Context | What lives there |
 |---|---|
 | `ledger` | Institutions, accounts, movements. `accounts.list`, `movements.list`, `ledger.search`, `movement.transfer`, `movement.amend`, `movement.undo`, `account.correctBalance`. |
-| `spending` | Expenses and the destinations they are recorded against. `expense.record`, `expense.list`, `expense.statistics`, `expense.correct`, `destinations.list`. |
+| `spending` | Expenses and the destinations they are recorded against. `expense.record`, `expense.list`, `expense.statistics`, `expense.correct`, `destinations.list`. An expense may leave the account out: the destination's usual account answers for it, and the ledger's own default after that. |
 | `planning` | Income, standing charges, reminders, the calendar, what is coming. `income.record`, `recurring.add`, `upcoming.list`, `calendar.events`, `reminder.set`. |
 | `holdings` | Assets, property plans, metals, shares. `assets.list`, `installments.list`, `installments.due`, `installment.pay`, `plan.upsert`, `metal.buy`, `metal.sell`, `order.log`, `positions.list`, `property.expense`. |
 | `giving` | What has been given away, and zakat. `giving.record`, `giving.list`, `zakat.assessment`, `zakat.configure`. |
+| `budgets` | Ceilings on spending, each over a period and covering one destination or a pool of them. `budgets.list`, `budget.add`, `budget.update`, `budget.remove`, `budget.series`. |
+| `actions` | Everything the ledger was asked to do, whether or not it moved money. `actions.list`. |
 | `debts` | Money lent and money borrowed. `debts.list`, `debts.summary`, `debt.record`, `debt.settle`, `debt.writeOff`. |
 | `overview` | Net worth, the month's flow, market rates, currencies, constants. `portfolio.overview`, `flow.month`, `market.read`, `market.record`, `currency.base`, `settings.read`. |
 | `access` | Whether a key is required, and which keys exist. `access.status`, `access.issueKey`, `access.revokeKey`. |
@@ -78,7 +80,10 @@ and usually a `remedy` saying what would make the same call succeed. The codes a
 - `movement.undo` writes the opposite movement — the balance returns and the log keeps both.
 - `expense.correct`, `income.correct`, `giving.correct`, `installment.correct`,
   `metal.correctLot` and `order.correct` each fix one record in place.
-- `account.correctBalance` settles a disagreement with the bank without inventing a movement.
+- `account.correctBalance` settles a disagreement with the bank by restating the balance. It
+  writes **no movement**: nothing was earned, spent or transferred, and the ledger has nothing
+  to say about where the difference came from. Say so when you use it. The act itself is in
+  the log of what was done, which `actions.list` reads.
 - Archiving (`account.archive`, `asset.remove`, `income.source.retire`) takes something out of
   the pickers and leaves every movement naming it exactly as recorded. Prefer it to removal.
 

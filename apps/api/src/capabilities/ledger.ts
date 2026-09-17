@@ -90,8 +90,8 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'account.correctBalance',
     context: 'ledger',
-    summary: 'Correct an account balance the bank disagrees with, without inventing a movement.',
-    detail: 'Writes a correction movement against an adjustment node rather than editing history. The log stays append-only, and the correction is visible as one.',
+    summary: 'Restate an account balance the bank disagrees with. It moves no money and explains nothing.',
+    detail: 'The account\'s opening figure absorbs the difference, so the balance reads what you typed and every movement against it keeps the effect it had. This is not a movement: nothing was earned, spent or transferred, and the ledger has nothing to say about where the difference came from. It used to be written as a movement from an adjustment account — which the money flow then drew as a source of income called "Corrections", reporting money you had never earned. The act itself is kept in the log of what was done.',
     input: z.object({
       accountId: NodeId, actual: z.number(), note: z.string().max(500).optional(),
     }).merge(DryRun),
@@ -107,16 +107,22 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
       if (Math.abs(drift) < 0.005) {
         return refusal('duplicate', `${node.name} already reads ${have}.`, 'Nothing needs correcting.');
       }
-      ensureAdjustmentNode(ctx);
 
-      return post(ctx, {
-        date: today(ctx), kind: 'correction',
-        note: input.note ?? `${node.name} restated to ${input.actual}`,
-        legs: [drift > 0
-          ? { fromNodeId: 'adj-correction', toNodeId: input.accountId, qtyFrom: drift }
-          : { fromNodeId: input.accountId, toNodeId: 'adj-correction', qtyFrom: -drift }],
-      }, `${node.name} ${drift > 0 ? 'up' : 'down'} ${Math.abs(drift)} to ${input.actual}`,
-      { dryRun: input.dryRun });
+      const row = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, input.accountId)).get();
+      const opening = (row?.openingQty ?? 0) + drift;
+      const summary = `${node.name} restated from ${have} to ${input.actual}`;
+      if (input.dryRun) {
+        return { ok: true as const, dryRun: true, kind: 'edit' as const, date: today(ctx), summary,
+                 changes: [{ nodeId: input.accountId, name: node.name,
+                             currency: node.currency ?? undefined, before: have, after: input.actual }],
+                 warnings: [RESTATEMENT_WARNING] };
+      }
+      ctx.db.update(t.nodes).set({ openingQty: opening }).where(eq(t.nodes.id, input.accountId)).run();
+
+      return { ok: true as const, dryRun: false, kind: 'edit' as const, date: today(ctx), summary,
+               changes: [{ nodeId: input.accountId, name: node.name,
+                           currency: node.currency ?? undefined, before: have, after: input.actual }],
+               warnings: [RESTATEMENT_WARNING] };
     },
   }),
 
@@ -268,12 +274,14 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
 
 ];
 
-/** The other side of a correction. Created once, on first use, so a clean ledger has none. */
-function ensureAdjustmentNode(ctx: AppCtx): void {
-  const exists = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, 'adj-correction')).get();
-  if (exists) return;
-  ctx.db.insert(t.nodes).values({
-    id: 'adj-correction', kind: 'external', name: 'Corrections',
-    valuation: 'face', openingQty: 0, archived: false,
-  }).run();
-}
+/**
+ * What a restatement is, said once, wherever one is reported.
+ *
+ * A balance that changes with nothing behind it is exactly that, and saying so is the whole
+ * of the ledger's honesty about it. The earlier answer — inventing a movement from an
+ * adjustment account so the log could "account for" the difference — accounted for nothing:
+ * it named a source that does not exist, and the money flow read that source as income.
+ */
+const RESTATEMENT_WARNING =
+  'This restates the balance. No movement was recorded, so nothing here says where the '
+  + 'difference came from; the act is in the log of what was done.';

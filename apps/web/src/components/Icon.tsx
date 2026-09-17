@@ -4,13 +4,13 @@ import {
   Car, Truck, Bike,
   Gem, CircleDollarSign, Layers,
   LineChart, CandlestickChart, Briefcase, TrendingUp,
-  Plane, Palmtree, ShoppingBasket, UtensilsCrossed, HeartPulse, Fuel, Gift,
+  Plane, Palmtree, ShoppingBasket, UtensilsCrossed, Stethoscope, Fuel, Gift,
   GraduationCap, Smartphone, User, Wrench, Shirt, PawPrint, Ticket,
-  HandHeart, HeartHandshake, HandCoins,
+  HandCoins,
   ArrowDownToLine, ArrowUpFromLine, ArrowDown, ArrowRight, SendHorizontal, Percent,
   RefreshCw, ChevronLeft, Sun, Moon, Plus, Pencil, X, AlertTriangle, Bell,
-  Clock, Check, Eye, EyeOff, BookOpen, Filter, Trash2, Search, Undo2, Handshake,
-  Menu, Squircle, MessageSquare, Plug, Blocks, Lock, Palette, Repeat, Tag,
+  Clock, Check, Eye, EyeOff, BookOpen, Trash2, Search, Undo2, Handshake,
+  Menu, Squircle, Plug, Blocks, Lock, Palette, Repeat, Tag,
   CalendarDays, CalendarRange, Download,
   type LucideIcon,
 } from 'lucide-react';
@@ -32,20 +32,24 @@ import { AnimIcon, ANIM_NAMES, type AnimName } from './AnimIcon';
  * so the two halves are visibly one decision. Putting a subject's mark on one side and an
  * arrow on the other is what made buying a jewel and selling an arrow.
  *
- * The twelve names that AnimIcon draws are not in this table: they have exactly one
- * drawing, the animated one, so there is no library glyph sitting behind them waiting to
- * be picked up by mistake.
+ * One mark, one meaning, and the heart is the case that proves it. A heart is charity here
+ * and charity only — it is not health, not a favourite, not a thing you liked. Health is a
+ * stethoscope for that reason, and sadaqat is a pair of hands, because giving that is chosen
+ * and giving that is owed are two obligations and looked like one while they shared a heart.
+ *
+ * The names AnimIcon draws are not in this table: they have exactly one drawing, the animated
+ * one, so there is no library glyph sitting behind them waiting to be picked up by mistake.
  */
 const ART = {
-  // subjects the set draws from the library; the other twelve live in AnimIcon
-  charity: HeartHandshake, calendar: CalendarDays,
+  // subjects the set draws from the library; the drawn ones live in AnimIcon
+  calendar: CalendarDays,
   // direction — one pair, wherever a movement has two ways
   in: ArrowDownToLine, out: ArrowUpFromLine,
   // chrome
   refresh: RefreshCw, chevron: ChevronLeft, sun: Sun, moon: Moon, plus: Plus,
   edit: Pencil, close: X, warn: AlertTriangle, bell: Bell, clock: Clock,
   check: Check, eye: Eye, eyeoff: EyeOff, ledger: BookOpen,
-  filter: Filter, trash: Trash2, search: Search, undo: Undo2, handshake: Handshake, menu: Menu,
+  trash: Trash2, search: Search, undo: Undo2, handshake: Handshake, menu: Menu,
   // arrow points the way something travels: across a row, or down a stacked form.
   // `send` is the one that acts rather than points — it is the button, not the path.
   arrow: ArrowRight, arrowdown: ArrowDown, send: SendHorizontal,
@@ -66,13 +70,13 @@ const ART = {
   chartline: LineChart, candles: CandlestickChart, briefcase: Briefcase, salary: TrendingUp,
   // spending
   plane: Plane, beach: Palmtree, groceries: ShoppingBasket, restaurant: UtensilsCrossed,
-  health: HeartPulse, fuel: Fuel, gift: Gift, education: GraduationCap,
+  health: Stethoscope, fuel: Fuel, gift: Gift, education: GraduationCap,
   phone: Smartphone, person: User, tools: Wrench, shirt: Shirt, pet: PawPrint,
-  ticket: Ticket, hands: HandHeart, handout: HandCoins,
+  ticket: Ticket, handout: HandCoins,
   // settings, each tab drawn as what it is rather than as an action that happens to live
   // near it: prices was the refresh arrow, access was a house key, modules was the assets
   // crate, and each of those marks already belonged to something else
-  chat: MessageSquare, plug: Plug, modules: Blocks, lock: Lock, appearance: Palette,
+  plug: Plug, modules: Blocks, lock: Lock, appearance: Palette,
   repeat: Repeat, span: CalendarRange,
 } satisfies Record<string, LucideIcon>;
 
@@ -131,7 +135,7 @@ export const ICON_FAMILY: Record<string, IconName[]> = {
            'tools', 'briefcase', 'goldbar', 'assets'],
   stocks: ['chartline', 'candles', 'briefcase', 'salary'],
   /* A loan is between two people, which is what these are pictures of. */
-  debt: ['handshake', 'handout', 'person', 'ledger'],
+  debt: ['debts', 'handout', 'person', 'ledger'],
   spending: ['plane', 'beach', 'groceries', 'restaurant', 'health', 'fuel', 'gift',
              'education', 'phone', 'person', 'tools', 'shirt', 'pet', 'ticket', 'expenses'],
   income: ['income', 'salary', 'briefcase', 'person', 'gift'],
@@ -140,8 +144,9 @@ export const ICON_FAMILY: Record<string, IconName[]> = {
 
 export const VIEW_TONE: Record<string, { icon: IconName; color: string }> = {
   portfolio: { icon: 'portfolio', color: 'var(--ink)' },
-  assistant: { icon: 'chat', color: 'var(--accent)' },
-  debts: { icon: 'handshake', color: 'var(--car)' },
+  budgets: { icon: 'budgets', color: 'var(--gold)' },
+  logs: { icon: 'logs', color: 'var(--muted)' },
+  debts: { icon: 'debts', color: 'var(--car)' },
   dashboards: { icon: 'dashboards', color: 'var(--stocks)' },
   accounts: { icon: 'accounts', color: 'var(--cash)' },
   income: { icon: 'income', color: 'var(--positive)' },

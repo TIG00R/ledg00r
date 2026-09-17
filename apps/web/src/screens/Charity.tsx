@@ -189,6 +189,10 @@ function Body() {
             onAdd={(d) => run('destination.add', {
               name: d.name as string,
               color: (d.colour as string) || '#8A8578',
+              // The mark chosen in the add row is part of the thing being added. Left off,
+              // a destination given a picture and a colour arrived wearing the colour and
+              // the fallback glyph, which read as the icon picker not working at all.
+              icon: (d.mark as string | undefined) || undefined,
               note: (d.note as string) || undefined,
               domain: 'charity',
             })}

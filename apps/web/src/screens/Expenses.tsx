@@ -37,26 +37,12 @@ function Body() {
   /**
    * The records, read from the ledger.
    *
-   * They used to come from the fixture, so logging an expense wrote to the database and
-   * changed nothing on screen — which looks exactly like a button that does not work.
+   * This screen used to fetch the log for itself, which made it the only place in the
+   * application that knew what had been spent — the portfolio's expenses split said nothing
+   * was recorded, and a destination with records against it offered itself for deletion. The
+   * log is loaded where every other list is loaded, once, and read from here.
    */
-  const [live_, setLive_] = useState<typeof data.expenses | null>(null);
-  useEffect(() => {
-    if (!live) { setLive_(null); return; }
-    let off = false;
-    (ledger as any)['expense.list']({ limit: 500 })
-      .then((rows: any[]) => {
-        if (off) return;
-        setLive_(rows.map((r) => ({
-          id: r.id, seq: 0, date: r.date, amount: r.amount, currency: r.currency,
-          fxAtEntry: 1, egpAmount: r.egpAmount, categoryId: r.destinationId,
-          accountId: r.accountId ?? undefined, place: r.place ?? '', note: r.note ?? '',
-        })) as typeof data.expenses);
-      })
-      .catch(() => { if (!off) setLive_(null); });
-    return () => { off = true; };
-  }, [live, version]);
-  const records = live_ ?? data.expenses;
+  const records = data.expenses;
 
   const [draft, setDraft] = useState({
     accountId: data.settings.burnAccountId,
@@ -74,6 +60,17 @@ function Body() {
 
   const cats = data.categories.filter((c) => c.domain === 'expense');
   const cInfo = (id: string) => cats.find((c) => c.id === id);
+  /** the accounts money can actually leave: cash, held somewhere */
+  const payable = data.nodes.filter((n) => n.kind === 'cash' && n.parentId);
+  /**
+   * Which account a destination is usually paid from.
+   *
+   * The destination's own answer, then the ledger's one default. A person picks what they
+   * spent on before they think about which card it was on, so the destination is what
+   * decides — and the account stays a field they can override on the row.
+   */
+  const usualAccount = (destinationId: string) =>
+    cInfo(destinationId)?.accountId ?? data.settings.burnAccountId;
   const accountName = (id?: string) => {
     const n = data.nodes.find((x) => x.id === id);
     const inst = data.institutions.find((i) => i.id === n?.parentId);
@@ -215,8 +212,17 @@ function Body() {
                   </span>
                 );
               },
-              field: (d, set) => (
-                <Select ariaLabel="Goes to" value={d.destinationId} onChange={(v) => set({ destinationId: v })}
+              /*
+               * Choosing where it went chooses what it came out of — while a record is being
+               * added. Correcting one leaves the account alone: the row already names the
+               * account the money really left, and re-applying a default over it would be
+               * the screen overruling what happened.
+               */
+              field: (d, set, row) => (
+                <Select ariaLabel="Goes to" value={d.destinationId}
+                        onChange={(v) => set(row
+                          ? { destinationId: v }
+                          : { destinationId: v, accountId: usualAccount(v) })}
                         options={cats.map((c) => ({ value: c.id, label: c.name }))} />
               ) },
 
@@ -238,7 +244,8 @@ function Body() {
             label: 'Log an expense',
             capability: 'expense.record',
             blank: { date: new Date().toISOString().slice(0, 10),
-                     accountId: data.settings.burnAccountId,
+                     // the first destination's usual account, not the ledger's for everything
+                     accountId: usualAccount(cats[0]?.id ?? ''),
                      destinationId: cats[0]?.id ?? '', amount: 0,
                      currency: display, place: '', note: '' },
             valid: (d) => d.amount > 0 && !!d.accountId && !!d.destinationId,
@@ -273,13 +280,27 @@ function Body() {
             fields={[
               { key: 'name', label: 'Name', placeholder: 'Travel and leisure' },
               { key: 'colour', label: 'Colour', kind: 'colour', width: '54px' },
+              /**
+               * Which account this kind of spending usually comes out of.
+               *
+               * The destination is what a person picks first, and everything else about the
+               * expense follows it — so it is the thing that should know. There used to be
+               * one answer for the whole ledger, which meant groceries off the debit card
+               * and a flight off the dollar account both opened on the same account and one
+               * of them was corrected every single time.
+               */
+              { key: 'account', label: 'Usually paid from', kind: 'select', width: 'minmax(150px,1fr)',
+                options: [{ value: '', label: 'the ledger\'s default' },
+                          ...payable.map((n) => ({ value: n.id, label: n.name,
+                            hint: data.institutions.find((i) => i.id === n.parentId)?.name }))] },
               { key: 'note', label: 'Note', placeholder: 'what belongs under it' },
             ]}
             rows={cats.map((c) => ({
               id: c.id,
               mark: c.icon,
               colour: c.color,
-              values: { name: c.name, colour: c.color, note: (c as { note?: string }).note ?? '' },
+              values: { name: c.name, colour: c.color, account: c.accountId ?? '',
+                        note: (c as { note?: string }).note ?? '' },
               blocked: data.expenses.some((e) => e.categoryId === c.id)
                 ? `${data.expenses.filter((e) => e.categoryId === c.id).length} record${data.expenses.filter((e) => e.categoryId === c.id).length === 1 ? '' : 's'} go here. Archiving keeps them readable; deleting would leave them pointing at nothing.`
                 : undefined,
@@ -289,10 +310,18 @@ function Body() {
               name: patch.name as string | undefined,
               color: (patch.colour as string | undefined) ?? undefined,
               icon: patch.mark as string | undefined,
+              // an empty account is a choice — "no usual account, use the ledger's" — so it
+              // is sent rather than treated as nothing said
+              accountId: patch.account as string | undefined,
             })}
             onAdd={(d) => run('destination.add', {
               name: d.name as string,
               color: (d.colour as string) || '#8A8578',
+              // The mark chosen in the add row is part of the thing being added. Left off,
+              // a destination given a picture and a colour arrived wearing the colour and
+              // the fallback glyph, which read as the icon picker not working at all.
+              icon: (d.mark as string | undefined) || undefined,
+              accountId: (d.account as string) || undefined,
               note: (d.note as string) || undefined,
               domain: 'expense',
             })}
@@ -300,7 +329,9 @@ function Body() {
           />
           <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.5 }}>
             A destination with records against it is archived rather than deleted — it leaves
-            the picker and every record that named it stays readable.
+            the picker and every record that named it stays readable. The account is a default
+            for what comes next: choosing a destination while logging an expense fills it in,
+            and every expense already recorded keeps the account it actually came out of.
           </p>
         </Panel>
       )}
