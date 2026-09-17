@@ -16,7 +16,6 @@
     "@ledger/engine": "*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
-    "drizzle-kit": "^0.31.10"
+    "@types/better-sqlite3": "^9.6.0"
   }
 }
