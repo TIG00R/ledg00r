@@ -77,7 +77,10 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'actions', label: 'What was done', icon: 'ledger',
-          hint: 'Every write the ledger was asked for, newest first — including the ones it refused, and the ones that moved no money.' },
+          hint: 'Every write the ledger was asked for, newest first — including the ones it refused, and the ones that moved no money.',
+          /* There is nothing here to correct — the log is the record of the corrections. The
+             one thing editing offers is emptying it, which is why the switch exists at all. */
+          editHint: 'The log cannot be corrected. It can be emptied, and the act of emptying it is the first thing the new log will say.' },
       ]} />
 
       {!live ? (
@@ -102,13 +105,16 @@ function Body() {
           </Panel>
 
           <Panel title="The log"
-                 hint="Nothing here can be corrected or removed — it is the record of the corrections.">
+                 hint="No row here can be corrected or removed on its own — it is the record of the corrections. The whole log can be emptied under Edit, and emptying it is itself an act, so the first line of the new log will say you did.">
             <RecordTable
               rows={rows ?? []}
               rowKey={(a) => a.id}
               sort={{ key: 'at', dir: 'desc' }}
               empty={{ icon: 'ledger', title: 'Nothing done yet',
                        body: 'Every write lands here the moment it is made — what it was, what it touched, and what came of it.' }}
+              clear={{ log: 'actions',
+                       what: 'every act recorded here, including the refusals',
+                       onDone: () => setRows([]) }}
               columns={[
                 { key: 'at', label: 'When', kind: 'date',
                   value: (a) => a.at,

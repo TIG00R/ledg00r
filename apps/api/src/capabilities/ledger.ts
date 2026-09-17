@@ -195,6 +195,61 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
   }),
 
   command({
+    name: 'institution.remove',
+    context: 'ledger',
+    summary: 'Delete a bank that holds nothing. One that still holds an account is archived instead.',
+    detail: 'An institution with accounts under it cannot be deleted — the accounts would be left pointing at a bank that no longer exists. Archive it and every balance and every movement stays readable.',
+    effect: 'irreversible',
+    input: z.object({ institutionId: InstitutionId }),
+    output: Outcome,
+    handler: async ({ institutionId }) => {
+      const { db } = ctxOf();
+      const row = db.select().from(t.institutions).where(eq(t.institutions.id, institutionId)).get();
+      if (!row) return refusal('not_found', `${institutionId} is not an institution.`);
+      const held = db.select().from(t.nodes).all().filter((n) => n.parentId === institutionId).length;
+      if (held > 0) {
+        return refusal('immutable',
+          `${row.name} still holds ${held} account${held === 1 ? '' : 's'}.`,
+          'Archive it instead — it leaves the pickers and every movement that names it stays readable.');
+      }
+      db.delete(t.institutions).where(eq(t.institutions.id, institutionId)).run();
+      return noted(`${row.name} deleted`);
+    },
+  }),
+
+  command({
+    name: 'account.remove',
+    context: 'ledger',
+    summary: 'Delete an account nothing has moved through. One with movements against it is archived instead.',
+    detail: 'Deleting an account that movements name would rewrite what already happened, so it is refused. Archiving is the honest answer there: the balance freezes and every row in the log stays exactly as it was.',
+    effect: 'irreversible',
+    input: z.object({ accountId: NodeId }),
+    output: Outcome,
+    handler: async ({ accountId }) => {
+      const { db } = ctxOf();
+      const node = db.select().from(t.nodes).where(eq(t.nodes.id, accountId)).get();
+      if (!node) return refusal('unknown_node', `${accountId} is not an account in this ledger.`);
+
+      const used = db.select().from(t.legs).all()
+        .filter((l) => l.fromNodeId === accountId || l.toNodeId === accountId
+                    || l.feeNodeId === accountId).length;
+      if (used > 0) {
+        return refusal('immutable',
+          used === 1 ? `1 movement names ${node.name}.` : `${used} movements name ${node.name}.`,
+          'Archive it instead — archiving freezes the balance and keeps every row in the log.');
+      }
+      // The three holdings the ledger is built on are structure rather than records: without
+      // them there is nowhere for metal or shares to live at all.
+      if (['gold', 'silver', 'brokerage-cash'].includes(accountId)) {
+        return refusal('immutable', `${node.name} is part of how this ledger is put together.`,
+                       'It holds nothing and costs nothing to keep. Turn its module off in Settings if it is in the way.');
+      }
+      db.delete(t.nodes).where(eq(t.nodes.id, accountId)).run();
+      return noted(`${node.name} deleted`);
+    },
+  }),
+
+  command({
     name: 'account.update',
     context: 'ledger',
     summary: 'Rename an account, or change which currency it is held in.',

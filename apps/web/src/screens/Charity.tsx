@@ -189,7 +189,8 @@ function Body() {
               note: (d.note as string) || undefined,
               domain: 'charity',
             })}
-            onDelete={(id) => run('destination.update', { destinationId: id, archived: true })}
+            onDelete={(id) => run('destination.remove', { destinationId: id })}
+            onArchive={(id) => run('destination.update', { destinationId: id, archived: true })}
           />
         </Panel>
       )}

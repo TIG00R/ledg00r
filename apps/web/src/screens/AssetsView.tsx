@@ -755,6 +755,9 @@ function Body() {
             what: (r) => `the payment due ${r.dueOn}`,
             onDone: () => { loadSchedule(); loadAssets(); },
           }}
+          clear={{ log: 'plans',
+                   what: 'every plan, every payment on one, and any autopay set up — anything bought on a plan becomes paid for outright',
+                   onDone: () => { loadSchedule(); loadAssets(); } }}
         />
       </Panel>
       )}

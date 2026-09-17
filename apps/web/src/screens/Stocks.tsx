@@ -362,6 +362,8 @@ function Body() {
             blocked: (o) => ((o as { movementId?: string }).movementId ? undefined
               : 'This order predates the movement log, so there is nothing to reverse.'),
           }}
+          clear={{ log: 'orders',
+                   what: 'every order logged, and the movements behind them' }}
         />
       </Panel>
       )}
@@ -652,6 +654,8 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
             what: (n) => `the ${n.ticker} note of ${n.date}`,
             onDone: load,
           }}
+          clear={{ log: 'notes', what: 'everything written down about a share',
+                   onDone: load }}
         />
       </Panel>
 
@@ -784,6 +788,8 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
             what: (d) => `what ${d.ticker} paid out in ${d.year}`,
             onDone: load,
           }}
+          clear={{ log: 'dividends', what: 'every distribution recorded against a share',
+                   onDone: load }}
         />
       </Panel>
     </>

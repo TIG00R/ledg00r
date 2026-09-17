@@ -180,7 +180,8 @@ function TheList({ currencies, data, run }: {
           color: (d.colour as string) || '#8A8578',
           mark: d.mark as string | undefined,
         })}
-        onDelete={(code) => run('currency.update', { code, archived: true })}
+        onDelete={(code) => run('currency.remove', { code })}
+        onArchive={(code) => run('currency.update', { code, archived: true })}
       />
       {/* Adding a currency by hand means knowing its code, its symbol and how many decimals
           it has. Most of the time it is one of a handful, so those are offered ready-made. */}

@@ -209,7 +209,7 @@ export function RecurringSettings() {
                 <ConfirmDelete what={r.name} size={14}
                                onConfirm={() => {
                                  setRecurring(recurring.filter((x) => x.id !== r.id));
-                                 void run('recurring.update', { templateId: r.id, enabled: false });
+                                 void run('recurring.remove', { templateId: r.id });
                                }} />
               </span>
             </Row>

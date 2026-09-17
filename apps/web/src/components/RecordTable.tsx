@@ -4,6 +4,7 @@ import { Select } from './Select';
 import { DateField } from './DateField';
 import { Empty } from './UI';
 import { ConfirmModal } from './Confirm';
+import { ClearAll } from './ClearAll';
 import { useLive } from '../Live';
 import { useMode } from './ModeBar';
 
@@ -110,6 +111,14 @@ export interface RecordTableProps<T> {
     onDone?: () => void;
   };
   /**
+   * Emptying the whole log, as opposed to removing one row of it.
+   *
+   * Offered while editing, beside the count, because it is the same kind of act as the bin on
+   * a row and belongs where that one is reachable. `log` is the name `records.clear` knows it
+   * by; the count comes from the rows the table was given.
+   */
+  clear?: { log: string; what: string; onDone?: () => void };
+  /**
    * A line of its own under the row.
    *
    * For what belongs to one record rather than beside it — the repayments against a debt,
@@ -124,7 +133,7 @@ export interface RecordTableProps<T> {
 }
 
 export function RecordTable<T>({
-  rows, columns, rowKey, sort: initialSort, empty, add, edit, remove, trailing, detail,
+  rows, columns, rowKey, sort: initialSort, empty, add, edit, remove, clear, trailing, detail,
   trailingWidth = '96px',
 }: RecordTableProps<T>) {
   const { run, running } = useLive();
@@ -139,6 +148,11 @@ export function RecordTable<T>({
 
   const editable = !!edit && mode === 'edit';
   const removable = !!remove && mode === 'edit';
+  /**
+   * Emptying the log is an edit like any other, and a destructive one, so it lives behind the
+   * same switch the bin does rather than sitting over every table being read.
+   */
+  const clearable = mode === 'edit';
   /**
    * The last column exists for the pencil and the bin, and for nothing else.
    *
@@ -253,13 +267,26 @@ export function RecordTable<T>({
 
   return (
     <div>
-      {anyFilter && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-            {shown.length} of {rows.length} shown
-          </span>
-          <button className="btn ghost" style={{ padding: '5px 11px', fontSize: 12 }}
-                  onClick={() => setFilters({})}>Clear the filters</button>
+      {/* The strip above the table: what a filter is hiding, and — while editing — the one
+          control that empties the log rather than correcting a row of it. */}
+      {(anyFilter || (clear && clearable)) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+                      flexWrap: 'wrap' }}>
+          {anyFilter && (
+            <>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {shown.length} of {rows.length} shown
+              </span>
+              <button className="btn ghost" style={{ padding: '5px 11px', fontSize: 12 }}
+                      onClick={() => setFilters({})}>Clear the filters</button>
+            </>
+          )}
+          {clear && clearable && (
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ClearAll log={clear.log} what={clear.what} count={rows.length}
+                        onDone={clear.onDone} />
+            </span>
+          )}
         </div>
       )}
 

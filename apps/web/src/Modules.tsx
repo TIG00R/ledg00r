@@ -20,7 +20,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'core', label: 'Portfolio and accounts', icon: 'portfolio', core: true,
     blurb: 'Net worth, the banks and their accounts, and these settings.',
     screens: ['portfolio', 'dashboards', 'accounts', 'assistant', 'debts', 'settings', 'settings-modules', 'settings-recurring', 'settings-appearance', 'settings-reminders',
-              'settings-access', 'settings-currencies', 'settings-prices'] },
+              'settings-access', 'settings-currencies', 'settings-prices', 'settings-data'] },
   { id: 'logs', label: 'Logs', icon: 'logs',
     blurb: 'Every write the ledger was asked for — what it was, what it touched, what came of it. The only place a change that moved no money is recorded, a restated balance among them.',
     screens: ['logs'] },

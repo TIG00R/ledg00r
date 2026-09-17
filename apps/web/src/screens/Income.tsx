@@ -311,7 +311,9 @@ function Body() {
           addValid={(d) => (accountFor(d)
             ? undefined
             : `Nothing can receive ${currencyOf(d)}: there is no account held in it. Add one under Accounts, or choose another currency.`)}
-          onDelete={(id) => run('income.source.retire', { sourceId: id })}
+          onDelete={(id) => run('income.source.remove', { sourceId: id })}
+          onArchive={(id) => run('income.source.retire', { sourceId: id })}
+          clear={{ log: 'income', what: 'every source of income and its schedule' }}
         />
       ) : tab === 'sources' ? (
 

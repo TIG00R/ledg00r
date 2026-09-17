@@ -256,13 +256,30 @@ function Body() {
             * usually paid down in pieces, and the panel that takes the amount opens under the
             * table rather than in a column beside it.
             */
+          /*
+            * Recording a payment, and — for a loan out — giving up on one. Both belong here
+            * rather than in the bin at the end of the row: the bin removes a record that
+            * should never have been written down, and writing a loan off says the opposite,
+            * that it was real and is not coming back. They are different acts and are no
+            * longer the same gesture.
+            */
           trailing={(d) => (d.settled ? null : (
-            <button className={`btn sm ${isLent ? 'go' : 'danger'}`} onClick={() => setSettling(d)}
-                    style={{ whiteSpace: 'nowrap' }}>
-              {isLent ? 'Money back' : 'Pay some'}
-            </button>
+            <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button className={`btn sm ${isLent ? 'go' : 'danger'}`} onClick={() => setSettling(d)}
+                      style={{ whiteSpace: 'nowrap' }}>
+                {isLent ? 'Money back' : 'Pay some'}
+              </button>
+              {isLent && (
+                <ActionButton capability="debt.writeOff" className="btn ghost sm"
+                  style={{ whiteSpace: 'nowrap' }}
+                  input={() => ({ debtId: d.id })}
+                  onDone={(o) => { if (o.ok) load(); }}>
+                  Write off
+                </ActionButton>
+              )}
+            </span>
           ))}
-          trailingWidth="104px"
+          trailingWidth={isLent ? '188px' : '104px'}
           add={{
             label: isLent ? 'Lend money to someone' : 'Record something you borrowed',
             capability: 'debt.record',
@@ -292,13 +309,20 @@ function Body() {
                                     note: draft.note || undefined }),
             onDone: load,
           }}
-          remove={isLent ? {
-            capability: 'debt.writeOff',
+          /*
+            * Removing a debt takes the record away and reverses everything it moved, which
+            * is what "this should never have been written down" means. A loan you genuinely
+            * made and have given up on is written off instead, from the button on the row.
+            */
+          remove={{
+            capability: 'debt.remove',
             build: (d) => ({ debtId: d.id }),
-            what: (d) => `what ${d.counterparty} owes`,
-            blocked: (d) => (d.settled ? 'That debt is already closed.' : undefined),
+            what: (d) => (isLent ? `the loan to ${d.counterparty}` : `what you owe ${d.counterparty}`),
             onDone: load,
-          } : undefined}
+          }}
+          clear={{ log: 'debts',
+                   what: 'everything lent out and everything owed, with the movements behind them',
+                   onDone: load }}
         />
 
         {settling && (
@@ -318,9 +342,12 @@ function Body() {
 
         {isLent && (
           <p style={{ margin: '18px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.55 }}>
-            Removing a loan here writes it off: you stop expecting it back, so it leaves what
-            you are worth and stops counting toward zakat. The log keeps the loan and the day
-            you gave up on it.
+            <strong style={{ color: 'var(--muted)' }}>Write off</strong> is for a loan you made
+            and no longer expect back: it leaves what you are worth and stops counting toward
+            zakat, and the log keeps both the loan and the day you gave up on it.
+            The <strong style={{ color: 'var(--muted)' }}>bin</strong> is for one that should
+            never have been recorded — the money goes back to the account it left and the
+            record is gone.
           </p>
         )}
       </Panel>

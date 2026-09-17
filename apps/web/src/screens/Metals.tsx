@@ -510,6 +510,9 @@ function Body() {
             what: (l) => `${l.direction} of ${l.grams} g`,
             onDone: load,
           }}
+          clear={{ log: 'metals',
+                   what: 'every gold and silver lot, and the movements behind them',
+                   onDone: load }}
         />
       </Panel>
       )}

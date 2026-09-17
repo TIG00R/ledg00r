@@ -32,6 +32,19 @@ export function ledgerView(db: Db): Ledger {
 }
 
 let seqCache: number | null = null;
+
+/**
+ * Forget where the movement ids had got to.
+ *
+ * The next sequence number is cached rather than read back on every write, which is right
+ * until something empties the table underneath it: the cache would go on counting from a
+ * maximum that no longer exists, and a fresh ledger would start its first movement at four
+ * hundred. Anything that deletes movements calls this.
+ */
+export function forgetSequences(): void {
+  seqCache = null;
+}
+
 function nextSeq(db: Db): number {
   if (seqCache == null) {
     const row = db.$raw.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM transactions').get() as { s: number };

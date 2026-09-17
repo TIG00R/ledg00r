@@ -4,6 +4,7 @@ import { useLive } from '../Live';
 import { ledger } from '../api';
 import { ConfirmDelete } from '../components/Confirm';
 import { AccessSettings } from '../components/AccessSettings';
+import { DataSettings } from '../components/DataSettings';
 import { CurrencySettings } from '../components/CurrencySettings';
 import { PriceSources } from '../components/PriceSources';
 import { DateField } from '../components/DateField';
@@ -25,6 +26,7 @@ export const SETTINGS_VIEWS = [
   { id: 'settings-currencies', label: 'Currencies', icon: 'currency' as const },
   { id: 'settings-prices', label: 'Prices', icon: 'price' as const },
   { id: 'settings-access', label: 'Access', icon: 'lock' as const },
+  { id: 'settings-data', label: 'Data', icon: 'trash' as const },
 ];
 
 /**
@@ -73,6 +75,7 @@ export function Settings({ view, onNavigate }: { view: string; onNavigate: (id: 
     : view === 'settings-currencies' ? <CurrencySettings />
     : view === 'settings-prices' ? <PriceSources />
     : view === 'settings-access' ? <AccessSettings />
+    : view === 'settings-data' ? <DataSettings />
     : <General />;
 
   return (

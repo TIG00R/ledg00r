@@ -5,3 +5,4 @@ export * from './projections.js';
 export * from './search.js';
 export * from './repo.js';
 export * from './seed.js';
+export * from './wipe.js';

@@ -3,6 +3,7 @@ import { Mark, MarkPicker } from './Mark';
 import { Select, type Option } from './Select';
 import { DateField } from './DateField';
 import { ConfirmDelete } from './Confirm';
+import { ClearAll } from './ClearAll';
 import { Icon } from './Icon';
 import { useLive } from '../Live';
 
@@ -44,7 +45,7 @@ export interface ManagedRow {
 
 export function Manager({
   rows, fields, markFamily, addLabel, emptyLabel, addBlocked, addValid,
-  onSave, onDelete, onAdd, canDelete = true,
+  onSave, onDelete, onAdd, onArchive, clear, canDelete = true,
 }: {
   rows: ManagedRow[];
   fields: ManagedField[];
@@ -68,8 +69,25 @@ export function Manager({
    */
   addValid?: (draft: Record<string, string | number>) => string | undefined;
   onSave: (id: string, patch: Record<string, string | number>) => void | Promise<unknown>;
+  /** deleting the row outright; the ledger refuses where something still names it */
   onDelete?: (id: string) => void | Promise<unknown>;
+  /**
+   * Archiving it instead, offered in the same dialog.
+   *
+   * The gentler answer, and usually the right one: it takes the thing out of the pickers and
+   * leaves every record that named it readable. The interface cannot tell which rows have
+   * records behind them, so it offers both and lets the ledger refuse the wrong one.
+   */
+  onArchive?: (id: string) => void | Promise<unknown>;
   onAdd?: (draft: Record<string, string | number>) => void | Promise<unknown>;
+  /**
+   * Emptying the whole list, as opposed to removing one row of it.
+   *
+   * `log` is the name `records.clear` knows the list by. Absent where there is no such log —
+   * the currencies live in a setting rather than a table, and there is no sense in which they
+   * can be emptied.
+   */
+  clear?: { log: string; what: string; onDone?: () => void };
   canDelete?: boolean;
 }) {
   const [edits, setEdits] = useState<Record<string, Record<string, string | number>>>({});
@@ -134,6 +152,12 @@ export function Manager({
         <p style={{ margin: '4px 0 8px', fontSize: 12, color: 'var(--faint)' }}>{emptyLabel}</p>
       )}
 
+      {clear && rows.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <ClearAll log={clear.log} what={clear.what} count={rows.length} onDone={clear.onDone} />
+        </div>
+      )}
+
       {rows.map((row) => (
         <div key={row.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{
@@ -190,7 +214,8 @@ export function Manager({
               {canDelete && onDelete && !dirty(row.id) && (
                 <ConfirmDelete what={String(row.values[fields[0]!.key] ?? row.id)}
                                blocked={row.blocked} size={14}
-                               onConfirm={() => { void onDelete(row.id); }} />
+                               onConfirm={() => { void onDelete(row.id); }}
+                               onArchive={onArchive ? () => { void onArchive(row.id); } : undefined} />
               )}
             </span>
           </div>

@@ -320,6 +320,35 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
     },
   }),
 
+  command({
+    name: 'income.source.remove',
+    context: 'planning',
+    summary: 'Delete a source of income that has never paid anything. One that has is retired instead.',
+    detail: 'Income already recorded names its source, so a source with payments behind it is retired rather than deleted — it leaves the pickers and the forecast, and what it paid stays readable.',
+    effect: 'irreversible',
+    input: z.object({ sourceId: SourceId }),
+    output: Outcome,
+    handler: async ({ sourceId }) => {
+      const { db } = ctxOf();
+      const row = db.select().from(t.incomeSources).where(eq(t.incomeSources.id, sourceId)).get();
+      if (!row) return refusal('not_found', `${sourceId} is not an income source.`);
+
+      // A reminder watching a source that no longer exists warns about nothing, so it goes
+      // with it. Payments are the thing that stops a deletion, not a warning about one.
+      const paid = db.select().from(t.transactions).all()
+        .filter((tx) => tx.kind === 'income' && (tx.note ?? '').includes(row.name)).length;
+      if (paid > 0) {
+        return refusal('immutable',
+          `${paid} payment${paid === 1 ? '' : 's'} recorded against ${row.name}.`,
+          'Retire it instead — it leaves the pickers and the forecast, and what it paid stays recorded.');
+      }
+
+      db.delete(t.reminders).where(eq(t.reminders.subjectId, sourceId)).run();
+      db.delete(t.incomeSources).where(eq(t.incomeSources.id, sourceId)).run();
+      return noted(`${row.name} deleted`);
+    },
+  }),
+
   query({
     name: 'recurring.list',
     context: 'planning',
@@ -407,6 +436,25 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
         db.update(t.recurringTemplates).set(clean).where(eq(t.recurringTemplates.id, templateId)).run();
       }
       return noted(`${row.name} updated`);
+    },
+  }),
+
+  command({
+    name: 'recurring.remove',
+    context: 'planning',
+    summary: 'Delete a standing charge. What it has already posted stays exactly as recorded.',
+    detail: 'A template only says what should happen next, so removing one changes nothing that already has — the movements it posted are movements like any other and are corrected or undone on their own terms. Switch it off instead if it may come back.',
+    effect: 'irreversible',
+    input: z.object({ templateId: TemplateId }),
+    output: Outcome,
+    handler: async ({ templateId }) => {
+      const { db } = ctxOf();
+      const row = db.select().from(t.recurringTemplates).where(eq(t.recurringTemplates.id, templateId)).get();
+      if (!row) return refusal('not_found', `${templateId} is not a template.`);
+      // a reminder watching a charge that no longer posts warns about nothing
+      db.delete(t.reminders).where(eq(t.reminders.subjectId, templateId)).run();
+      db.delete(t.recurringTemplates).where(eq(t.recurringTemplates.id, templateId)).run();
+      return noted(`${row.name} deleted — what it already posted stays recorded`);
     },
   }),
 

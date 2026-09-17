@@ -201,6 +201,9 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             : 'This screen is showing the figures it ships with. Start the ledger to remove one.'),
           onDone: loadGiving,
         }}
+        clear={{ log: 'giving',
+                 what: 'every record of giving, zakat and sadaqat alike, and the movements behind them',
+                 onDone: loadGiving }}
       />
   );
 }

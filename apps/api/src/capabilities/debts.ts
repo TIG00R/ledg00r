@@ -3,7 +3,7 @@ import { command, query, DateOnly, NodeId, Outcome } from '@ledger/contracts';
 import { schema as t } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, DryRun } from './shared.js';
+import { post, noted, refusal, today, newId, undoMovement, DryRun } from './shared.js';
 import { readMarket } from '../read.js';
 
 /**
@@ -339,6 +339,49 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
           db.update(t.nodes).set({ archived: true }).where(eq(t.nodes.id, debt.nodeId)).run();
         },
       });
+    },
+  }),
+
+  command({
+    name: 'debt.remove',
+    context: 'debts',
+    summary: 'Remove a debt from the record entirely, reversing everything it moved.',
+    detail: 'For a loan that should never have been written down. The money returns to the account it left, every repayment against it is reversed too, and the debt and the node holding it are gone. This is not the same as writing a loan off: writing off says you gave up on money you were genuinely owed, and the log keeps the day you did.',
+    effect: 'irreversible',
+    input: z.object({ debtId: z.string() }),
+    output: Outcome,
+    handler: async ({ debtId }) => {
+      const ctx = ctxOf();
+      const debt = ctx.db.select().from(t.debts).where(eq(t.debts.id, debtId)).get();
+      if (!debt) return refusal('not_found', 'There is no such debt.');
+
+      /*
+       * Every movement that ever touched the debt's own node: the one that opened it, each
+       * repayment, and the write-off where there was one. Reversed rather than deleted, the
+       * way removing any record that moved money is — so the accounts come back to where they
+       * would have been and the log still says what was recorded and what took it back.
+       */
+      const touching = [...new Set(ctx.db.select().from(t.legs).all()
+        .filter((l) => l.fromNodeId === debt.nodeId || l.toNodeId === debt.nodeId)
+        .map((l) => l.transactionId))];
+
+      /*
+       * Settling a debt or writing it off archives its node, and an archived node takes no
+       * new movements — which is right for anything being recorded and wrong for a reversal,
+       * since a reversal is precisely how a closed debt is taken back. So it is woken up for
+       * the length of this call and deleted at the end of it either way.
+       */
+      ctx.db.update(t.nodes).set({ archived: false }).where(eq(t.nodes.id, debt.nodeId)).run();
+      for (const movementId of touching) undoMovement(ctx, movementId);
+
+      ctx.db.delete(t.debts).where(eq(t.debts.id, debtId)).run();
+      // the node exists only to hold this debt, so it goes with it rather than lingering
+      // archived in every list that walks nodes
+      ctx.db.delete(t.nodes).where(eq(t.nodes.id, debt.nodeId)).run();
+
+      return noted(debt.direction === 'lent'
+        ? `The loan to ${debt.counterparty} is off the record, and the money is back in the account it left`
+        : `What you owed ${debt.counterparty} is off the record, and the money it brought in is back out`);
     },
   }),
 

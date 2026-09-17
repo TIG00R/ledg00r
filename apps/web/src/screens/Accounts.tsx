@@ -213,7 +213,7 @@ function Body() {
                         ? `${inst.name} still holds ${accounts.length + cards.length} account${accounts.length + cards.length === 1 ? '' : 's'}. Archive it instead — every balance and every movement stays readable.`
                         : undefined}
                       onArchive={() => { void run('institution.update', { institutionId: inst.id, archived: true }); }}
-                      onConfirm={() => { void run('institution.update', { institutionId: inst.id, archived: true }); }} />
+                      onConfirm={() => { void run('institution.remove', { institutionId: inst.id }); }} />
                   </>
                 )}
               </div>
@@ -325,7 +325,7 @@ function Body() {
                             ? `${used} movement${used === 1 ? '' : 's'} name this account. Archiving freezes the balance and keeps every row in the log.`
                             : undefined}
                           onArchive={() => { void run('account.archive', { accountId: n.id }); }}
-                          onConfirm={() => { void run('account.archive', { accountId: n.id }); }} />
+                          onConfirm={() => { void run('account.remove', { accountId: n.id }); }} />
                       );
                     })()}
                   </span>
@@ -754,6 +754,15 @@ function MovementRecords() {
                          : m.reverses ? 'That movement is itself a reversal.' : undefined),
           onDone: load,
         }}
+        /*
+          * The movement log is what every other log stands on, so emptying it empties those
+          * too — the expenses, the giving, the orders, the lots and the debts all name a
+          * movement, and a record pointing at one that no longer exists claims something the
+          * balances do not agree with.
+          */
+        clear={{ log: 'movements',
+                 what: 'the movement log itself, and every record standing on it — spending, giving, orders, metal lots, debts and plans',
+                 onDone: load }}
       />
     </Panel>
   );

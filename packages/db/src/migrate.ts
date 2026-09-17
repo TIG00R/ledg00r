@@ -1,5 +1,6 @@
 import type { Db } from './client.js';
 import { FTS_DDL } from './client.js';
+import { ensureStructuralNodes } from './wipe.js';
 
 /**
  * Migrations, run on boot, idempotent.
@@ -232,10 +233,7 @@ const STEPS: Step[] = [
       ]) {
         try { db.$raw.exec(sql); } catch { /* already there */ }
       }
-      db.$raw.exec(`
-        INSERT OR IGNORE INTO nodes (id, kind, name, currency, unit, valuation, price_key, opening_qty)
-        VALUES ('silver', 'asset', 'Silver', NULL, 'g', 'live_price', 'silver_g', 0);
-      `);
+      ensureStructuralNodes(db);
     },
   },
   {
@@ -282,10 +280,7 @@ const STEPS: Step[] = [
       // The brokerage wallet is money you hold, so it is a node like any other — but it
       // belongs to the share book rather than to a bank, which is why it hangs off no
       // institution and is filtered out of the accounts screen by that fact.
-      db.$raw.exec(`
-        INSERT OR IGNORE INTO nodes (id, kind, name, parent_id, currency, valuation, price_key, opening_qty)
-        VALUES ('brokerage-cash', 'cash', 'Brokerage wallet', NULL, 'EGP', 'face', 'brokerage_cash', 0);
-      `);
+      ensureStructuralNodes(db);
       for (const sql of [
         // Assets are one family — a flat, a car, anything bought on a plan or outright — so
         // they carry what kind they are and how they were paid for.
@@ -421,10 +416,7 @@ const STEPS: Step[] = [
       // came in with the fixtures and nobody started a ledger without them. A ledger that
       // begins empty has to be able to buy gold too, so the holding is created here on the
       // same terms as silver's — priced from the same market key the reader looks up.
-      db.$raw.exec(`
-        INSERT OR IGNORE INTO nodes (id, kind, name, currency, unit, valuation, price_key, opening_qty)
-        VALUES ('gold', 'asset', 'Gold', NULL, 'g', 'live_price', 'gold_24k_g', 0);
-      `);
+      ensureStructuralNodes(db);
     },
   },
   {

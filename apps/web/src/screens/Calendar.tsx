@@ -8,6 +8,7 @@ import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { Amount } from '../components/Amount';
 import { ConfirmDelete } from '../components/Confirm';
+import { ClearAll } from '../components/ClearAll';
 import { useViewport } from '../components/Shell';
 
 /**
@@ -383,10 +384,15 @@ export function Calendar() {
         <Panel title="Your own entries"
                hint="Everything else on this calendar is here because the ledger worked it out. These are the ones you put there — a viewing, a signing, anything worth remembering — and they go into the feed with the rest."
                action={(
-                 <button className="btn add" onClick={() => { setPicked(picked ?? today); setDraft(blank(picked ?? today)); }}>
-                   <Icon name="plus" size={14} />
-                   Add an entry
-                 </button>
+                 <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                   <ClearAll log="calendar" count={entries?.length ?? 0}
+                             what="the entries you put on the calendar yourself"
+                             onDone={load} />
+                   <button className="btn add" onClick={() => { setPicked(picked ?? today); setDraft(blank(picked ?? today)); }}>
+                     <Icon name="plus" size={14} />
+                     Add an entry
+                   </button>
+                 </span>
                )}>
           {draft && !picked && (
             <EntryForm draft={draft} setDraft={setDraft} onSave={save}

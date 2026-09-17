@@ -208,6 +208,8 @@ function Body() {
             build: (e) => ({ expenseId: e.id }),
             what: (e) => `${e.place || 'this expense'} on ${e.date}`,
           }}
+          clear={{ log: 'expenses',
+                   what: 'every expense recorded, and the movements behind them' }}
         />
       </Panel>
       )}
@@ -266,11 +268,12 @@ function Body() {
               note: (d.note as string) || undefined,
               domain: 'expense',
             })}
-            onDelete={(id) => run('destination.update', { destinationId: id, archived: true })}
+            onDelete={(id) => run('destination.remove', { destinationId: id })}
+            onArchive={(id) => run('destination.update', { destinationId: id, archived: true })}
           />
           <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.5 }}>
-            A destination with records against it is archived rather than deleted — it leaves
-            the picker and every record that named it stays readable. The account is a default
+            A destination with records against it cannot be deleted, and archiving is offered
+            instead — it leaves the picker and every record that named it stays readable. The account is a default
             for what comes next: choosing a destination while logging an expense fills it in,
             and every expense already recorded keeps the account it actually came out of.
           </p>

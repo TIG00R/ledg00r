@@ -282,6 +282,35 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       return noted(`${cat.name} updated`);
     },
   }),
+
+  command({
+    name: 'destination.remove',
+    context: 'spending',
+    summary: 'Delete a destination nothing has been recorded against. One that has been used is archived instead.',
+    detail: 'A destination with spending or giving behind it cannot be deleted — those records name it, and a log pointing at a destination that no longer exists says less than it did. Archiving takes it out of the pickers and leaves every record readable.',
+    effect: 'irreversible',
+    input: z.object({ destinationId: CategoryId }),
+    output: Outcome,
+    handler: async ({ destinationId }) => {
+      const { db } = ctxOf();
+      const cat = db.select().from(t.categories).where(eq(t.categories.id, destinationId)).get();
+      if (!cat) return refusal('not_found', `${destinationId} is not a destination.`);
+
+      const used = db.select().from(t.expenses).all().filter((e) => e.categoryId === destinationId).length
+        + db.select().from(t.charity).all().filter((c) => c.categoryId === destinationId).length
+        + db.select().from(t.legs).all().filter((l) => l.categoryId === destinationId).length;
+      if (used > 0) {
+        return refusal('immutable',
+          used === 1 ? `1 record names ${cat.name}.` : `${used} records name ${cat.name}.`,
+          'Archive it instead — it leaves the pickers and every record that names it stays readable.');
+      }
+
+      // A ceiling over a destination that is gone covers nothing, so the membership goes too.
+      db.delete(t.budgetMembers).where(eq(t.budgetMembers.categoryId, destinationId)).run();
+      db.delete(t.categories).where(eq(t.categories.id, destinationId)).run();
+      return noted(`${cat.name} deleted`);
+    },
+  }),
 ];
 
 /**

@@ -175,4 +175,39 @@ export const currencyCaps = (ctxOf: () => AppCtx) => [
       return noted(`${up} updated`);
     },
   }),
+
+  command({
+    name: 'currency.remove',
+    context: 'overview',
+    summary: 'Forget a currency nothing is denominated in. One that is still in use is archived instead.',
+    detail: 'A currency an account or a record names cannot be forgotten: every figure held in it would lose the unit that gives it meaning. The ledger\'s own reporting currency cannot go either.',
+    effect: 'irreversible',
+    input: z.object({ code: z.string().regex(/^[A-Za-z]{3}$/) }),
+    output: Outcome,
+    handler: async ({ code }) => {
+      const ctx = ctxOf();
+      const up = code.toUpperCase();
+      const all = readCurrencies(ctx.db);
+      const cur = all.find((c) => c.code === up);
+      if (!cur) return refusal('not_found', `${up} is not one of this ledger's currencies.`);
+      if (up === readBase(ctx.db)) {
+        return refusal('immutable', `${up} is the currency this ledger reports in.`,
+                       'Choose another reporting currency first.');
+      }
+
+      const accounts = ctx.db.select().from(t.nodes).all().filter((n) => n.currency === up).length;
+      const records = ctx.db.select().from(t.expenses).all().filter((e) => e.currency === up).length
+        + ctx.db.select().from(t.charity).all().filter((c) => c.currency === up).length
+        + ctx.db.select().from(t.debts).all().filter((d) => d.currency === up).length
+        + ctx.db.select().from(t.incomeSources).all().filter((s) => s.currency === up).length;
+      if (accounts + records > 0) {
+        return refusal('immutable',
+          `${accounts + records} account${accounts + records === 1 ? ' or record is' : 's or records are'} held in ${up}.`,
+          'Archive it instead — it leaves the pickers and every figure keeps its unit.');
+      }
+
+      writePref(ctx.db, 'currencies', all.filter((c) => c.code !== up));
+      return noted(`${up} forgotten`);
+    },
+  }),
 ];

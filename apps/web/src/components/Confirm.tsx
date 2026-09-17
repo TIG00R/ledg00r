@@ -104,7 +104,14 @@ export function ConfirmDelete({ what, onConfirm, blocked, size = 15, onArchive }
   /** a reason, when the thing cannot be deleted at all */
   blocked?: string;
   size?: number;
-  /** offered instead of deletion when the thing is blocked */
+  /**
+   * Offered beside deletion, where archiving is a real answer.
+   *
+   * Shown whether or not the thing is blocked. Most of the time the screen cannot know in
+   * advance whether a row has records behind it — that is the ledger's question, not the
+   * interface's — so offering the gentler answer next to the permanent one is better than
+   * letting someone press the permanent one, be refused, and have nowhere to go.
+   */
   onArchive?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -122,7 +129,7 @@ export function ConfirmDelete({ what, onConfirm, blocked, size = 15, onArchive }
         title={blocked ? `${what} cannot be removed` : `Remove ${what}?`}
         body={blocked ?? 'This cannot be undone from here.'}
         onConfirm={blocked ? undefined : onConfirm}
-        alternative={blocked && onArchive ? { label: 'Archive instead', onPick: onArchive } : undefined} />
+        alternative={onArchive ? { label: 'Archive instead', onPick: onArchive } : undefined} />
     </>
   );
 }

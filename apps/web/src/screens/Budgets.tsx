@@ -10,6 +10,7 @@ import { Select } from '../components/Select';
 import { Amount } from '../components/Amount';
 import { Segmented } from '../components/Segmented';
 import { ConfirmDelete } from '../components/Confirm';
+import { ClearAll } from '../components/ClearAll';
 import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { BudgetChart, type Line, type Ceiling } from '../components/BudgetChart';
@@ -127,7 +128,12 @@ function Body() {
           </Panel>
 
           <Panel title="Pools"
-                 hint="A ceiling over one destination or several. What they spend between them counts against one figure.">
+                 hint="A ceiling over one destination or several. What they spend between them counts against one figure."
+                 action={(
+                   <ClearAll log="budgets" count={pools?.length ?? 0}
+                             what="every ceiling, and which destinations it covered"
+                             onDone={load} />
+                 )}>
             {pools && pools.length === 0 ? (
               <Empty icon="budgets" title="No ceilings set"
                      body="A pool is a ceiling over a period and the destinations it covers — one, or several sharing one figure." />
