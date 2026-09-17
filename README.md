@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/logo.png" alt="Ledg00r" width="320">
+  <img src="apps/web/public/brand/ledg00r/ledg00r-logo-light.png" alt="Ledg00r" width="320">
 </p>
 
 # Ledg00r

@@ -86,4 +86,3 @@ export function Ledg00rMascot({ size = 28, alt = 'Ledg00r' }: {
   );
 }
 
-export const LEDG00R_ART = { LOGO, MASCOT };
