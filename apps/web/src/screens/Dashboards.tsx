@@ -48,7 +48,7 @@ export function Dashboards() {
 
 function Body() {
   const { tab } = useSection();
-  const { dm, display } = useApp();
+  const { dm } = useApp();
   const { live, version } = useLive();
   const [period, setPeriod] = useState<Period>('month');
   const [report, setReport] = useState<Report | null>(null);

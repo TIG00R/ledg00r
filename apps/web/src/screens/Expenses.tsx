@@ -1,13 +1,11 @@
-import { useMemo, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
 import { Select } from '../components/Select';
 import { useApp, market } from '../AppState';
-import { splitByCurrency, type DataSet } from '@ledger/engine';
+import { splitByCurrency } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
-import { useSort, useFilters } from '../components/Table';
 import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useLive } from '../Live';
@@ -24,13 +22,12 @@ export function Expenses() {
 }
 
 function Body() {
-  const { data, dm, values, now, currencies, display } = useApp();
+  const { data, dm, values, currencies, display } = useApp();
   /** which institution a node sits at, for the second line under an account's name */
   const bankOf = (id?: string | null) =>
     data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
 
-  const { run, live, version } = useLive();
-  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
+  const { run } = useLive();
   /**
    * The records, read from the ledger.
    *
@@ -41,20 +38,8 @@ function Body() {
    */
   const records = data.expenses;
 
-  const [draft, setDraft] = useState({
-    accountId: data.settings.burnAccountId,
-    amount: 0,
-    currency: 'EGP',
-    destinationId: data.categories.find((c) => c.domain === 'expense')?.id ?? '',
-    place: '', note: '',
-  });
-
   const { mode } = useMode();
   const { tab } = useSection();
-  const [q, setQ] = useState('');
-  const [cat, setCat] = useState('all');
-  const [span, setSpan] = useState('all');
-
   const cats = data.categories.filter((c) => c.domain === 'expense');
   const cInfo = (id: string) => cats.find((c) => c.id === id);
   /** the accounts money can actually leave: cash, held somewhere */
@@ -73,47 +58,6 @@ function Body() {
     const inst = data.institutions.find((i) => i.id === n?.parentId);
     return n ? `${inst?.name ?? ''} · ${n.name}` : '—';
   };
-
-  // the span filter compares ISO dates as strings, which sorts correctly for yyyy-mm-dd
-  const spanStart = (() => {
-    if (span === 'all') return '';
-    const d = new Date(now);
-    if (span === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-    if (span === 'ytd') return `${d.getFullYear()}-01-01`;
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().slice(0, 10);
-  })();
-
-  const filtered = records
-    .filter((e) => (cat === 'all' || e.categoryId === cat))
-    .filter((e) => !q || `${e.place} ${e.note}`.toLowerCase().includes(q.toLowerCase()))
-    .filter((e) => e.date >= spanStart);
-
-  /**
-   * The columns are the filters.
-   *
-   * A destination, an account, a note — each heading filters its own column and they
-   * combine, so "everything on the current account, over a hundred, in September" is three
-   * choices rather than a search phrased just so.
-   */
-  const cols = useMemo(() => [
-    { key: 'date', value: (e: typeof filtered[number]) => e.date, kind: 'date' as const },
-    { key: 'amount', value: (e: typeof filtered[number]) => e.egpAmount, kind: 'amount' as const },
-    { key: 'account', value: (e: typeof filtered[number]) => accountName(e.accountId) },
-    { key: 'category', value: (e: typeof filtered[number]) => cInfo(e.categoryId)?.name ?? e.categoryId },
-    { key: 'place', value: (e: typeof filtered[number]) => e.place },
-    { key: 'note', value: (e: typeof filtered[number]) => e.note, kind: 'text' as const },
-  ], [filtered]); // eslint-disable-line react-hooks/exhaustive-deps
-  const filters = useFilters(filtered, cols);
-
-  const { sorted: rows, sort, toggle } = useSort(filters.filtered, {
-    date: (e) => e.date,
-    amount: (e) => e.egpAmount,
-    account: (e) => accountName(e.accountId),
-    category: (e) => cInfo(e.categoryId)?.name ?? e.categoryId,
-    place: (e) => e.place,
-    note: (e) => e.note,
-  }, { key: 'date', dir: 'desc' });
 
   const split = splitByCurrency(records, (e) => ({ amount: e.amount, currency: e.currency }), market);
   const a = values.accrual;
@@ -337,24 +281,3 @@ function Body() {
   );
 }
 
-function CategorySelect({ cats, value, onChange }: {
-  cats: DataSet['categories']; value?: string; onChange?: (v: string) => void;
-}) {
-  const [own, setOwn] = useState(cats[0]?.id ?? '');
-  const id = value ?? own;
-  const setId = onChange ?? setOwn;
-  const c = cats.find((x) => x.id === id);
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-      <span style={{
-        width: 32, height: 32, borderRadius: 8, flex: '0 0 32px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: `color-mix(in srgb, ${c?.color ?? 'var(--muted)'} 15%, transparent)`,
-      }}>
-        <Mark mark={c?.icon} size={17} color={c?.color ?? 'var(--muted)'} fallback="expenses" />
-      </span>
-      <Select value={id} onChange={setId} style={{ flex: 1 }} ariaLabel="Destination"
-              options={cats.map((x) => ({ value: x.id, label: x.name }))} />
-    </div>
-  );
-}

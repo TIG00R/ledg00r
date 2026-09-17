@@ -31,10 +31,10 @@ function Body() {
   const { data, dm, display, values, balances, currencies } = useApp();
   const { mode } = useMode();
   const { tab } = useSection();
-  const { appearance, set } = useAppearance();
+  const { appearance } = useAppearance();
   const { run } = useLive();
   /** balances being corrected in Edit mode, before they are recorded */
-  const [drafts, setDrafts] = useState<Record<string, number>>({});
+  const [drafts] = useState<Record<string, number>>({});
   /** edits are held until they are saved, so switching modes does not silently drop them */
   const [names, setNames] = useState<Record<string, string>>({});
   const [pickingInst, setPickingInst] = useState<string | null>(null);
@@ -70,20 +70,6 @@ function Body() {
 
   const byCurrency = new Map<string, number>();
   for (const n of cash) byCurrency.set(n.currency!, (byCurrency.get(n.currency!) ?? 0) + qty(n.id, n.openingQty));
-
-  const cyc = (id: string, kind: 'institution' | 'currency') => {
-    const palette = ['#24211C', '#DB0011', '#0B7A3B', '#0086A8', '#7A00E0', '#B37E00', '#3F7D4F', '#6B4E9E'];
-    if (kind === 'institution') {
-      const cur = appearance.institutions[id] ?? '#24211C';
-      const next = palette[(palette.indexOf(cur) + 1) % palette.length]!;
-      set({ institutions: { ...appearance.institutions, [id]: next } });
-    } else {
-      const c = appearance.currencies[id];
-      if (!c) return;
-      const next = palette[(palette.indexOf(c.color) + 1) % palette.length]!;
-      set({ currencies: { ...appearance.currencies, [id]: { ...c, color: next } } });
-    }
-  };
 
   return (
     <Page aside={mode === 'operate' ? (
@@ -531,7 +517,7 @@ const MOVEMENT_KINDS = ['income', 'expense', 'transfer', 'exchange', 'installmen
 
 function MovementRecords() {
   const { data } = useApp();
-  const { run, live, version } = useLive();
+  const { live, version } = useLive();
   const [rows, setRows] = useState<Movement[] | null>(null);
   const [account, setAccount] = useState('');
 

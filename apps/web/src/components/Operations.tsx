@@ -258,7 +258,7 @@ export function FundFrom({ what, unitLabel, unitPrice, icon, action, capability 
 }
 
 function Balance({ node, delta, arriving }: { node: DataSet['nodes'][number]; delta: number; arriving?: boolean }) {
-  const { data, balances  } = useApp();
+  const { balances } = useApp();
   // the opening figure is where the account started; what it holds now is that plus every
   // movement recorded against it since
   const before = balances[node.id] ?? node.openingQty;

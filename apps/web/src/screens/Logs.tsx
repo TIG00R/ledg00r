@@ -5,7 +5,7 @@ import { useApp } from '../AppState';
 import { Page, Panel, Stat, Stats, Chip } from '../components/UI';
 import { RecordTable } from '../components/RecordTable';
 import { ModeProvider } from '../components/ModeBar';
-import { SectionProvider, Sections, useSection } from '../components/Sections';
+import { SectionProvider, Sections } from '../components/Sections';
 
 /**
  * What was done, as opposed to what happened to the money.
@@ -39,7 +39,6 @@ const SOURCE: Record<string, string> = {
 };
 
 function Body() {
-  const { tab } = useSection();
   const { data } = useApp();
   const { live, version } = useLive();
   const [rows, setRows] = useState<Action[] | null>(null);

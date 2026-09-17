@@ -74,8 +74,7 @@ export function Stocks() {
 }
 
 function Body() {
-  const { data, dm, balances, reminders, setReminders } = useApp();
-  const { run } = useLive();
+  const { data, dm, balances } = useApp();
 
   /**
    * Which tickers this ledger knows.
@@ -140,17 +139,6 @@ function Body() {
   ];
   /** what the ring is dividing up, so the shares beside it add to a hundred and no more */
   const drawn = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
-
-  const stockReminders = reminders.filter((r) => r.subject === 'stock');
-  const update = (id: string, patch: Partial<(typeof reminders)[number]>) =>
-    setReminders(reminders.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-
-  const detail = (t: string) => (market as any).priceDetail?.[t];
-
-  const [alert, setAlert] = useState({
-    ticker: '', direction: 'buy' as 'buy' | 'sell', price: 0, note: '', dueDate: '',
-  });
-  const alertTicker = alert.ticker || tickers[0] || '';
 
   return (
     <Page>

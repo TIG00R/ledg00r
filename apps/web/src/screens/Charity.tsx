@@ -35,12 +35,6 @@ function Body() {
   const { tab } = useSection();
 
   const cats = data.categories.filter((c) => c.domain === 'charity');
-  const cInfo = (id: string) => cats.find((c) => c.id === id);
-  const accountName = (id?: string) => {
-    const n = data.nodes.find((x) => x.id === id);
-    const inst = data.institutions.find((i) => i.id === n?.parentId);
-    return n ? `${inst?.name ?? ''} · ${n.name}` : '—';
-  };
 
   /**
    * What the table shows with no ledger behind the screen.

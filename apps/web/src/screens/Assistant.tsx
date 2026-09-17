@@ -197,7 +197,7 @@ function Talk() {
 
 /** Handing the ledger to an assistant that already exists. */
 function Connect() {
-  const { run, version } = useLive();
+  const { version } = useLive();
   const [keys, setKeys] = useState<any>(null);
   const [issued, setIssued] = useState<{ key: string; label: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);

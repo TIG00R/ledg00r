@@ -85,20 +85,7 @@ export function Settings({ view, onNavigate }: { view: string; onNavigate: (id: 
 
 
 function General() {
-  const { data, display, setDisplay, reminders, setReminders, dm, values, settings, setSettings  } = useApp();
-
-  const update = (id: string, patch: Partial<Reminder>) =>
-    setReminders(reminders.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-
-  const subjectLabel = (r: Reminder) => {
-    if (r.subject === 'installment') return data.nodes.find((n) => n.id === r.subjectId)?.name ?? 'Property';
-    if (r.subject === 'stock') return `${r.subjectId} · ${r.direction === 'buy' ? 'buy below' : 'sell above'} ${r.triggerPrice}`;
-    if (r.subject === 'zakat') return 'Zakat · the hawl date';
-    if (r.subject === 'sadaqah') return 'Sadaqah · recurring giving';
-    if (r.subject === 'income') return `${data.incomeSources.find((x) => x.id === r.subjectId)?.name ?? 'Income'} · has not landed`;
-    if (r.subject === 'recurring') return `${r.subjectId} · standing charge`;
-    return r.subjectId ?? r.subject;
-  };
+  const { data, display, setDisplay, values, settings, setSettings  } = useApp();
 
   return (
     <>

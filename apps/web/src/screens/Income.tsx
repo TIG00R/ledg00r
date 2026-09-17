@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { RecordAmount } from '../components/RecordAmount';
 import { Select } from '../components/Select';
@@ -6,7 +6,6 @@ import { useApp, market } from '../AppState';
 import { money, splitByCurrency, toEgp, fromEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Row, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
-import { useSort, useFilters } from '../components/Table';
 import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useLive } from '../Live';
@@ -28,9 +27,6 @@ export function Income() {
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
-                     'July', 'August', 'September', 'October', 'November', 'December'];
-
 const FALLBACK_LOGGED = [
   { id: 'l1', date: '2026-07-14', source: 'Freelance work', amount: 1800, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: 'Q2 retainer, final invoice' },
   { id: 'l2', date: '2026-05-02', source: 'Freelance work', amount: 1200, currency: 'USD', into: 'Nile Bank · USD savings', intoId: 'nile-usd-sav', note: 'critical, triaged in 3 days' },
@@ -40,7 +36,7 @@ const FALLBACK_LOGGED = [
 ];
 
 function Body() {
-  const { data, dm, values, currencies, balances, display } = useApp();
+  const { data, dm, values, currencies, display } = useApp();
   /** the same, where the log carries the account's name rather than its id */
   const bankOfName = (name?: string | null) =>
     data.institutions.find((i) => i.id === data.nodes.find((n) => n.name === name)?.parentId)?.name ?? null;
@@ -91,8 +87,6 @@ function Body() {
     return mine.some((n) => n.id === chosen) ? chosen : (mine[0]?.id ?? '');
   };
   const { run, live, version } = useLive();
-  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
-  const [draftStart, setDraftStart] = useState(new Date().toISOString().slice(0, 10));
   /**
    * What has actually landed.
    *
@@ -117,14 +111,6 @@ function Body() {
   }, [live, version]);
   const LOGGED = landed ?? FALLBACK_LOGGED;
 
-  const [draft, setDraft] = useState({
-    sourceId: data.incomeSources.find((x) => !x.scheduled)?.id ?? '',
-    accountId: data.settings.incomeAccountId, amount: 0, currency: 'USD', note: '',
-  });
-
-  /** only accounts actually held in the chosen currency can receive it */
-  const inCurrency = data.nodes.filter((n) => n.kind === 'cash' && n.currency === draft.currency);
-  const [draftEnd, setDraftEnd] = useState('');
 
   const { mode } = useMode();
   const { tab } = useSection();
@@ -135,8 +121,6 @@ function Body() {
    * whatever had been saved — so uploading a picture wrote it to the database and the screen
    * kept showing the icon this map had chosen. There is no local copy now.
    */
-  const [picking, setPicking] = useState<string | null>(null);
-  const [q, setQ] = useState('');
   const scheduled = data.incomeSources.filter((s) => s.scheduled);
   const occasional = data.incomeSources.filter((s) => !s.scheduled);
 
@@ -172,25 +156,6 @@ function Body() {
     const inst = data.institutions.find((i) => i.id === n?.parentId);
     return { bank: inst?.name ?? '', account: n?.name ?? id };
   };
-
-  const loggedRows = LOGGED.filter((l) => !q ||
-    `${l.source} ${l.note} ${l.into}`.toLowerCase().includes(q.toLowerCase()));
-  const logCols = useMemo(() => [
-    { key: 'date', value: (l: typeof loggedRows[number]) => l.date, kind: 'date' as const },
-    { key: 'source', value: (l: typeof loggedRows[number]) => l.source },
-    { key: 'amount', value: (l: typeof loggedRows[number]) => toEgp(l.amount, l.currency, market), kind: 'amount' as const },
-    { key: 'into', value: (l: typeof loggedRows[number]) => l.into },
-    { key: 'note', value: (l: typeof loggedRows[number]) => l.note, kind: 'text' as const },
-  ], [loggedRows]);
-  const logFilters = useFilters(loggedRows, logCols);
-
-  const { sorted: logged, sort, toggle } = useSort(logFilters.filtered, {
-    date: (l) => l.date,
-    source: (l) => l.source,
-    amount: (l) => toEgp(l.amount, l.currency, market),
-    into: (l) => l.into,
-    note: (l) => l.note,
-  }, { key: 'date', dir: 'desc' });
 
   return (
     <Page>

@@ -24,7 +24,7 @@ function Body() {
   const { data, dm } = useApp();
   const { live, version } = useLive();
   const [kind, setKind] = useState<'all' | Kind>('all');
-  const [q, setQ] = useState('');
+  const [q] = useState('');
 
   /**
    * What the screen shows with no ledger behind it: a ledger with no records in it.
