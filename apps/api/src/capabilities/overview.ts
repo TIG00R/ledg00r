@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { command, query, Outcome } from '@ledger/contracts';
-import { schema as t, allBalances } from '@ledger/db';
+import { schema as t } from '@ledger/db';
 import { toEgp, fromEgp } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { noted } from './shared.js';
-import { buildDataset, readMarket, readPref, writePref } from '../read.js';
+import { readMarket, readPref, writePref } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';
 import { readBase, readCurrencies } from './currencies.js';
 import { assetKindOf, isDebtNode } from '../zakat-assets.js';

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { command, query, DateOnly, NodeId, Ticker, Outcome } from '@ledger/contracts';
 import { schema as t, type Db } from '@ledger/db';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { computedPositions, installmentDueDate, monthLabelOf } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun } from './shared.js';

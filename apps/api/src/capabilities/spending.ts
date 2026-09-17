@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { command, query, DateOnly, NodeId, CategoryId, Outcome } from '@ledger/contracts';
 import { schema as t, periodTotals } from '@ledger/db';
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, bucketOf, DryRun, undoMovement } from './shared.js';
+import { post, noted, refusal, today, newId, DryRun, undoMovement } from './shared.js';
 
 /**
  * Spending.

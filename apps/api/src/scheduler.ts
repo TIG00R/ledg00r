@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { schema as t, type Db } from '@ledger/db';
+import { schema as t } from '@ledger/db';
 import { validate } from '@ledger/domain';
 import { writeMovement, ledgerView } from '@ledger/db';
 import { installmentDueDate } from '@ledger/engine';

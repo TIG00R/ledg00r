@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { command, query, DateOnly, NodeId, CategoryId, Outcome, type Refusal } from '@ledger/contracts';
-import { schema as t, allBalances } from '@ledger/db';
+import { schema as t } from '@ledger/db';
 import { desc, eq } from 'drizzle-orm';
 import { zakatDates, zakatDebts, zakatReceivables, nisabEgp, formatHijri, HIJRI_MONTHS,
          NISAB_GOLD_G, NISAB_SILVER_G, ZAKAT_RATE, bucketDue, correctionEntry, zakatYearId,
          zakatTotals, type ZakatSettings, type ZakatEntry } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, bucketOf, DryRun, undoMovement, atomically } from './shared.js';
+import { post, noted, refusal, today, newId, DryRun, undoMovement, atomically } from './shared.js';
 import { nextSeq, rateFor } from './spending.js';
 import { readPref, writePref, buildDataset } from '../read.js';
 import { ledgerHoldings } from '../valuation.js';

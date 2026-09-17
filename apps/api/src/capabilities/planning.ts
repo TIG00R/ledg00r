@@ -7,7 +7,6 @@ import { upcoming, nextOccurrence, type Reminder, type ReminderSubject,
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun,
          reversedMovements } from './shared.js';
-import { nextSeq, rateFor } from './spending.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
 import { readBudgets } from './budgets.js';
 
