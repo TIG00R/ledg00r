@@ -159,6 +159,70 @@ export const budgetCaps = (ctxOf: () => AppCtx) => [
   }),
 
   query({
+    name: 'budget.check',
+    context: 'budgets',
+    summary: 'What spending a given amount on a destination would do to every ceiling covering it.',
+    detail: 'The budget half of a dry run: ask before recording, and get back each pool that covers the destination, where it stands now, and where it would stand afterwards. Nothing is written. A destination covered by no pool comes back with an empty list, which is an answer and not an error.',
+    input: z.object({
+      destinationId: CategoryId,
+      amount: z.number().positive(),
+      currency: z.string().regex(/^[A-Z]{3}$/).default('EGP'),
+      /** which period to test it against; the one containing today when it is not said */
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }),
+    output: z.object({
+      destinationId: z.string(), destinationName: z.string().nullable(),
+      /** true where nothing covers this destination, so the spending is against no ceiling */
+      uncovered: z.boolean(),
+      pools: z.array(z.object({
+        id: z.string(), name: z.string(), currency: z.string(),
+        amount: z.number(), period: z.string(), from: z.string(), to: z.string(),
+        /** the proposed spending, converted into the pool's own currency */
+        wouldAdd: z.number(),
+        spent: z.number(), spentAfter: z.number(),
+        remaining: z.number(), remainingAfter: z.number(),
+        standing: z.enum(['within', 'close', 'over']),
+        standingAfter: z.enum(['within', 'close', 'over']),
+        /** set where the pool is not over now and would be afterwards */
+        crosses: z.boolean(),
+      })),
+    }),
+    handler: async (input) => {
+      const ctx = ctxOf();
+      const on = input.date ?? today(ctx);
+      const market = readMarket(ctx.db);
+      const cat = ctx.db.select().from(t.categories)
+        .where(eq(t.categories.id, input.destinationId)).get();
+
+      const pools = readBudgets(ctx, on)
+        .filter((b) => !b.archived && b.members.some((m) => m.id === input.destinationId))
+        .map((b) => {
+          const wouldAdd = fromEgpAt(toEgp(input.amount, input.currency, market), b.currency, market);
+          const spentAfter = b.spent + wouldAdd;
+          const shareAfter = b.amount > 0 ? spentAfter / b.amount : 0;
+          const standingAfter = shareAfter >= 1 ? 'over' as const
+                              : shareAfter >= b.warnAt ? 'close' as const : 'within' as const;
+          return {
+            id: b.id, name: b.name, currency: b.currency,
+            amount: b.amount, period: b.period, from: b.from, to: b.to,
+            wouldAdd, spent: b.spent, spentAfter,
+            remaining: b.remaining, remainingAfter: b.amount - spentAfter,
+            standing: b.standing, standingAfter,
+            crosses: b.standing !== 'over' && standingAfter === 'over',
+          };
+        })
+        .sort((x, y) => y.wouldAdd / (y.amount || 1) - x.wouldAdd / (x.amount || 1));
+
+      return {
+        destinationId: input.destinationId,
+        destinationName: cat?.name ?? null,
+        uncovered: pools.length === 0,
+        pools,
+      };
+    },
+  }),
+
+  query({
     name: 'budget.series',
     context: 'budgets',
     summary: 'Spending over time, one line per destination, for the budget chart.',

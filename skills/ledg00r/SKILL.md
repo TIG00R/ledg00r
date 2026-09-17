@@ -46,8 +46,8 @@ first), or cannot be undone from here.
 | `planning` | Income, standing charges, reminders, the calendar, what is coming. `income.record`, `recurring.add`, `upcoming.list`, `calendar.events`, `reminder.set`. |
 | `holdings` | Assets, property plans, metals, shares. `assets.list`, `installments.list`, `installments.due`, `installment.pay`, `plan.upsert`, `metal.buy`, `metal.sell`, `order.log`, `positions.list`, `property.expense`. |
 | `giving` | What has been given away, and zakat. `giving.record`, `giving.list`, `zakat.assessment`, `zakat.configure`. |
-| `budgets` | Ceilings on spending, each over a period and covering one destination or a pool of them. `budgets.list`, `budget.add`, `budget.update`, `budget.remove`, `budget.series`. |
-| `actions` | Everything the ledger was asked to do, whether or not it moved money. `actions.list`. |
+| `budgets` | Ceilings on spending, each over a period and covering one destination or a pool of them. `budgets.list`, `budget.add`, `budget.update`, `budget.remove`, `budget.series`, `budget.check`. |
+| `actions` | Everything the ledger was asked to do, whether or not it moved money. `actions.list`, `actions.summary`, `action.read`. |
 | `debts` | Money lent and money borrowed. `debts.list`, `debts.summary`, `debt.record`, `debt.settle`, `debt.writeOff`. |
 | `overview` | Net worth, the month's flow, market rates, currencies, constants. `portfolio.overview`, `flow.month`, `market.read`, `market.record`, `currency.base`, `settings.read`. |
 | `access` | Whether a key is required, and which keys exist. `access.status`, `access.issueKey`, `access.revokeKey`. |
@@ -55,10 +55,16 @@ first), or cannot be undone from here.
 
 ## Reading without spending a tool call
 
-Five resources hold the reads wanted repeatedly, so they can be cited rather than restated:
+Twelve resources hold the reads wanted repeatedly, so they can be cited rather than restated:
 
-`ledger://portfolio` · `ledger://accounts` · `ledger://upcoming` · `ledger://zakat` ·
-`ledger://market` — and `ledger://skill`, which is this document.
+`ledger://portfolio` · `ledger://accounts` · `ledger://budgets` · `ledger://debts` ·
+`ledger://upcoming` · `ledger://calendar` · `ledger://zakat` · `ledger://market` ·
+`ledger://destinations` · `ledger://catalogue` · `ledger://settings` · `ledger://actions`
+— and `ledger://skill`, which is this document.
+
+`ledger://catalogue` and `ledger://destinations` are the ones to read before a write: they
+carry the ids everything else is recorded against. `ledger://actions` is the last fifty acts;
+narrow it with `actions.list` rather than reading it again.
 
 ## Writing
 
@@ -152,6 +158,40 @@ recorded rate. A missing rate is a refusal, not a guess — `market.record` sets
 
 `currency.setBase` discards every recorded rate and cannot be undone from here.
 
+## Budgets
+
+A budget is a ceiling over a period and the destinations it covers — a pool. A ceiling over
+one destination is a pool with one member, so there is no second, simpler kind. A destination
+may sit in more than one pool, and both claims are real: spending on groceries counts against
+Food and against Household at the same time.
+
+The ceiling keeps the currency it was set in. What was spent is converted into that currency
+when the two are compared, never the other way round, so do not restate a pool's figures in
+another currency without saying you have.
+
+`budget.check` is the budget half of a dry run: ask it before recording what a purchase would
+do, and it names every pool covering that destination, where each stands now and where it
+would stand afterwards, and whether the purchase crosses a ceiling. A destination covered by
+no pool comes back `uncovered: true` — that is an answer, not a failure.
+
+A ceiling is the owner's decision. Report that a pool is over; do not raise it, and do not
+offer opinions about their spending unless you are asked for them.
+
+## The log of what was done
+
+The movements say what happened to the money. They cannot say what was changed — a rename, an
+archive, a reminder switched off, a restated balance, a refusal — because none of those move
+anything. Those live in the action log instead, written by the dispatcher rather than by each
+handler, so nothing can be left out of it.
+
+`actions.summary` gives the shape of a window: how much of it moved money, how much moved
+nothing, what was refused, and by whom — each row says whether it came from the screens or
+from an agent. `actions.list` gives the rows, filtered by capability, area, outcome, subject
+or date. `action.read` gives one act in full, with the movement it wrote where it wrote one.
+
+Refusals are in there on purpose. A ledger that logged only what succeeded would hide every
+rule it enforced.
+
 ## Assets and plans
 
 An asset's plan total is what its payments add up to, `paid` is the ones marked paid, and
@@ -199,10 +239,14 @@ and when the hawl closes. Explain the base by saying what was counted and what w
 
 ## Jobs worth doing in one go
 
-Three are packaged as prompts on the MCP server: `close_the_month` (reconcile the month just
-ended), `work_out_zakat` (this hawl, with the base explained), and `reconcile_statement`
-(compare a pasted bank statement against one account and find what is missing). Each ends the
-same way: say what you would record, and record nothing until told to.
+Seven are packaged as prompts on the MCP server: `close_the_month` (reconcile the month just
+ended), `work_out_zakat` (this hawl, with the base explained), `reconcile_statement` (compare
+a pasted bank statement against one account and find what is missing), `review_budgets` (where
+every ceiling stands and what is about to pass one), `before_you_spend` (check a purchase
+against the ceilings covering it), `what_changed` (read the action log over a window, refusals
+included) and `where_the_money_goes` (spending by destination, over time, against the
+ceilings). Each ends the same way: say what you would record, and record nothing until told
+to.
 
 ## When to say you cannot
 
