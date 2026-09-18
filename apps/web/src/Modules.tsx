@@ -14,6 +14,16 @@ export interface ModuleDef {
   /** core modules cannot be switched off — without them there is no app */
   core?: boolean;
   screens: string[];
+  /**
+   * Screens this module narrows rather than takes away.
+   *
+   * Most modules own their screen outright: turn the module off and the screen goes with it.
+   * A few own a part of one — zakat is half of the giving screen, and the other half is the
+   * giving itself, which somebody who does not want the calculation still records. A screen
+   * listed here stays whatever the switch says, and reads the switch itself to decide how
+   * much of it to draw.
+   */
+  narrows?: string[];
 }
 
 export const MODULES: ModuleDef[] = [
@@ -48,8 +58,8 @@ export const MODULES: ModuleDef[] = [
     // either module is on, with the screen itself deciding which half to draw.
     screens: ['expenses'] },
   { id: 'giving', label: 'Zakat and Sadaqat', icon: 'zakat',
-    blurb: 'What you give, and the zakat calculation it counts against — one obligation and the record of meeting it.',
-    screens: ['giving'] },
+    blurb: 'What you give, and the zakat calculation it counts against — one obligation and the record of meeting it. Switched off, the screen stays as Charity: what you gave, with the zakat half of it gone.',
+    screens: [], narrows: ['giving'] },
   { id: 'calendar', label: 'Calendar', icon: 'calendar',
     blurb: 'Every dated thing in one month: installments, zakat, each asset\'s lunar year, warnings and standing charges — and a feed your own calendar can subscribe to.',
     screens: ['calendar'] },
@@ -82,7 +92,8 @@ export function ModulesProvider({ children }: { children: React.ReactNode }) {
       setEnabled((e) => ({ ...e, [id]: on }));
     },
     isScreenOn: (screen: string) =>
-      MODULES.some((m) => m.screens.includes(screen) && (m.core || enabled[m.id])),
+      MODULES.some((m) => m.narrows?.includes(screen))
+      || MODULES.some((m) => m.screens.includes(screen) && (m.core || enabled[m.id])),
   }), [enabled]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

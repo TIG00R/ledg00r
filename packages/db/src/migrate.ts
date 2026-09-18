@@ -931,6 +931,44 @@ const STEPS: Step[] = [
       try { db.$raw.exec('ALTER TABLE exchanges ADD COLUMN logo TEXT'); } catch { /* already there */ }
     },
   },
+  {
+    version: 39,
+    name: 'a maintenance payment already made still went into the property',
+    /**
+     * A paid installment counts towards what the property is worth whatever it bought — a
+     * maintenance charge, a service fee and a payment that buys a share of the building are
+     * all money handed over for it. Every path that pays one writes it that way now.
+     *
+     * The payments made before that was settled do not say so. They were written with no
+     * receiving side at all: the money left the account and arrived nowhere, so the
+     * property's value — which is the walk of its own legs — stopped short of what the same
+     * screens report as paid. A flat with three maintenance charges behind it read half a
+     * million pounds under its own plan, and the zakat assessment, which reads the value,
+     * repeated the difference.
+     *
+     * So the leg is pointed at the property it was always for. Only a payment the ledger
+     * still calls paid, whose movement is a `installment` that has not been undone, and
+     * whose property is still an asset on the books; nothing else is touched, and a leg that
+     * already names where it went is left exactly as it is.
+     */
+    up: (db) => db.$raw.exec(`
+      UPDATE legs
+         SET to_node_id = (SELECT i.property_id FROM installments i
+                            WHERE i.movement_id = legs.transaction_id),
+             qty_to = COALESCE(qty_to, qty_from)
+       WHERE to_node_id IS NULL
+         AND from_node_id IS NOT NULL
+         AND transaction_id IN (
+           SELECT i.movement_id
+             FROM installments i
+             JOIN transactions tx ON tx.id = i.movement_id
+             JOIN nodes n ON n.id = i.property_id AND n.kind = 'asset'
+            WHERE i.paid_at IS NOT NULL
+              AND i.movement_id IS NOT NULL
+              AND tx.kind = 'installment'
+              AND NOT EXISTS (SELECT 1 FROM transactions r WHERE r.corrects_id = tx.id))
+    `),
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

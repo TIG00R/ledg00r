@@ -14,6 +14,15 @@ export interface NavItem {
   mascot?: true;
 }
 
+/**
+ * What the giving screen is called when zakat is switched off.
+ *
+ * The screen is still there — somebody who does not want the calculation still records what
+ * they gave — so what changes is the name over it and the mark beside it: charity rather
+ * than an obligation, in the colour sadaqat already wears everywhere else.
+ */
+const CHARITY = { label: 'Charity', icon: 'charity' as IconName, color: 'var(--sadaqat)' };
+
 export const NAV: NavItem[] = [
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
   { id: 'dashboards', label: 'Statistics', icon: 'dashboards' },
@@ -31,6 +40,32 @@ export const NAV: NavItem[] = [
   { id: 'assistant', label: 'Ledg00r', mascot: true },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
+
+/**
+ * The sections, as this ledger's modules leave them.
+ *
+ * One list rather than three: the sidebar, the title over the page and the mark beside it all
+ * have to agree about what a screen is called, and a screen that reads differently with a
+ * module off is exactly where they would otherwise drift apart.
+ */
+export function useNav(): NavItem[] {
+  const { enabled, isScreenOn } = useModules();
+  const zakatOff = enabled.giving === false;
+  return NAV
+    .filter((n) => isScreenOn(n.id))
+    .map((n) => (n.id === 'giving' && zakatOff
+      ? { ...n, label: CHARITY.label, icon: CHARITY.icon }
+      : n));
+}
+
+/** The mark over a screen, which the giving screen changes with the zakat module. */
+export function useViewTone(screen: string): { icon: IconName; color: string } {
+  const { enabled } = useModules();
+  const base = VIEW_TONE[screen.split('-')[0]!] ?? VIEW_TONE.portfolio!;
+  return screen === 'giving' && enabled.giving === false
+    ? { icon: CHARITY.icon, color: CHARITY.color }
+    : base;
+}
 
 /**
  * How wide the window is, as the two decisions that actually depend on it.
@@ -54,8 +89,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggle, overlay, open
   /** on a narrow window the sidebar is something you open, not something that is there */
   overlay?: boolean; open?: boolean; onClose?: () => void;
 }) {
-  const { isScreenOn } = useModules();
-  const items = NAV.filter((n) => isScreenOn(n.id));
+  const items = useNav();
 
   // Escape closes the drawer, the same way it closes every other thing that opens over the page.
   useEffect(() => {
@@ -142,7 +176,7 @@ export function TopBar({ title, screen, onRefresh, onNavigate, onMenu }: {
   /** given only when the sidebar has folded away and needs a way to be opened */
   onMenu?: () => void;
 }) {
-  const tone = VIEW_TONE[screen.split('-')[0]!] ?? VIEW_TONE.portfolio!;
+  const tone = useViewTone(screen);
   const { now, asOf, setAsOf, theme, toggleTheme, events, privacy, setPrivacy } = useApp();
   const { live } = useLive();
   const dueCount = events.filter((e) => e.due).length;

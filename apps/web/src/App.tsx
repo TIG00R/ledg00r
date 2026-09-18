@@ -3,7 +3,7 @@ import { AppProvider } from './AppState';
 import { LiveProvider } from './Live';
 import { AppearanceProvider } from './Appearance';
 import { ModulesProvider, useModules } from './Modules';
-import { NAV, Sidebar, TopBar, useViewport } from './components/Shell';
+import { Sidebar, TopBar, useNav, useViewport } from './components/Shell';
 import { SETTINGS_VIEWS } from './screens/Settings';
 import { Portfolio } from './screens/Portfolio';
 import { Dashboards } from './screens/Dashboards';
@@ -68,7 +68,7 @@ function Frame() {
   const [drawer, setDrawer] = useState(false);
   useEffect(() => { if (!mobile) setDrawer(false); }, [mobile]);
   const [, force] = useState(0);
-  const title = NAV.find((n) => n.id === active)?.label
+  const title = useNav().find((n) => n.id === active)?.label
     ?? SETTINGS_VIEWS.find((v) => v.id === active)?.label
     ?? 'Ledger';
 
