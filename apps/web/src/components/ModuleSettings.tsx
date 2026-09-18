@@ -8,6 +8,7 @@ import { MODULES, useModules } from '../Modules';
 import { nextOccurrence, perMonth, money, type RecurringTemplate } from '@ledger/engine';
 import { Icon } from './Icon';
 import { Chip, Field, Toggle, Row } from './UI';
+import { accountOption } from '../accounts';
 
 export function ModuleSettings() {
   const { enabled, toggle } = useModules();
@@ -139,8 +140,7 @@ export function RecurringSettings() {
             <Select ariaLabel="Template source" value={draft.fromNodeId}
                     onChange={(v) => setDraft({ ...draft, fromNodeId: v })}
                     options={data.nodes.filter((n) => n.kind === 'cash')
-                      .map((n) => ({ value: n.id, label: n.name,
-                                     hint: data.institutions.find((i) => i.id === n.parentId)?.name }))} />
+                      .map((n) => accountOption(data, n))} />
           </Field>
           <Field label="How often">
             <Select ariaLabel="Template cadence" value={draft.cadence}

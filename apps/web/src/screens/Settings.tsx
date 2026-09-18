@@ -14,6 +14,7 @@ import { Page, Panel, Field, Toggle, Chip, Row, Empty } from '../components/UI';
 import { AppearanceSettings } from '../components/AppearanceSettings';
 import { ModuleSettings, RecurringSettings } from '../components/ModuleSettings';
 import { Icon } from '../components/Icon';
+import { accountOption } from '../accounts';
 
 const CURRENCIES = ['EGP', 'USD', 'GBP', 'EUR'] as const;
 
@@ -139,18 +140,14 @@ function General() {
           <Field label="Salary lands in">
             <Select ariaLabel="Salary lands in" value={settings.incomeAccountId}
                     onChange={(v) => setSettings({ incomeAccountId: v })}
-                    options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                      value: n.id, label: n.name,
-                      hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                    }))} />
+                    options={data.nodes.filter((n) => n.kind === 'cash')
+                      .map((n) => accountOption(data, n))} />
           </Field>
           <Field label="Living burn drawn from">
             <Select ariaLabel="Living burn drawn from" value={settings.burnAccountId}
                     onChange={(v) => setSettings({ burnAccountId: v })}
-                    options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                      value: n.id, label: n.name,
-                      hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                    }))} />
+                    options={data.nodes.filter((n) => n.kind === 'cash')
+                      .map((n) => accountOption(data, n))} />
           </Field>
         </div>
         <p style={{ margin: '18px 0 0', fontSize: 12, color: 'var(--faint)' }}>
@@ -245,10 +242,8 @@ function Reminders() {
         .map((r) => ({ id: r.id, name: r.name }))))
       .catch(() => setOnPlan(null));
   }, [live, version]);
-  const cashAccounts = data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-    value: n.id, label: n.name,
-    hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-  }));
+  const cashAccounts = data.nodes.filter((n) => n.kind === 'cash')
+    .map((n) => accountOption(data, n));
   const setAuto = (id: string, on: boolean) => {
     setAutoPay(id, { on });
     // Same rule as the Assets screen: a blank account is left out rather than sent as one.

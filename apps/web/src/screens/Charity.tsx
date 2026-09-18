@@ -11,6 +11,7 @@ import { Manager } from '../components/Manager';
 import { Icon } from '../components/Icon';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { OperationPanel } from '../components/Operations';
+import { accountOption } from '../accounts';
 
 /** Sadaqat: giving that is owed to nobody. Money out of a named account, like any other. */
 export function Charity() {
@@ -69,10 +70,8 @@ function Body() {
           <Field label="Paid from">
             <Select ariaLabel="Source account" value={draft.accountId}
                     onChange={(v) => setDraft({ ...draft, accountId: v })}
-                    options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                      value: n.id, label: n.name,
-                      hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                    }))} />
+                    options={data.nodes.filter((n) => n.kind === 'cash')
+                      .map((n) => accountOption(data, n))} />
           </Field>
           <Field label="Amount">
             <Amount value={draft.amount} ariaLabel="Amount" onChange={(n) => setDraft({ ...draft, amount: n })} />

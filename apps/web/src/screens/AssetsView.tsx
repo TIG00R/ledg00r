@@ -17,6 +17,7 @@ import { IntentionPicker, HawlBar } from '../components/Intention';
 import { intentionsFor, type Intention } from '@ledger/engine';
 import { sourceAccountOptions, INITIAL_PAYMENT } from '../components/Operations';
 import { useModules } from '../Modules';
+import { accountOption } from '../accounts';
 
 /** A payment on a plan, as the ledger reports it. */
 interface Installment {
@@ -461,11 +462,8 @@ function Body() {
                         <Select value={payFrom[id] ?? data.settings.burnAccountId}
                                 onChange={(v) => setPayFrom({ ...payFrom, [id]: v })}
                                 ariaLabel={`Account paying ${o.name}`} style={{ flex: 1 }}
-                                options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                                  value: n.id,
-                                  label: n.name,
-                                  hint: data.institutions.find((x) => x.id === n.parentId)?.name,
-                                }))} />
+                                options={data.nodes.filter((n) => n.kind === 'cash')
+                                  .map((n) => accountOption(data, n))} />
                       </label>
                     )}
                     {auto[id] && next && (() => {
@@ -691,10 +689,8 @@ function Body() {
             <Field label="Paid from">
               <Select ariaLabel="Paid from" value={upkeep.accountId}
                       onChange={(v) => setUpkeep({ ...upkeep, accountId: v })}
-                      options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                        value: n.id, label: `${n.name} · ${n.currency}`,
-                        hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                      }))} />
+                      options={data.nodes.filter((n) => n.kind === 'cash')
+                        .map((n) => accountOption(data, n, { currency: true }))} />
             </Field>
             <Field label="Amount">
               <Amount value={upkeep.amount} ariaLabel="Amount" onChange={(n) => setUpkeep({ ...upkeep, amount: n })} />
@@ -800,10 +796,8 @@ function Body() {
                 <Select ariaLabel="Account it comes out of" value={d.payFrom ?? ''}
                         onChange={(v) => set({ payFrom: v })}
                         options={[{ value: '', label: 'not set' },
-                                  ...data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                                    value: n.id, label: n.name,
-                                    hint: data.institutions.find((x) => x.id === n.parentId)?.name,
-                                  }))]} />
+                                  ...data.nodes.filter((n) => n.kind === 'cash')
+                                    .map((n) => accountOption(data, n))]} />
               ) },
             /**
              * What the payment is for.

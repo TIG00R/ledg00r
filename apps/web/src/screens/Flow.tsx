@@ -187,7 +187,7 @@ export function Flow() {
   const stackH = (col: Entity[]) => col.length * CARD_H + Math.max(col.length - 1, 0) * GAP;
 
   const body = Math.max(accountsH, stackH(columns.source), stackH(columns.sink));
-  // room under the last row for a band that had to travel back around
+  // room under the last row for an amount pushed clear of the cards it would otherwise sit on
   const height = TOP + body + 76;
   const sinkX = ACCOUNT_X + Math.max(accountsW, CARD_W.account) + COL_GAP;
   const width = sinkX + CARD_W.sink + 40;
@@ -237,8 +237,11 @@ export function Flow() {
    */
   const drawn = flows.filter((f) => box[f.from] && box[f.to]);
 
+  /** which column an endpoint stands in, which is what decides the side a band leaves by */
+  const colOf = (id: string) => entities.find((e) => e.id === id)?.column ?? 'account';
+
   const labels = drawn.map((flow) => {
-    const g = geometry(box[flow.from]!, box[flow.to]!);
+    const g = geometry(box[flow.from]!, box[flow.to]!, colOf(flow.from), colOf(flow.to));
     return { flow, x: g.labelX, y: g.labelY };
   });
   const cards = Object.values(box);
@@ -357,6 +360,7 @@ export function Flow() {
 
             {drawn.map((f) => (
               <Band key={`${f.from}-${f.to}-${f.kind}`} flow={f} a={box[f.from]!} b={box[f.to]!}
+                    from={colOf(f.from)} to={colOf(f.to)}
                     t={thick(f.amount)} combined={combined} />
             ))}
             {groups.map((g) => (
@@ -396,41 +400,58 @@ export function Flow() {
 interface Box { x: number; y: number; w: number; h: number }
 
 /**
+ * Which edge of a card a band leaves or arrives by.
+ *
+ * The chart is three columns and every band crosses between them, so the short way is always
+ * the side of the card that faces the other end of the band. A source card is only ever read
+ * from — its bands leave by the right, because everything it feeds is to its right. A card on
+ * the far right is only ever paid into, so its bands arrive on the left. An account in the
+ * middle is both, and answers per band: the left edge towards the sources, the right edge
+ * towards where the money went.
+ *
+ * Two cards in the same column — one account paying another — have no facing sides at all.
+ * They share one, and the band hooks out of it and back in, which is a short arc beside the
+ * pair rather than a loop under the whole chart.
+ */
+type Side = 'left' | 'right';
+const sideOf = (mine: Column, theirs: Column): Side =>
+  mine === 'source' ? 'right'
+    : mine === 'sink' ? 'left'
+      : theirs === 'sink' ? 'right' : 'left';
+
+/**
  * Where a band runs between two cards, and where its amount can sit.
  *
  * A band leaves and arrives by a side, never by the top or the bottom — bands dropping out
  * of the underside of a card and rising into another read as a different kind of thing from
- * the ones travelling across, and the chart stopped being one picture. What it no longer
- * does is insist on leaving by the right: a card behind another on the page is reached by
- * the left edge and the right one, which is the short way round rather than a loop.
+ * the ones travelling across, and the chart stopped being one picture. Which side is decided
+ * by the columns rather than by measuring: a band travels the width of the gap it has to
+ * cross and no more.
  *
- * The loop survives for two cards that overlap across the page, where neither side has clear
- * air between them.
+ * The two control points are what the curve bends around. Between columns they sit on the
+ * midline, so the band crosses the gap and straightens into both cards. On the hook they sit
+ * out beyond the shared side, far enough apart to clear the cards they run beside.
  */
-function geometry(a: Box, b: Box) {
+function geometry(a: Box, b: Box, from: Column, to: Column) {
   const y0 = a.y + a.h / 2, y1 = b.y + b.h / 2;
-  const rightwards = b.x + b.w / 2 >= a.x + a.w / 2;
-  const clear = rightwards ? b.x - (a.x + a.w) : a.x - (b.x + b.w);
+  const sa = sideOf(from, to), sb = sideOf(to, from);
+  const x0 = sa === 'right' ? a.x + a.w : a.x;
+  const x1 = sb === 'right' ? b.x + b.w : b.x;
 
-  if (clear <= 0) {
-    // nothing clear to either side: out of the right edge, below the row, and back into the left
-    const x0 = a.x + a.w, x1 = b.x;
-    const mid = (x0 + x1) / 2;
-    const detour = Math.max(a.y + a.h, b.y + b.h) + 46;
+  if (sa === sb) {
+    // the same side of both: out of it, around, and back in beside the pair
+    const out = Math.min(110, 46 + Math.abs(y1 - y0) * 0.3);
+    const away = sa === 'right' ? out : -out;
+    const cx0 = x0 + away, cx1 = x1 + away;
     return {
-      around: true, x0, y0, x1, y1, mid, detour,
-      spine: `M ${x0},${y0} C ${x0 + 70},${y0} ${x0 + 70},${detour} ${mid},${detour}`
-           + ` C ${x1 - 70},${detour} ${x1 - 70},${y1} ${x1},${y1}`,
-      labelX: mid, labelY: detour,
+      x0, y0, x1, y1, cx0, cx1,
+      labelX: x0 + away * 0.72, labelY: (y0 + y1) / 2,
     };
   }
 
-  const x0 = rightwards ? a.x + a.w : a.x;
-  const x1 = rightwards ? b.x : b.x + b.w;
   const mid = (x0 + x1) / 2;
   return {
-    around: false, x0, y0, x1, y1, mid, detour: 0,
-    spine: `M ${x0},${y0} C ${mid},${y0} ${mid},${y1} ${x1},${y1}`,
+    x0, y0, x1, y1, cx0: mid, cx1: mid,
     labelX: mid, labelY: (y0 + y1) / 2,
   };
 }
@@ -439,48 +460,33 @@ function geometry(a: Box, b: Box) {
  * A band between two boxes.
  *
  * The band runs side to side and thickens up and down, whichever way round the two cards
- * are. The loop is kept for two cards with no clear air to either side, which is also what
- * that movement looks like: money leaving your accounts and arriving back in them.
+ * are — including the hook between two cards in the same column, which is the same ribbon
+ * bent around one side rather than a different kind of mark.
  *
  * Direction is carried by a dashed centreline travelling along the band, so it reads without
  * an arrowhead — a shape that had already proved too heavy at this size.
  */
-function Band({ flow, a, b, t, combined }: {
-  flow: Flow; a: Box; b: Box; t: number; combined: boolean;
+function Band({ flow, a, b, from, to, t, combined }: {
+  flow: Flow; a: Box; b: Box; from: Column; to: Column; t: number; combined: boolean;
 }) {
-  const g = geometry(a, b);
+  const { x0, y0, x1, y1, cx0, cx1 } = geometry(a, b, from, to);
   const bands = combined ? [t] : [t * 0.5, t * 0.3, t * 0.2];
-
-  if (g.around) {
-    const half = Math.max(2, t / 2);
-    return (
-      <g>
-        <path d={g.spine} fill="none" stroke={TONE[flow.kind]} strokeOpacity="0.22"
-              strokeWidth={half * 2} strokeLinecap="round" />
-        <path d={g.spine} fill="none" stroke={TONE[flow.kind]} strokeOpacity="0.75"
-              strokeWidth={1.5} strokeLinecap="round"
-              strokeDasharray="7 9" className="flow-run" />
-      </g>
-    );
-  }
-
-  const { x0, y0, x1, y1, mid } = g;
   let acc = -t / 2;
 
   return (
     <g>
       {bands.map((bt, i) => {
-        const from = y0 + acc + bt / 2, to = y1 + acc + bt / 2;
+        const start = y0 + acc + bt / 2, end = y1 + acc + bt / 2;
         acc += bt + (combined ? 0 : 4);
         const t0 = bt * 0.55;
         return (
           <g key={i}>
             <path
-              d={`M ${x0},${from - t0 / 2} C ${mid},${from - t0 / 2} ${mid},${to - bt / 2} ${x1},${to - bt / 2}
-                  L ${x1},${to + bt / 2} C ${mid},${to + bt / 2} ${mid},${from + t0 / 2} ${x0},${from + t0 / 2} Z`}
+              d={`M ${x0},${start - t0 / 2} C ${cx0},${start - t0 / 2} ${cx1},${end - bt / 2} ${x1},${end - bt / 2}
+                  L ${x1},${end + bt / 2} C ${cx1},${end + bt / 2} ${cx0},${start + t0 / 2} ${x0},${start + t0 / 2} Z`}
               fill={`url(#g-${flow.kind})`} stroke={TONE[flow.kind]} strokeOpacity="0.26" strokeWidth="1" />
             {i === 0 && (
-              <path d={`M ${x0},${from} C ${mid},${from} ${mid},${to} ${x1},${to}`}
+              <path d={`M ${x0},${start} C ${cx0},${start} ${cx1},${end} ${x1},${end}`}
                     fill="none" stroke={TONE[flow.kind]} strokeOpacity="0.6"
                     strokeWidth={1.4} strokeLinecap="round"
                     strokeDasharray="7 9" className="flow-run" />

@@ -12,6 +12,7 @@ import { Manager } from '../components/Manager';
 import { RecordTable } from '../components/RecordTable';
 import { ledger } from '../api';
 import { DateField } from '../components/DateField';
+import { accountOption } from '../accounts';
 
 export function Income() {
   return (
@@ -63,10 +64,7 @@ function Body() {
   const accountsIn = (code: string) => cashAccounts.filter((n) => (n.currency ?? 'EGP') === code);
   const currencyOf = (v: Record<string, string | number>) =>
     String(v.currency || currencies[0]?.code || 'EGP');
-  const accountOptions = (code: string) => accountsIn(code).map((n) => ({
-    value: n.id, label: n.name,
-    hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-  }));
+  const accountOptions = (code: string) => accountsIn(code).map((n) => accountOption(data, n));
   /**
    * Which account a draft is actually saying, rather than which one it last said.
    *
@@ -413,8 +411,7 @@ function Body() {
               field: (d, set) => (
                 <Select ariaLabel="Landed in" value={d.accountId} onChange={(v) => set({ accountId: v })}
                         options={data.nodes.filter((n) => n.kind === 'cash' && n.parentId && n.currency === d.currency)
-                          .map((n) => ({ value: n.id, label: n.name,
-                                         hint: data.institutions.find((i) => i.id === n.parentId)?.name }))} />
+                          .map((n) => accountOption(data, n))} />
               ) },
 
             { key: 'note', label: 'Note', kind: 'text',

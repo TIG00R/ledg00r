@@ -12,6 +12,7 @@ import { RecordTable } from '../components/RecordTable';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { ActionButton } from '../Live';
 import { CurrencySplits } from '../components/CurrencySplits';
+import { accountOption } from '../accounts';
 
 interface Debt {
   id: string; direction: 'lent' | 'borrowed'; counterparty: string;
@@ -273,8 +274,7 @@ function Body() {
                   <Select ariaLabel="Account" value={draft.accountId}
                           onChange={(v) => set({ accountId: v })}
                           options={here2.length
-                            ? here2.map((n) => ({ value: n.id, label: `${n.name} · ${n.currency}`,
-                                hint: data.institutions.find((i) => i.id === n.parentId)?.name }))
+                            ? here2.map((n) => accountOption(data, n, { currency: true }))
                             : [{ value: '', label: `no ${draft.currency} account` }]} />
                 );
               } },
@@ -466,9 +466,7 @@ function Settle({ debt, accounts, onClose, onDone }: {
                hint={usable.length ? `accounts held in ${debt.currency}` : `no ${debt.currency} account`}>
           <Select ariaLabel="Account" value={accountId} onChange={setAccountId}
                   options={usable.length
-                    ? usable.map((n) => ({
-                        value: n.id, label: `${n.name} · ${n.currency}`,
-                        hint: data.institutions.find((i) => i.id === n.parentId)?.name }))
+                    ? usable.map((n) => accountOption(data, n, { currency: true }))
                     : [{ value: '', label: `no ${debt.currency} account` }]} />
         </Field>
 

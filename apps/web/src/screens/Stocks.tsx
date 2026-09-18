@@ -16,6 +16,7 @@ import { OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, RowLine, Problems
 import { Segmented } from '../components/Segmented';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useModules } from '../Modules';
+import { accountOption } from '../accounts';
 
 /**
  * One colour per holding.
@@ -1529,10 +1530,8 @@ function BookTransfer({ exchangeId, exchanges }: { exchangeId?: string; exchange
         <>
           <Field label="Into">
             <Select ariaLabel="Account" value={accountIdOrDefault} onChange={setAccountId}
-                    options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                      value: n.id, label: `${n.name} · ${n.currency}`,
-                      hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                    }))} />
+                    options={data.nodes.filter((n) => n.kind === 'cash')
+                      .map((n) => accountOption(data, n, { currency: true }))} />
           </Field>
           {acct && <Balance node={acct} delta={arrives} />}
         </>

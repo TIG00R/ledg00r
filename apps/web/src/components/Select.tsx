@@ -2,7 +2,20 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 
-export interface Option { value: string; label: string; hint?: string }
+export interface Option {
+  value: string;
+  label: string;
+  hint?: string;
+  /**
+   * What the closed control says, when that is not the option's first line.
+   *
+   * An account's option leads with its bank, because that is how a list of accounts is
+   * scanned, and names the account underneath. Closed, the control has one line and it has
+   * to be the account: the bank alone would say "Nile Bank" for two different accounts held
+   * there, which is not what was chosen.
+   */
+  trigger?: string;
+}
 
 /** how far the list sits from its trigger, how close it may come to the window edge */
 const GAP = 6;
@@ -166,7 +179,7 @@ export function Select({ value, options, onChange, ariaLabel, style, disabled }:
         }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                        color: unresolved ? 'var(--negative)' : undefined }}>
-          {unresolved ? 'Not offered here' : chosen?.label ?? ''}
+          {unresolved ? 'Not offered here' : chosen?.trigger ?? chosen?.label ?? ''}
         </span>
         <span style={{ display: 'flex', color: 'var(--faint)', transform: open ? 'rotate(-90deg)' : 'rotate(-90deg) scaleX(-1)',
                        transition: 'transform 180ms var(--ease)' }}>

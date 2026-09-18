@@ -16,6 +16,7 @@ import { DateField } from '../components/DateField';
 import { ledger } from '../api';
 import { ActionButton, useLive } from '../Live';
 import { movementCount } from '@ledger/engine';
+import { accountOption } from '../accounts';
 
 // the last column now holds a pencil beside the bin, rather than the bin alone
 const COLS = '54px minmax(220px,1fr) 150px 108px';
@@ -660,8 +661,7 @@ function MovementRecords() {
   const endpointOptions = [
     { value: '', label: 'Nowhere named' },
     ...[...endpoints].sort((a, b) => a.name.localeCompare(b.name))
-      .map((n) => ({ value: n.id, label: n.name,
-                     hint: data.institutions.find((i) => i.id === n.parentId)?.name ?? n.kind })),
+      .map((n) => accountOption(data, n, { fallback: n.kind })),
   ];
   /** every place a movement could name, for the column filters */
   const endpointNames = [...new Set(endpoints.map((n) => n.name))].sort();
@@ -727,10 +727,8 @@ function MovementRecords() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Select ariaLabel="Which account" value={account} onChange={setAccount} style={{ minWidth: 240 }}
                 options={[{ value: '', label: 'Every account' },
-                          ...accounts.map((n) => ({
-                            value: n.id, label: n.name,
-                            hint: `${data.institutions.find((i) => i.id === n.parentId)?.name ?? ''}${n.kind === 'liability' ? ' · credit' : ''}`.trim(),
-                          }))]} />
+                          ...accounts.map((n) => accountOption(data, n,
+                            n.kind === 'liability' ? { note: 'credit' } : undefined))]} />
       </div>
 
       {/* The movement log is a log like any other, so it is drawn by the same table: every

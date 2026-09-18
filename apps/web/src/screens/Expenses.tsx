@@ -16,6 +16,7 @@ import { Manager } from '../components/Manager';
 import { RecordTable } from '../components/RecordTable';
 import { Mark } from '../components/Mark';
 import { Budgets } from './Budgets';
+import { accountOption } from '../accounts';
 
 export function Expenses() {
   return (
@@ -238,9 +239,8 @@ function Body() {
               ),
               field: (d, set) => (
                 <Select ariaLabel="Paid from" value={d.accountId} onChange={(v) => set({ accountId: v })}
-                        options={data.nodes.filter((n) => n.kind === 'cash' && n.parentId).map((n) => ({
-                          value: n.id, label: n.name,
-                          hint: data.institutions.find((i) => i.id === n.parentId)?.name }))} />
+                        options={data.nodes.filter((n) => n.kind === 'cash' && n.parentId)
+                          .map((n) => accountOption(data, n))} />
               ) },
 
             { key: 'category', label: 'Goes to', kind: 'pick',
@@ -279,12 +279,20 @@ function Body() {
               field: (d, set) => <input aria-label="Place" placeholder="where" value={d.place}
                                         onChange={(e) => set({ place: e.target.value })} /> },
 
+            /*
+             * A note is a sentence, not a word. Typed into a single-line box it scrolled
+             * sideways past what had already been written, so the end of it could only be read
+             * by driving the cursor back through it. A box several lines deep holds the whole
+             * note in view while it is being written.
+             */
             { key: 'note', label: 'Note', kind: 'text',
               value: (e) => e.note,
               cell: (e) => <span style={{ fontSize: 13, color: 'var(--muted)' }}>
                 {e.note || <span style={{ color: 'var(--faint)' }}>—</span>}</span>,
-              field: (d, set) => <input aria-label="Note" placeholder="what for" value={d.note}
-                                        onChange={(e) => set({ note: e.target.value })} /> },
+              field: (d, set) => (
+                <textarea aria-label="Note" rows={3} placeholder="what for" value={d.note}
+                          onChange={(e) => set({ note: e.target.value })} />
+              ) },
           ]}
           add={{
             label: 'Log an expense',
@@ -339,8 +347,7 @@ function Body() {
                */
               { key: 'account', label: 'Usually paid from', kind: 'select', width: 'minmax(150px,1fr)',
                 options: [{ value: '', label: 'the ledger\'s default' },
-                          ...payable.map((n) => ({ value: n.id, label: n.name,
-                            hint: data.institutions.find((i) => i.id === n.parentId)?.name }))] },
+                          ...payable.map((n) => accountOption(data, n))] },
               { key: 'note', label: 'Note', placeholder: 'what belongs under it' },
             ]}
             rows={cats.map((c) => ({

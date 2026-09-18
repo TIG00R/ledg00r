@@ -16,6 +16,7 @@ import {
   OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, RowLine, Problems, Balance,
   QuantityBalance, defaultAccountId,
 } from '../components/Operations';
+import { accountOption } from '../accounts';
 
 type Metal = 'gold' | 'silver';
 
@@ -329,9 +330,8 @@ function Body() {
                 <Select ariaLabel="Account" value={d.accountId ?? ''}
                         onChange={(v) => set({ accountId: v })}
                         options={[{ value: '', label: '— none recorded' },
-                                  ...data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                                    value: n.id, label: n.name,
-                                    hint: data.institutions.find((i) => i.id === n.parentId)?.name }))]} />
+                                  ...data.nodes.filter((n) => n.kind === 'cash')
+                                    .map((n) => accountOption(data, n))]} />
               ) },
             /*
               * One word in the chip, and what it means under it. "A holding · zakatable" in
@@ -575,10 +575,7 @@ function MetalTrade({ metal, perGram, held, onDone }: {
         onChange={(v) => setTrade({ ...trade, accountId: v })} />
     : <Select ariaLabel="Account" value={accountIdOrDefault}
               onChange={(v) => setTrade({ ...trade, accountId: v })}
-              options={accounts.map((n) => ({
-                value: n.id, label: `${n.name} · ${n.currency}`,
-                hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-              }))} />;
+              options={accounts.map((n) => accountOption(data, n, { currency: true }))} />;
   const accountBalance = acct && (
     <Balance node={acct}
              delta={side === 'buy' ? -(amountInAcctCurrency + trade.fee)

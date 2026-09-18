@@ -10,6 +10,7 @@ import { AccountName } from './UI';
 import { Select } from './Select';
 import { useLive } from '../Live';
 import { ledger } from '../api';
+import { accountOption } from '../accounts';
 
 /**
  * Everything given, as one table.
@@ -136,9 +137,8 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             field: (d, set) => (
             <Select ariaLabel="Paid from" value={d.accountId ?? ''}
                   onChange={(v) => set({ accountId: v })}
-                  options={data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
-                    value: n.id, label: n.name,
-                    hint: data.institutions.find((i) => i.id === n.parentId)?.name }))} />
+                  options={data.nodes.filter((n) => n.kind === 'cash')
+                    .map((n) => accountOption(data, n))} />
             ) },
           { key: 'to', label: 'Went to', kind: 'pick',
             value: (r) => cInfo(r.categoryId)?.name ?? r.categoryId,

@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { Empty, Field } from './UI';
 import { Select } from './Select';
 import { ActionButton } from '../Live';
+import { accountOption } from '../accounts';
 
 
 
@@ -17,11 +18,7 @@ import { ActionButton } from '../Live';
  */
 const cashNodes = (d: DataSet) => d.nodes.filter((n) => n.kind === 'cash' && !n.archived && n.parentId);
 const nodeOf = (d: DataSet, id: string) => d.nodes.find((x) => x.id === id)!;
-const bankOf = (d: DataSet, id: string) =>
-  d.institutions.find((i) => i.id === nodeOf(d, id)?.parentId)?.name ?? '';
-export const accountOptions = (d: DataSet) => cashNodes(d).map((n) => ({
-  value: n.id, label: `${n.name} · ${n.currency}`, hint: bankOf(d, n.id),
-}));
+export const accountOptions = (d: DataSet) => cashNodes(d).map((n) => accountOption(d, n, { currency: true }));
 const rateOf = (cur: string) => (cur === 'EGP' ? 1 : market.fxRates[cur] ?? 1);
 
 /**
