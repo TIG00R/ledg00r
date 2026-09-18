@@ -98,7 +98,7 @@ export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onCon
  * because that would rewrite what already happened. The button still exists, and it explains
  * itself — offering to archive instead, where archiving is the honest answer.
  */
-export function ConfirmDelete({ what, onConfirm, blocked, size = 15, onArchive }: {
+export function ConfirmDelete({ what, onConfirm, blocked, size = 15, onArchive, className }: {
   what: string;
   onConfirm?: () => void;
   /** a reason, when the thing cannot be deleted at all */
@@ -113,13 +113,15 @@ export function ConfirmDelete({ what, onConfirm, blocked, size = 15, onArchive }
    * letting someone press the permanent one, be refused, and have nowhere to go.
    */
   onArchive?: () => void;
+  /** extra classes on the trigger — `rt-hint`, to keep it hidden until the row is pointed at */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
 
   return (
     <>
-      <button ref={trigger} className="btn quiet" style={{ padding: 6, border: 'none' }}
+      <button ref={trigger} className={`btn quiet${className ? ` ${className}` : ''}`} style={{ padding: 6, border: 'none' }}
               aria-label={`Remove ${what}`} aria-haspopup="dialog" aria-expanded={open}
               onClick={() => setOpen(true)}>
         <Icon name="close" size={size} />

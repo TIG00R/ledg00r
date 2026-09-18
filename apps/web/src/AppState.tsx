@@ -215,6 +215,21 @@ export function AppProvider({ children, demo }: {
         note: r.note ?? undefined, internal: r.internal,
       })) as RecurringTemplate[]))
       .catch(() => setRecurring([]));
+    /**
+     * Which properties post their own installments, and out of which account.
+     *
+     * This used to live only in this component's own state, set when a switch was flipped and
+     * never read back from anywhere — so the choice lasted until the next reload and then
+     * reverted, on every screen that offers it. Reading it here, once, the way the reminders
+     * and the standing charges already are, is what lets the Assets screen and the
+     * notification settings show the same switch in the same position rather than each
+     * keeping a memory of its own.
+     */
+    Promise.resolve((ledger as any)['autopay.list']?.({}) ?? [])
+      .then((rows: Array<{ propertyId: string; enabled: boolean; fromNodeId: string | null }>) =>
+        setAutoPay(Object.fromEntries((rows ?? [])
+          .map((r) => [r.propertyId, { on: r.enabled, fromNodeId: r.fromNodeId ?? '' }]))))
+      .catch(() => setAutoPay({}));
   }, [live, version]);
 
   useEffect(() => {

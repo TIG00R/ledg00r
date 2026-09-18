@@ -9,16 +9,13 @@ import { GivingRecords, type GivingRow } from '../components/GivingRecords';
 import { ActionButton, useLive } from '../Live';
 import { Manager } from '../components/Manager';
 import { Icon } from '../components/Icon';
-import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { OperationPanel } from '../components/Operations';
 
 /** Sadaqat: giving that is owed to nobody. Money out of a named account, like any other. */
 export function Charity() {
   return (
-    <ModeProvider>
-      <SectionProvider first="giving"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="giving"><Body /></SectionProvider>
   );
 }
 
@@ -31,7 +28,6 @@ function Body() {
     causeId: data.categories.find((c) => c.domain === 'charity')?.id ?? '', note: '',
   });
 
-  const { mode } = useMode();
   const { tab } = useSection();
 
   const cats = data.categories.filter((c) => c.domain === 'charity');
@@ -66,7 +62,7 @@ function Body() {
     setReminders(reminders.map((r) => (r.subject === 'sadaqah' ? { ...r, ...patch } : r)));
 
   return (
-    <Page aside={mode === 'operate' ? (
+    <Page aside={(
       <OperationPanel title="Give something"
         hint="It leaves a named account on the day you record it, so net worth moves with it.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -102,14 +98,12 @@ function Body() {
           </ActionButton>
         </div>
       </OperationPanel>
-    ) : undefined}>
+    )}>
       <Sections sections={[
         { id: 'giving', label: 'Giving', icon: 'hands',
-          hint: 'What you gave, out of a named account, on the day you gave it.',
-          editHint: 'Undo a record. It writes the opposite movement rather than erasing it.' },
+          hint: 'What you gave, out of a named account, on the day you gave it. Double-click a record to undo it — it writes the opposite movement rather than erasing it.' },
         { id: 'causes', label: 'Causes', icon: 'handout',
-          hint: 'Where giving is recorded against — yours to name, mark and colour.',
-          editHint: 'Rename a cause, change its mark, add one, archive one.' },
+          hint: 'Where giving is recorded against — yours to name, mark and colour. Double-click one to change it.' },
       ]} />
 
       <Panel>
@@ -149,13 +143,13 @@ function Body() {
       </Panel>
 
       <Panel title="Records"
-             hint="Every sadaqat payment, out of the account it left. Each heading filters its own column, and a record can be corrected or reversed in edit mode — the same table the zakat screen shows.">
+             hint="Every sadaqat payment, out of the account it left. Each heading filters its own column, and double-clicking a row corrects or reverses it — the same table the zakat screen shows.">
         <GivingRecords only="sadaqat" fallback={fallbackRows} onRows={setRows} />
       </Panel>
 
       {tab === 'causes' && (
         <Panel title="Where giving goes"
-               hint="The causes giving is recorded against. Yours to name, mark and colour.">
+               hint="The causes giving is recorded against. Yours to name, mark and colour — renaming or recolouring one moves no money.">
           <Manager
             markFamily="giving"
             addLabel="Add a cause"

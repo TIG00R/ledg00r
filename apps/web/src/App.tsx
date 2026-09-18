@@ -13,14 +13,13 @@ import { Flow } from './screens/Flow';
 import { Assets } from './screens/AssetsView';
 import { Metals } from './screens/Metals';
 import { Stocks } from './screens/Stocks';
-import { Expenses } from './screens/Expenses';
+import { ExpensesAndBudgets } from './screens/Expenses';
 import { Giving } from './screens/Giving';
 import { Settings } from './screens/Settings';
 import { Assistant } from './screens/Assistant';
 import { Debts } from './screens/Debts';
 import { Calendar } from './screens/Calendar';
 import { Logs } from './screens/Logs';
-import { Budgets } from './screens/Budgets';
 
 /**
  * The screen lives in the URL.
@@ -30,7 +29,12 @@ import { Budgets } from './screens/Budgets';
  * first. A hash keeps both working without a router or a server that knows the routes.
  */
 function useHashScreen(): [string, (id: string) => void] {
-  const read = () => window.location.hash.replace(/^#\/?/, '') || 'portfolio';
+  // #/budgets used to name its own screen; it now names half of the combined one, so a
+  // bookmark or a calendar link built on the old address still lands where it always did.
+  const read = () => {
+    const id = window.location.hash.replace(/^#\/?/, '') || 'portfolio';
+    return id === 'budgets' ? 'expenses' : id;
+  };
   const [screen, setScreen] = useState(read);
   useEffect(() => {
     const onHash = () => setScreen(read());
@@ -84,12 +88,11 @@ function Frame() {
         {active === 'realestate' && <Assets />}
         {active === 'gold' && <Metals />}
         {active === 'stocks' && <Stocks />}
-        {active === 'expenses' && <Expenses />}
+        {active === 'expenses' && <ExpensesAndBudgets />}
         {active === 'giving' && <Giving />}
         {active === 'debts' && <Debts />}
         {active === 'calendar' && <Calendar />}
         {active === 'logs' && <Logs />}
-        {active === 'budgets' && <Budgets />}
         {active === 'assistant' && <Assistant />}
         {active.startsWith('settings') && <Settings view={active} onNavigate={setActive} />}
       </div>

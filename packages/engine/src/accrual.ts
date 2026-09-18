@@ -162,12 +162,13 @@ export function accrue(d: DataSet, m: MarketState, now: Date): Accrual {
   const paidByProperty: Record<string, number> = { ...d.snapshot.paidByProperty };
   for (const i of instPaid) {
     instTotal += i.amountEgp;
-    if (isPrincipal(i.note)) {
-      const cap = d.snapshot.totalByProperty[i.propertyId] ?? Infinity;
-      paidByProperty[i.propertyId] = Math.min(cap, (paidByProperty[i.propertyId] ?? 0) + i.amountEgp);
-    } else {
-      instMaint += i.amountEgp;
-    }
+    if (!isPrincipal(i.note)) instMaint += i.amountEgp;
+    // A paid installment is money that went into the property, whether it bought a share of
+    // it or not — a maintenance charge still counts towards what the property is worth, the
+    // same as the opening/down payment does. `instMaint` still tracks how much of that went
+    // on upkeep rather than equity, for whoever wants that split read back separately.
+    const cap = d.snapshot.totalByProperty[i.propertyId] ?? Infinity;
+    paidByProperty[i.propertyId] = Math.min(cap, (paidByProperty[i.propertyId] ?? 0) + i.amountEgp);
   }
 
   // Cash is floored at zero: an overdraft stays invisible, exactly as F-049 has it.
@@ -186,21 +187,43 @@ export function accrue(d: DataSet, m: MarketState, now: Date): Accrual {
   };
 }
 
+/**
+ * One order's effect on a running {shares, cost} position — a buy adds weight and cost, a
+ * sale takes weight away at whatever the average cost was the instant before it, and takes
+ * that same average times its own shares off the cost. `computedPositions` and `avgCostBefore`
+ * both walk orders this way, from the same function, so a position and a sale's own arithmetic
+ * can never disagree about what a share cost.
+ */
+function stepPosition(p: { shares: number; cost: number }, o: Order): { shares: number; cost: number } {
+  if (o.side === 'BUY') {
+    return { shares: p.shares + o.shares, cost: p.cost + orderCash(o) };
+  }
+  const avg = p.shares ? p.cost / p.shares : 0;
+  return { shares: p.shares - o.shares, cost: p.cost - Math.round(avg * o.shares) };
+}
+
+/**
+ * What an order actually moves through the wallet.
+ *
+ * The broker's charge belongs to the order as a whole, not to each share in it, so it is
+ * added once to what a buy costs and taken once off what a sale brings in. A buy's cost of
+ * carry is therefore part of what the shares cost — the fee is money spent to hold them —
+ * and a sale is measured against what arrived, not against the headline price. Every reading
+ * of an order's cash goes through here so the position, the wallet and the realised figure
+ * can never disagree about what a fee did.
+ */
+export function orderCash(o: Order): number {
+  const gross = o.total || Math.round(o.shares * o.price);
+  const fee = o.fee ?? 0;
+  return o.side === 'BUY' ? gross + fee : Math.max(0, gross - fee);
+}
+
 /** Positions from executed orders only, average cost, walked in stored order (implicit note 9). */
 export function computedPositions(orders: Order[], prices: Record<string, number>) {
   const pos = new Map<string, { shares: number; cost: number }>();
   for (const o of [...orders].sort((a, b) => a.seq - b.seq)) {
     if (o.status !== 'executed') continue;
-    const p = pos.get(o.ticker) ?? { shares: 0, cost: 0 };
-    if (o.side === 'BUY') {
-      p.shares += o.shares;
-      p.cost += o.total || Math.round(o.shares * o.price);
-    } else {
-      const avg = p.shares ? p.cost / p.shares : 0;
-      p.shares -= o.shares;
-      p.cost -= Math.round(avg * o.shares);
-    }
-    pos.set(o.ticker, p);
+    pos.set(o.ticker, stepPosition(pos.get(o.ticker) ?? { shares: 0, cost: 0 }, o));
   }
   return [...pos.entries()]
     .filter(([, p]) => p.shares > 0)
@@ -211,11 +234,38 @@ export function computedPositions(orders: Order[], prices: Record<string, number
     });
 }
 
+/**
+ * The weighted average cost of every share of one ticker held immediately before a given
+ * order — the same walk `computedPositions` runs, stopped one order short, over every
+ * executed order with an earlier seq. Used to work out what a sale earned against the whole
+ * position it was sold from, never one lot of it.
+ */
+export function avgCostBefore(orders: Order[], ticker: string, beforeSeq: number): { shares: number; avgBuy: number } {
+  let p = { shares: 0, cost: 0 };
+  for (const o of [...orders].sort((a, b) => a.seq - b.seq)) {
+    if (o.status !== 'executed' || o.ticker !== ticker || o.seq >= beforeSeq) continue;
+    p = stepPosition(p, o);
+  }
+  return { shares: p.shares, avgBuy: p.shares > 0 ? p.cost / p.shares : 0 };
+}
+
+/**
+ * What a sale actually earned, against the average cost of the shares it sold — written once,
+ * at the moment of the sale, and never recomputed afterwards: a buy made later must not reach
+ * back and change what a past sale made. `pct` is null rather than a divide-by-zero when
+ * nothing was held to have cost anything, which only happens selling from an empty position.
+ */
+export function realizedOnSale(avgBuy: number, shares: number, saleTotal: number): { pnl: number; pct: number | null } {
+  const costOfSold = Math.round(avgBuy * shares);
+  const pnl = saleTotal - costOfSold;
+  return { pnl, pct: costOfSold !== 0 ? (pnl / costOfSold) * 100 : null };
+}
+
 export function brokerageCash(d: DataSet): number {
   let cash = d.settings.stockInitEgp;
   for (const o of d.orders) {
     if (o.status !== 'executed') continue;
-    cash += o.side === 'BUY' ? -o.total : o.total;
+    cash += o.side === 'BUY' ? -orderCash(o) : orderCash(o);
   }
   return cash;
 }

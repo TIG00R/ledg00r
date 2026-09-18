@@ -7,7 +7,6 @@ import { Ledg00rMascot } from '../components/Ledg00r';
 /** What the assistant is doing between a question and an answer. */
 type Mood = 'idle' | 'thinking' | 'searching' | 'talking' | 'pleased' | 'sorry';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
-import { ModeProvider } from '../components/ModeBar';
 import { useLive } from '../Live';
 import { ledger } from '../api';
 
@@ -27,9 +26,7 @@ interface Said { role: 'user' | 'assistant'; text: string; used?: Array<{ tool: 
  */
 export function Assistant() {
   return (
-    <ModeProvider>
-      <SectionProvider first="talk"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="talk"><Body /></SectionProvider>
   );
 }
 

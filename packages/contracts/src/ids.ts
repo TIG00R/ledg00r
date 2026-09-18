@@ -24,6 +24,8 @@ export const InstallmentId = brand('InstallmentId');
 export const LotId = brand('LotId');
 export const OrderId = brand('OrderId');
 export const RecordId = brand('RecordId');
+/** The book an order, a position or a wallet belongs to — there is always at least one. */
+export const ExchangeId = brand('ExchangeId');
 
 export type NodeId = z.infer<typeof NodeId>;
 export type AccountId = z.infer<typeof AccountId>;
@@ -38,6 +40,7 @@ export type InstallmentId = z.infer<typeof InstallmentId>;
 export type LotId = z.infer<typeof LotId>;
 export type OrderId = z.infer<typeof OrderId>;
 export type RecordId = z.infer<typeof RecordId>;
+export type ExchangeId = z.infer<typeof ExchangeId>;
 
 /** A ticker is not an id in the same sense — it is the market's name for the thing. */
 export const Ticker = z.string().regex(/^[A-Z][A-Z0-9.]{0,11}$/, 'not a ticker');

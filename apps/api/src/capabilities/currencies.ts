@@ -90,6 +90,15 @@ export const currencyCaps = (ctxOf: () => AppCtx) => [
       }
 
       ctx.db.$raw.exec('DELETE FROM market_ticks');
+      // The automatic fetcher decides whether a subject needs looking at again by how long
+      // ago its last attempt was recorded — it never checks whether the rate it wrote is
+      // still there. Left standing, that log would go on saying "fetched, fine" for up to
+      // `refreshHours` after the rates it is describing were just deleted, and nothing would
+      // come back on its own until that clock ran out. Forgetting it here is what makes every
+      // subject read as never having been looked at, so the next automatic pass — or the next
+      // visit to this screen — goes and asks again rather than trusting a memory of rates that
+      // no longer exist.
+      writePref(ctx.db, 'priceSourceLog', {});
       writePref(ctx.db, 'settings', { ...(readPref<object>(ctx.db, 'settings') ?? {}), base: up });
       return noted(
         `This ledger now reports in ${up}. All ${rates.n} rates and prices were discarded — record them again against ${up} in the Currency Zone.`,

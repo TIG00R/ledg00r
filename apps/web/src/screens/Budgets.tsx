@@ -11,9 +11,14 @@ import { Amount } from '../components/Amount';
 import { Segmented } from '../components/Segmented';
 import { ConfirmDelete } from '../components/Confirm';
 import { ClearAll } from '../components/ClearAll';
-import { ModeProvider, useMode } from '../components/ModeBar';
+import { isInteractive } from '../components/RecordTable';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
-import { BudgetChart, type Line, type Ceiling } from '../components/BudgetChart';
+import { Pie } from '../components/Pie';
+
+/** One destination's total over the window the chart is showing, and the colour it wears everywhere else. */
+interface SeriesLine { id: string; name: string; color: string; icon: string | null; total: number }
+/** A ceiling that applies, restated per bucket so it can be weighed against a total over the same window. */
+interface SeriesCeiling { id: string; name: string; color: string; perBucket: number; destinationIds: string[] }
 
 /**
  * Budgets, as pools.
@@ -28,9 +33,7 @@ import { BudgetChart, type Line, type Ceiling } from '../components/BudgetChart'
  */
 export function Budgets() {
   return (
-    <ModeProvider>
-      <SectionProvider first="pools"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="pools"><Body /></SectionProvider>
   );
 }
 
@@ -52,19 +55,15 @@ const PERIOD_LABEL: Record<string, string> = {
   monthly: 'a month', quarterly: 'a quarter', annual: 'a year',
 };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 function Body() {
   const { tab } = useSection();
   const { data, display, currencies } = useApp();
   const { live, version, run } = useLive();
-  const { mode } = useMode();
 
   const [pools, setPools] = useState<Pool[] | null>(null);
   const [span, setSpan] = useState<Span>('year');
   const [series, setSeries] = useState<{
-    buckets: string[]; lines: Line[]; ceilings: Ceiling[]; currency: string } | null>(null);
+    buckets: string[]; lines: SeriesLine[]; ceilings: SeriesCeiling[]; currency: string } | null>(null);
 
   const cats = data.categories.filter((c) => c.domain === 'expense');
 
@@ -97,8 +96,7 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'pools', label: 'Pools', icon: 'expenses',
-          hint: 'What each ceiling is doing in the period it is in.',
-          editHint: 'Change a ceiling, what it covers, or the period it runs on — and add new ones.' },
+          hint: 'What each ceiling is doing in the period it is in. Double-click one to change it.' },
         { id: 'chart', label: 'Over time', icon: 'dashboards',
           hint: 'What each destination cost, month by month, against the ceilings that watch it.' },
       ]} />
@@ -140,24 +138,21 @@ function Body() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {(pools ?? []).map((p) => (
-                  <PoolCard key={p.id} pool={p} cats={cats} editing={mode === 'edit'}
+                  <PoolCard key={p.id} pool={p} cats={cats}
                             currencies={currencies} run={run} onDone={load} />
                 ))}
               </div>
             )}
 
-            {mode === 'edit' && <AddPool cats={cats} currencies={currencies} run={run} onDone={load} />}
-            {mode !== 'edit' && (
-              <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.5 }}>
-                Switch to Edit to change a ceiling or add one. A destination may sit in more than
-                one pool; both count it, and both say so.
-              </p>
-            )}
+            <AddPool cats={cats} currencies={currencies} run={run} onDone={load} />
+            <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.5 }}>
+              A destination may sit in more than one pool; both count it, and both say so.
+            </p>
           </Panel>
         </>
       ) : (
-        <Panel title="Where it went, over time"
-               hint={`Each destination in its own colour, in ${display}. A dashed rule is a ceiling, at the height one ${span === 'all' ? 'year' : 'month'} of it reaches.`}
+        <Panel title="Where it went"
+               hint={`Each destination's share of what was spent ${span === 'all' ? 'across every year' : 'this year'}, in ${display}. A destination whose ceiling that spending has passed is called out below — a pie shows share, not whether it went over.`}
                action={
                  <Segmented<Span> value={span} onChange={setSpan} ariaLabel="Over what span"
                    options={[
@@ -166,9 +161,7 @@ function Body() {
                    ]} />
                }>
           {series ? (
-            <BudgetChart buckets={series.buckets} lines={series.lines} ceilings={series.ceilings}
-                         currency={display}
-                         label={(b) => (b.length === 4 ? b : MONTHS[Number(b.slice(5, 7)) - 1]!)} />
+            <SpendPie series={series} currency={display} />
           ) : (
             <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>Reading…</p>
           )}
@@ -178,11 +171,86 @@ function Body() {
   );
 }
 
-/** One pool: what it is doing now, what it covers, and — while editing — its fields. */
-function PoolCard({ pool: p, cats, editing, currencies, run, onDone }: {
+/**
+ * Where it went, as a pie rather than a line.
+ *
+ * One wedge per destination, in the colour it wears everywhere else — the log, the pools
+ * above, the pickers. A pie says share; it says nothing about a ceiling by itself, which is
+ * exactly what the line used to draw as a dashed rule. That fact is not dropped, only moved:
+ * a destination whose ceiling the spending drawn here has passed — the ceiling restated over
+ * this same window, compared against what its pool actually spent in it — gets called out
+ * beside its own row, in words, rather than folded into a shape that cannot say "past" on its
+ * own. The percentage stays written beside every row for the reason `Pie` gives: a tilted
+ * disc flatters the wedges nearest the viewer, and the figures must not be left to it.
+ */
+function SpendPie({ series, currency }: {
+  series: { buckets: string[]; lines: SeriesLine[]; ceilings: SeriesCeiling[] };
+  currency: string;
+}) {
+  const total = series.lines.reduce((s, l) => s + l.total, 0);
+
+  const overIds = new Set<string>();
+  for (const c of series.ceilings) {
+    const ceilingOverWindow = c.perBucket * series.buckets.length;
+    const spentByIt = series.lines
+      .filter((l) => c.destinationIds.includes(l.id))
+      .reduce((s, l) => s + l.total, 0);
+    if (ceilingOverWindow > 0 && spentByIt > ceilingOverWindow) {
+      c.destinationIds.forEach((id) => overIds.add(id));
+    }
+  }
+
+  if (series.lines.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
+        Nothing was spent in this window, so there is nothing to draw.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <Pie
+        slices={series.lines.map((l) => ({ label: l.name, value: l.total, color: l.color }))}
+        size={232}
+        format={(n) => money(n, currency as Currency)}
+        caption={
+          <>
+            <span style={{ fontSize: 11, color: 'var(--faint)' }}>spent</span>
+            <span className="mono" style={{ fontSize: 15, fontWeight: 500 }}>
+              {money(total, currency as Currency)}
+            </span>
+          </>
+        }
+      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 1, minWidth: 220 }}>
+        {series.lines.map((l) => (
+          <span key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: l.color, flex: '0 0 auto' }} />
+            <span style={{ flex: 1 }}>{l.name}</span>
+            <span className="mono" style={{ color: 'var(--muted)' }}>{money(l.total, currency as Currency)}</span>
+            {/* The share in words, because a tilted disc cannot be trusted to rank the
+                wedges by eye — the reason `Pie` asks for it. */}
+            <span className="mono" style={{ color: 'var(--faint)', fontSize: 11 }}>
+              {total > 0 ? `${((l.total / total) * 100).toFixed(1)}%` : '—'}
+            </span>
+            {overIds.has(l.id) && <Chip tone="bad">over its ceiling</Chip>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One pool: what it is doing now, what it covers, and — once opened — its fields.
+ *
+ * A pool is a row like any other, so it opens the same way `RecordTable` opens one: double-
+ * click it, press Enter with it focused, or press its pencil.
+ */
+function PoolCard({ pool: p, cats, currencies, run, onDone }: {
   pool: Pool;
   cats: ReturnType<typeof useApp>['data']['categories'];
-  editing: boolean;
   currencies: ReturnType<typeof useApp>['currencies'];
   run: ReturnType<typeof useLive>['run'];
   onDone: () => void;
@@ -198,11 +266,21 @@ function PoolCard({ pool: p, cats, editing, currencies, run, onDone }: {
     name: p.name, amount: p.amount, currency: p.currency, period: p.period as Period,
     warnAt: p.warnAt, members: p.members.map((m) => m.id),
   });
+  const openable = !draft;
 
   return (
     <div style={{ padding: '15px 17px', borderRadius: 'var(--r-card)',
                   background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className="mgr-row" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                    cursor: openable ? 'pointer' : undefined }}
+           tabIndex={openable ? 0 : undefined}
+           aria-label={openable ? `Double-click, or press Enter, to edit ${p.name}` : undefined}
+           onDoubleClick={openable ? (e) => { if (!isInteractive(e.target)) open(); } : undefined}
+           onKeyDown={openable ? (e) => {
+             if (e.key !== 'Enter' || isInteractive(e.target)) return;
+             e.preventDefault();
+             open();
+           } : undefined}>
         <span style={{ width: 36, height: 36, borderRadius: 10, flex: '0 0 36px',
                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                        background: `color-mix(in srgb, ${p.color} 15%, transparent)` }}>
@@ -215,7 +293,7 @@ function PoolCard({ pool: p, cats, editing, currencies, run, onDone }: {
             {p.from} to {p.to} · {p.daysLeft} day{p.daysLeft === 1 ? '' : 's'} left
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div>
           <div className="mono" style={{ fontSize: 16, fontWeight: 500, color: tone }}>
             {money(p.spent, p.currency as Currency)}
           </div>
@@ -228,28 +306,41 @@ function PoolCard({ pool: p, cats, editing, currencies, run, onDone }: {
         <Chip tone={p.standing === 'over' ? 'bad' : p.standing === 'close' ? 'warn' : 'good'}>
           {Math.round(p.share * 100)}%
         </Chip>
-        {editing && !draft && (
+        {openable && (
           <span style={{ display: 'flex', gap: 6 }}>
-            <button className="btn quiet" onClick={open} aria-label={`Edit ${p.name}`} title="Edit"
+            <button className="btn quiet rt-hint" onClick={open} aria-label={`Edit ${p.name}`} title="Edit"
                     style={{ padding: 7, border: 'none' }}>
               <Icon name="edit" size={14} />
             </button>
-            <ConfirmDelete what={p.name} size={14}
+            <ConfirmDelete what={p.name} size={14} className="rt-hint"
                            onConfirm={() => { void run('budget.remove', { budgetId: p.id }).then(onDone); }} />
           </span>
         )}
       </div>
 
-      {/* the bar: what is spent, against the ceiling, with the warning mark on it */}
-      <div style={{ marginTop: 13, position: 'relative', height: 8, borderRadius: 999,
-                    background: 'var(--surface)', overflow: 'hidden' }}>
-        <div style={{ width: `${Math.min(100, p.share * 100)}%`, height: '100%',
-                      background: tone, borderRadius: 999,
-                      transition: 'width 220ms var(--ease)' }} />
-      </div>
-      <div style={{ position: 'relative', height: 10 }}>
-        <span style={{ position: 'absolute', left: `${Math.min(100, p.warnAt * 100)}%`,
-                       top: -12, width: 1, height: 12, background: 'var(--faint)' }} />
+      {/* What is spent against the ceiling, as a pie rather than a bar: spent and left are
+          two parts of one figure, which is the one thing a pie says better than anything
+          else. Past the ceiling there is no "left" to draw, so the wedges become what the
+          ceiling covered and what was spent beyond it — the chart changes what it is
+          dividing rather than pretending a hundred and twenty per cent fits in a circle. */}
+      <div style={{ marginTop: 13, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Pie size={148}
+             slices={p.remaining >= 0
+               ? [{ label: 'Spent', value: p.spent, color: tone },
+                  { label: 'Left', value: p.remaining, color: 'var(--hairline-strong)' }]
+               : [{ label: 'The ceiling', value: p.amount, color: 'var(--gold)' },
+                  { label: 'Over it', value: -p.remaining, color: 'var(--negative)' }]}
+             format={(n) => money(n, p.currency as Currency)}
+             caption={
+               <span style={{ fontSize: 11, color: 'var(--faint)' }}>
+                 {p.remaining >= 0
+                   ? `${money(p.remaining, p.currency as Currency)} of ${money(p.amount, p.currency as Currency)} left`
+                   : `${money(-p.remaining, p.currency as Currency)} past ${money(p.amount, p.currency as Currency)}`}
+               </span>
+             } />
+        <span style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.6 }}>
+          It is called close at {Math.round(p.warnAt * 100)}%.
+        </span>
       </div>
 
       <div style={{ marginTop: 8, display: 'flex', gap: 7, flexWrap: 'wrap' }}>

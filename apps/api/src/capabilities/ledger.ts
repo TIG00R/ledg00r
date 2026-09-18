@@ -238,11 +238,16 @@ export const ledgerCaps = (ctxOf: () => AppCtx) => [
           used === 1 ? `1 movement names ${node.name}.` : `${used} movements name ${node.name}.`,
           'Archive it instead — archiving freezes the balance and keeps every row in the log.');
       }
-      // The three holdings the ledger is built on are structure rather than records: without
-      // them there is nowhere for metal or shares to live at all.
-      if (['gold', 'silver', 'brokerage-cash'].includes(accountId)) {
+      // Gold, silver and every exchange's wallet and clouds wallet are structure rather than
+      // records: without them there is nowhere for metal or a share book to live at all. An
+      // exchange's own wallets are read fresh rather than named here, because a new exchange
+      // makes its own — exchange.archive is what retires one of those, atomically with the
+      // exchange row that owns it, rather than leaving that row pointing at nothing.
+      const exchangeWallets = db.select().from(t.exchanges).all()
+        .flatMap((e) => [e.walletNodeId, e.cloudsNodeId]);
+      if (['gold', 'silver', ...exchangeWallets].includes(accountId)) {
         return refusal('immutable', `${node.name} is part of how this ledger is put together.`,
-                       'It holds nothing and costs nothing to keep. Turn its module off in Settings if it is in the way.');
+                       'It holds nothing and costs nothing to keep. Turn its module off in Settings if it is in the way, or archive the exchange it belongs to.');
       }
       db.delete(t.nodes).where(eq(t.nodes.id, accountId)).run();
       return noted(`${node.name} deleted`);

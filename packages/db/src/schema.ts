@@ -52,6 +52,20 @@ export const nodes = sqliteTable('nodes', {
   nisabMetOn: text('nisab_met_on'),
   icon: text('icon'),
   archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * The money an asset bought outright was actually paid with, frozen the day it was paid.
+   *
+   * `currency` above is what the asset is *held* in — a car is worth so many dollars, today
+   * and next year. This is a different question: which account paid for it, what that
+   * account's own currency was, how much of it left, and the rate that applied — kept so the
+   * ledger can ask, alongside what the asset is worth now, what that money would be worth now
+   * had it simply stayed where it was. Null for anything bought before this was tracked, or
+   * for a plan, or for one stated with no source at all.
+   */
+  sourceAccountId: text('source_account_id'),
+  sourceCurrency: text('source_currency'),
+  sourceAmount: real('source_amount'),
+  sourceRate: real('source_rate'),
 }, (t) => ({
   byParent: index('node_parent').on(t.parentId),
   byKind: index('node_kind').on(t.kind, t.archived),
@@ -216,6 +230,14 @@ export const goldLots = sqliteTable('gold_lots', {
   pricePerGram: real('price_per_gram').notNull(),
   totalEgp: real('total_egp').notNull(),
   usdPaid: real('usd_paid').notNull().default(0),
+  /**
+   * A flat charge on the sale itself, in the account's own currency.
+   *
+   * Not the making charge, which is struck per gram in the metal's quoted currency and comes
+   * off `totalEgp` before it. This is what the dealer or the transfer took off the money that
+   * arrived, and it is kept so a correction can reverse the same sale it wrote.
+   */
+  fee: real('fee').notNull().default(0),
   accountId: text('account_id'),
   movementId: text('movement_id'),
   note: text('note'),
@@ -242,12 +264,52 @@ export const goldLots = sqliteTable('gold_lots', {
   makingPerGram: real('making_per_gram').notNull().default(0),
   /** what that workmanship came to, in pounds — grams times the charge, at the day's rate */
   makingEgp: real('making_egp').notNull().default(0),
+  /**
+   * The account's own money, as it actually left `accountId`, frozen the day it left.
+   *
+   * `currency`/`priceNative` above are what the *metal* was quoted in — a dealer's own
+   * pricing. This is the buyer's side: the account's currency, what left it, and the rate
+   * applied — so a lot bought with converted dollars can be asked what those dollars would be
+   * worth now, apart from what the gold itself did. Set on a buy only; a sale gives money
+   * back rather than spending it, so there is no source money behind one, and a lot held from
+   * before the ledger has no account to have paid it either.
+   */
+  sourceCurrency: text('source_currency'),
+  sourceAmount: real('source_amount'),
+  sourceRate: real('source_rate'),
 }, (t) => ({ byDate: index('lot_date').on(t.date) }));
+
+/**
+ * A book above the book.
+ *
+ * There used to be exactly one share book: one wallet, one set of orders, one set of
+ * positions, all reached by a fixed id nothing ever had to name. An owner with money at more
+ * than one broker needs more than one of each — so the book itself becomes a row, and every
+ * order and every wallet says which one it belongs to, rather than there being only one to
+ * belong to.
+ *
+ * The wallet and the clouds wallet are named here rather than guessed at from a naming
+ * convention on `nodes` — the first exchange kept the ids `brokerage-cash` and `clouds-cash`
+ * it always had, so nothing that already pointed at them had to change, and a fixed pattern
+ * could never have covered both that and a freshly generated id for the next one.
+ */
+export const exchanges = sqliteTable('exchanges', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** the broker's own mark — an icon name, or `img:<id>` into `images`, as a bank's is */
+  logo: text('logo'),
+  walletNodeId: text('wallet_node_id').notNull(),
+  cloudsNodeId: text('clouds_node_id').notNull(),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+});
 
 export const orders = sqliteTable('orders', {
   id: text('id').primaryKey(),
   seq: integer('seq').notNull(),
   date: text('date').notNull(),
+  /** which exchange this order was placed on — the book it moves and the wallet it spends */
+  exchangeId: text('exchange_id').notNull().default('main'),
   time: text('time'),
   ticker: text('ticker').notNull(),
   side: text('side', { enum: ['BUY', 'SELL'] }).notNull(),
@@ -256,11 +318,48 @@ export const orders = sqliteTable('orders', {
   total: real('total').notNull(),
   status: text('status', { enum: ['executed', 'pending', 'cancelled'] }).notNull(),
   movementId: text('movement_id'),
+  /**
+   * What the broker charged for this order, once, in the wallet's own currency. It belongs
+   * to the whole order rather than to each share — a commission of fifty is fifty whether
+   * the order was for one share or a hundred — so it is added to what a buy takes out of
+   * the wallet and taken off what a sale puts back into it, and never multiplied by shares.
+   */
+  fee: real('fee').notNull().default(0),
+  /**
+   * Why these shares are held — 'personal' or 'investment' — stated on the order itself, so
+   * shares of the same ticker bought to keep and bought to trade are not forced into one
+   * answer. Null on an order logged before it was asked for, which reads as "not stated"
+   * rather than as either answer.
+   */
+  intention: text('intention'),
   /** why, for the next time this order is read back */
   note: text('note'),
+  /**
+   * What a sale earned, against the weighted average cost of every share of that ticker held
+   * the instant before it — never one lot's own price. Written once, when the sale is logged,
+   * and left alone afterwards: a share bought later must not reach back and change what a
+   * past sale made. Null for a buy, and null for a sale logged before this column existed —
+   * there is no honest figure to back-fill, since the owner never saw one at the time.
+   */
+  realizedPnl: real('realized_pnl'),
+  /** the same result as a percentage of what the shares sold had cost, alongside the amount */
+  realizedPnlPct: real('realized_pnl_pct'),
+  /**
+   * A buy's own source money, the same idea `gold_lots` keeps: the account it is understood
+   * to have been funded from, that account's currency, what left it, and the rate applied,
+   * frozen the day it was logged. Shares are bought out of the pooled brokerage wallet rather
+   * than a named account directly, so unlike a metal lot this is only ever recorded when the
+   * caller actually names one — nothing here guesses which account paid for a buy that never
+   * said. Null on every sale, and on a buy that named none.
+   */
+  accountId: text('account_id'),
+  sourceCurrency: text('source_currency'),
+  sourceAmount: real('source_amount'),
+  sourceRate: real('source_rate'),
 }, (t) => ({
   byTickerDate: index('ord_ticker_date').on(t.ticker, t.date),
   byStatus: index('ord_status').on(t.status, t.date),
+  byExchange: index('ord_exchange').on(t.exchangeId, t.date),
 }));
 
 /**
@@ -274,6 +373,11 @@ export const orders = sqliteTable('orders', {
 export const stocks = sqliteTable('stocks', {
   ticker: text('ticker').primaryKey(),
   name: text('name'),
+  /** an icon name, or `img:<id>` into `images` — a company's mark, the same shape as a bank's */
+  logo: text('logo'),
+  /** why the share is held — 'personal' or 'investment', the same two words gold answers in;
+   *  null until the owner states one, and read back as "not stated" rather than guessed at */
+  intention: text('intention'),
   createdAt: text('created_at').notNull(),
 });
 
@@ -596,6 +700,13 @@ export const debts = sqliteTable('debts', {
   counterparty: text('counterparty').notNull(),
   principal: real('principal').notNull(),
   currency: text('currency').notNull(),
+  /**
+   * EGP per unit of `currency`, as it stood the day the debt was lent or borrowed — frozen at
+   * that moment the way an expense freezes its own rate, so a rate that moves afterwards
+   * does not reach back and change what a debt already made is worth. Null for a debt
+   * recorded in EGP (nothing to convert) or one recorded before this column existed.
+   */
+  rate: real('rate'),
   startedOn: text('started_on').notNull(),
   dueOn: text('due_on'),
   note: text('note'),
@@ -608,6 +719,38 @@ export const debts = sqliteTable('debts', {
   byDue: index('debt_due').on(t.dueOn),
 }));
 
+/**
+ * What everything owned came to, frozen at the moment the row was written.
+ *
+ * Net worth read live is what `portfolio.overview` answers, and it moves every time a price
+ * does — asking it again tomorrow gives a different number for today. A timeline needs the
+ * opposite: what the answer *was*, that will not change underneath it. So one statement is
+ * written every day, automatically, by the scheduler alone — nothing else creates one — and
+ * stands afterwards the way a confirmed zakat year does, editable only by a deliberate
+ * correction rather than by asking the ledger the same question again.
+ */
+export const wealthStatements = sqliteTable('wealth_statements', {
+  id: text('id').primaryKey(),
+  /** the day this statement is for, YYYY-MM-DD — one row per day */
+  date: text('date').notNull(),
+  /** date's own month, YYYY-MM — kept alongside it so a month or a year can be indexed directly rather than substr'd out of date on every read */
+  month: text('month').notNull(),
+  currency: text('currency').notNull(),
+  netWorth: real('net_worth').notNull(),
+  /** the same shape portfolio.overview reports, frozen alongside the total */
+  allocation: text('allocation', { mode: 'json' }).notNull(),
+  /** 'auto' on every day the scheduler writes; 'manual' once a person has corrected it */
+  source: text('source', { enum: ['auto', 'manual'] }).notNull().default('auto'),
+  note: text('note'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at'),
+}, (t) => ({
+  byDate: uniqueIndex('wealth_stmt_date').on(t.date),
+  byMonth: index('wealth_stmt_month').on(t.month),
+}));
+
+export type WealthStatement = typeof wealthStatements.$inferSelect;
+
 export type Debt = typeof debts.$inferSelect;
 
 export type Institution = typeof institutions.$inferSelect;
@@ -619,6 +762,7 @@ export type Charity = typeof charity.$inferSelect;
 export type ZakatYear = typeof zakatYears.$inferSelect;
 export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
+export type Exchange = typeof exchanges.$inferSelect;
 export type Stock = typeof stocks.$inferSelect;
 export type StockNote = typeof stockNotes.$inferSelect;
 export type StockDividend = typeof stockDividends.$inferSelect;

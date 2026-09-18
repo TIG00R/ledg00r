@@ -44,7 +44,9 @@ export const MODULES: ModuleDef[] = [
     screens: ['expenses'] },
   { id: 'budgets', label: 'Budgets', icon: 'budgets',
     blurb: 'Ceilings over a month, a quarter or a year, each covering one destination or a pool of them — with a warning when one is passed, and the whole of it drawn over time.',
-    screens: ['budgets'] },
+    // Budgets shares its screen with Expenses now — one sidebar entry, gated open if
+    // either module is on, with the screen itself deciding which half to draw.
+    screens: ['expenses'] },
   { id: 'giving', label: 'Zakat and Sadaqat', icon: 'zakat',
     blurb: 'What you give, and the zakat calculation it counts against — one obligation and the record of meeting it.',
     screens: ['giving'] },

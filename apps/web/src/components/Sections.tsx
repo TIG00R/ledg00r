@@ -1,17 +1,16 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
-import { useMode } from './ModeBar';
 import { useRemembered } from '../remember';
 import { useLive } from '../Live';
 
 /**
- * A screen's own sections, with editing as a state rather than a section.
+ * A screen's own sections.
  *
- * The earlier arrangement made Operate and Edit the two halves of every screen, which put a
- * verb where a noun belonged: the accounts and their movement log are two different things to
- * look at, and editing is something you do to whichever one you are looking at. So the tabs
- * name the things, and Edit sits to the right as a switch that applies to the section in
- * front of you.
+ * The earlier arrangement made Operate and Edit the two halves of every screen, and put a
+ * switch here that turned a whole section's tables into rows of pencils at once — a verb
+ * standing where a noun belonged. Correcting a record is a gesture on the record now (double-
+ * click it, press Enter with it focused, or press its pencil — see `RecordTable` and
+ * `Manager`), so a screen's sections are only ever the things you can look at.
  */
 interface Ctx { tab: string; setTab: (id: string) => void }
 const SectionCtx = createContext<Ctx | null>(null);
@@ -30,8 +29,6 @@ export interface SectionDef {
   art?: ReactNode;
   /** shown under the bar while this section is open */
   hint?: string;
-  /** what Edit means here; absent means this section cannot be edited */
-  editHint?: string;
 }
 
 /**
@@ -52,22 +49,17 @@ export function SectionProvider({ first, children }: { first: string; children: 
 
 export function Sections({ sections }: { sections: SectionDef[] }) {
   const { tab, setTab } = useSection();
-  const { mode, setMode } = useMode();
   const here = sections.find((s) => s.id === tab) ?? sections[0]!;
 
   // a remembered section that this screen no longer has would leave the bar pointing at one
   // thing and the screen drawing nothing
   useEffect(() => { if (here.id !== tab) setTab(here.id); }, [here.id, tab, setTab]);
-  const editable = !!here.editHint;
-  const editing = editable && mode === 'edit';
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 16px',
-      borderRadius: 'var(--r-card)',
-      background: editing ? 'color-mix(in srgb, var(--gold) 8%, transparent)' : 'var(--surface)',
-      border: `1px solid ${editing ? 'color-mix(in srgb, var(--gold) 30%, transparent)' : 'var(--hairline)'}`,
-      transition: 'background 180ms var(--ease), border-color 180ms var(--ease)',
+      borderRadius: 'var(--r-card)', background: 'var(--surface)',
+      border: '1px solid var(--hairline)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 'var(--r-sm)',
@@ -93,28 +85,9 @@ export function Sections({ sections }: { sections: SectionDef[] }) {
         </div>
 
         <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, flex: 1, minWidth: 200 }}>
-          {editing ? here.editHint : here.hint}
+          {here.hint}
         </span>
-
-        {/* Editing belongs to the section in front of you, so the switch sits with it and
-            disappears where there is nothing to edit. Done finishes an edit, so it is the
-            green every other finishing button is; Edit starts one, so it stays quiet. */}
-        {editable && (
-          <button className={editing ? 'btn go' : 'btn ghost'} aria-pressed={editing}
-                  onClick={() => setMode(editing ? 'operate' : 'edit')}
-                  style={{ fontSize: 13, padding: '7px 14px' }}>
-            <Icon name={editing ? 'check' : 'edit'} size={14} />
-            {editing ? 'Done' : 'Edit'}
-          </button>
-        )}
       </div>
-
-      {editing && (
-        <span className="chip" style={{ alignSelf: 'flex-start',
-          background: 'color-mix(in srgb, var(--gold) 16%, transparent)', color: 'var(--gold)' }}>
-          nothing here writes a movement
-        </span>
-      )}
     </div>
   );
 }

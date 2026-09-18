@@ -4,6 +4,8 @@ import { validate } from '@ledger/domain';
 import { writeMovement, ledgerView } from '@ledger/db';
 import { installmentDueDate } from '@ledger/engine';
 import { nextOccurrence, readTemplates } from './capabilities/planning.js';
+import { wealthSnapshot } from './capabilities/overview.js';
+import { newId, today } from './capabilities/shared.js';
 import type { RecurringTemplate } from '@ledger/engine';
 import type { AppCtx } from './context.js';
 
@@ -22,12 +24,37 @@ import type { AppCtx } from './context.js';
 export interface TickResult {
   posted: Array<{ what: string; movementId: string; amount: number }>;
   skipped: Array<{ what: string; because: string }>;
+  /** today's wealth statement, written once by this tick */
+  closed: Array<{ date: string; netWorth: number; currency: string }>;
 }
 
 export function tick(ctx: AppCtx): TickResult {
   const posted: TickResult['posted'] = [];
   const skipped: TickResult['skipped'] = [];
-  const todayIso = ctx.now.toISOString().slice(0, 10);
+  const closed: TickResult['closed'] = [];
+  const todayIso = today(ctx);
+
+  /**
+   * Today's reading, written once.
+   *
+   * The tick runs on boot and hourly, so the first one to run after midnight is the one that
+   * notices today has no statement yet and writes it — close enough to "at midnight" without
+   * a timer of its own. Nothing else creates one: not a button, not an agent, only this. A
+   * person who wants a figure of their own on a day still writes it with
+   * `wealth.statement.update`, against the row this already wrote.
+   */
+  const already = ctx.db.select().from(t.wealthStatements)
+    .where(eq(t.wealthStatements.date, todayIso)).get();
+  if (!already) {
+    const snap = wealthSnapshot(ctx);
+    const now = ctx.now.toISOString();
+    ctx.db.insert(t.wealthStatements).values({
+      id: newId('stmt'), date: todayIso, month: todayIso.slice(0, 7),
+      currency: snap.currency, netWorth: snap.netWorth, allocation: snap.allocation,
+      source: 'auto', note: null, createdAt: now, updatedAt: null,
+    }).run();
+    closed.push({ date: todayIso, netWorth: snap.netWorth, currency: snap.currency });
+  }
 
   for (const tpl of readTemplates(ctx)) {
     if (!tpl.enabled || tpl.amount == null) continue;
@@ -69,12 +96,14 @@ export function tick(ctx: AppCtx): TickResult {
       if (dueIso > todayIso) continue;
 
       const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
-      const equity = !/maintenance|service|fee/i.test(inst.note);
 
       try {
         const mv = validate({
           date: dueIso, kind: 'installment', note: inst.note || property?.name, automatic: true,
-          legs: [equity && property
+          // A paid installment counts towards the property's value whatever it bought — a
+          // maintenance charge or a fee included — so every one of them credits the property,
+          // not only the ones that buy a share of it.
+          legs: [property
             ? { fromNodeId: auto.fromNodeId, qtyFrom: inst.amountEgp, toNodeId: property.id, qtyTo: inst.amountEgp }
             : { fromNodeId: auto.fromNodeId, qtyFrom: inst.amountEgp }],
         }, ledgerView(ctx.db));
@@ -90,7 +119,7 @@ export function tick(ctx: AppCtx): TickResult {
     }
   }
 
-  return { posted, skipped };
+  return { posted, skipped, closed };
 }
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);

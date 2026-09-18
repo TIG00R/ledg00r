@@ -6,9 +6,29 @@ import { upcoming, nextOccurrence, type Reminder, type ReminderSubject,
          type RecurringTemplate, type Dismissal, type ZakatSettings } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun,
-         reversedMovements } from './shared.js';
+         reversedMovements, nameOf } from './shared.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
 import { readBudgets } from './budgets.js';
+
+/**
+ * What a reminder's own subject is called, the way a person would name it.
+ *
+ * `subjectId` is whichever id the reminder watches — a property, an income source, a standing
+ * charge, a share ticker — and confirming a change by repeating that id back is a receipt from
+ * the database rather than from the ledger. A ticker is already how a person reads it, so it
+ * passes through as it is; everything else is a node or a row with a name of its own.
+ */
+function subjectName(db: AppCtx['db'], subject: string, subjectId?: string | null): string | undefined {
+  if (!subjectId) return undefined;
+  if (subject === 'installment') return nameOf(db, subjectId);
+  if (subject === 'income') {
+    return db.select().from(t.incomeSources).where(eq(t.incomeSources.id, subjectId)).get()?.name ?? subjectId;
+  }
+  if (subject === 'recurring') {
+    return db.select().from(t.recurringTemplates).where(eq(t.recurringTemplates.id, subjectId)).get()?.name ?? subjectId;
+  }
+  return subjectId;
+}
 
 /**
  * Everything forward-looking.
@@ -536,7 +556,8 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
       };
       if (existing) db.update(t.reminders).set(values).where(eq(t.reminders.id, existing.id)).run();
       else db.insert(t.reminders).values({ id: newId('rem'), ...values, cadence: null }).run();
-      return noted(`${input.subject}${input.subjectId ? ` · ${input.subjectId}` : ''} ${input.enabled ? `warns ${values.offsetValue} ${values.offsetUnit} before` : 'no longer warns'}`);
+      const label = subjectName(db, input.subject, input.subjectId);
+      return noted(`${input.subject}${label ? ` · ${label}` : ''} ${input.enabled ? `warns ${values.offsetValue} ${values.offsetUnit} before` : 'no longer warns'}`);
     },
   }),
 

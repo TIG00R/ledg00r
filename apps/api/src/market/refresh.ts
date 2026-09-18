@@ -2,7 +2,7 @@
 import type { AppCtx } from '../context.js';
 import { readPref, writePref } from '../read.js';
 import { readBase, readCurrencies } from '../capabilities/currencies.js';
-import { DEFAULT_SOURCE, findSource, forSubject, SUBJECTS, type Subject } from './sources.js';
+import { DEFAULT_SOURCE, findSource, forSubject, SUBJECTS, type Source, type Subject } from './sources.js';
 
 /**
  * Fetching, and the settings that govern it.
@@ -88,11 +88,111 @@ function wanted(ctx: AppCtx) {
   return { base, currencies, tickers, known };
 }
 
+/**
+ * How old the figure a subject is currently serving actually is.
+ *
+ * `readLog` says when a subject was last *attempted*, which on a closed market is today and
+ * says nothing about the price itself — the attempt found nobody home and wrote nothing. What
+ * a screen needs instead is when the tick behind today's number was actually taken, so it can
+ * say "as at Friday's close" rather than pretend the figure in front of someone is live.
+ *
+ * Ticks are the history, so this is read straight out of them rather than kept anywhere new:
+ * the oldest tick among the keys this ledger currently relies on for the subject — the
+ * weakest link, since that is the one that would mislead someone if shown as current. A
+ * subject nothing has ever been recorded for reads as never priced, not as an error.
+ */
+export function pricedAt(ctx: AppCtx, subject: Subject): string | null {
+  const need = wanted(ctx);
+  const keys = subject === 'fx' ? need.currencies.map((c) => `${c}_${need.base}`)
+    : subject === 'gold' ? ['gold_24k_g']
+    : subject === 'silver' ? ['silver_g']
+    : need.tickers.map((t) => `price_${t}`);
+  if (!keys.length) return null;
+
+  // Newest first, then oldest of those. Ticks are appended and never replaced, so the
+  // plain minimum over the whole table is the first figure ever recorded rather than the
+  // one being shown — an age that grows with every refresh instead of shrinking. What is
+  // wanted is each key's current tick, and then the oldest among them.
+  const row = ctx.db.$raw.prepare(
+    `SELECT MIN(latest) AS at FROM (
+       SELECT MAX(at) AS latest FROM market_ticks
+        WHERE key IN (${keys.map(() => '?').join(',')})
+        GROUP BY key
+     )`,
+  ).get(...keys) as { at: string | null } | undefined;
+  return row?.at ?? null;
+}
+
 export interface RefreshResult {
   subject: Subject;
   /** the source asked for, which may not be the one that answered */
   chose: string;
   outcome: SubjectOutcome;
+}
+
+const insertTick = (ctx: AppCtx) => ctx.db.$raw.prepare(
+  'INSERT INTO market_ticks (at, key, value, source, live) VALUES (?, ?, ?, ?, 1)');
+
+/**
+ * A batch of tickers, asked of the whole queue rather than of one source.
+ *
+ * A currency table or a dealer's board either answers or it plainly does not — there is one
+ * thing to ask for, so trying the next source when the first is silent is the whole of
+ * falling back. A share book is not like that: it is forty small fetches bundled into one
+ * call, and a source can genuinely price some of them and leave the rest, for two entirely
+ * different reasons. It may have answered and simply not carry that name — Mubasher only
+ * ever speaks for the EGX, and a ticker it does not carry is not a fault, just a fact worth
+ * saying plainly in the note. Or it may not have answered at all for that name — refused,
+ * rate-limited, timed out — which is exactly the same as if the whole source had errored, and
+ * must be treated that way: the ticker is owed a try from whoever is next in the queue, not
+ * quietly written off because someone else in the same batch happened to price.
+ *
+ * So the tickers still unpriced are what gets handed to the next source, not the whole list
+ * again — a source already told plainly it does not carry a name is not asked to reconsider.
+ */
+async function fillStocks(
+  ctx: AppCtx, at: string, chose: string, queue: Source[], need: ReturnType<typeof wanted>,
+): Promise<SubjectOutcome> {
+  const stmt = insertTick(ctx);
+  let left = [...need.tickers];
+  let wrote = 0;
+  let answeredBy: string | undefined;
+  const said: string[] = [];
+  let trouble = 'Nothing was tried.';
+
+  for (const source of queue) {
+    if (!left.length) break;
+    try {
+      const got = await source.fetch!({ ...need, tickers: left });
+      const rows = Object.entries(got.ticks).filter(([, v]) => Number.isFinite(v) && v > 0);
+      for (const [key, value] of rows) stmt.run(at, key, value, source.id);
+
+      if (rows.length) {
+        wrote += rows.length;
+        answeredBy ??= source.id;
+        said.push(source.id === chose ? got.note : `${source.label} answered instead. ${got.note}`);
+        const priced = new Set(rows.map(([k]) => k));
+        left = left.filter((t) => !priced.has(`price_${t}`));
+      } else {
+        // Answered, but with nothing usable for what is still left — no different from an
+        // error for what happens next: whatever it did not price stands unchanged for the
+        // next source in the queue to try.
+        trouble = got.note;
+      }
+    } catch (e) {
+      // Refused, rate-limited, timed out — it would not answer at all, which is not the same
+      // as answering and genuinely finding nothing. Either way the tickers it could not
+      // reach are untouched, ready for whoever is asked next.
+      trouble = (e as Error).message;
+    }
+  }
+
+  return {
+    at, wrote, ok: wrote > 0,
+    source: answeredBy ?? chose,
+    note: said.length ? said.join(' ') + (left.length ? ` Still nothing for: ${left.join(', ')}.` : '')
+                      : trouble,
+  };
 }
 
 /**
@@ -102,6 +202,11 @@ export interface RefreshResult {
  * for that subject are tried in the order they are declared — and the one that answered is
  * recorded, so a person can see that the number in front of them did not come from the
  * source they picked.
+ *
+ * "Silent" covers everything that is not an answer: a thrown error, a refusal, a timeout, a
+ * rate limit, and — for shares — a source that came back with nothing left to give after
+ * pricing what it could. None of these stand in for a source that genuinely looked and found
+ * nothing; all of them mean the next source in the queue gets a turn.
  */
 export async function refreshMarket(
   ctx: AppCtx, opts: { subject?: Subject } = {},
@@ -128,30 +233,45 @@ export async function refreshMarket(
       continue;
     }
 
+    if (subject === 'stocks' && !need.tickers.length) {
+      const outcome: SubjectOutcome = { at, source: chose, ok: true, wrote: 0,
+                                        note: 'No holdings to price yet.' };
+      log[subject] = outcome;
+      results.push({ subject, chose, outcome });
+      continue;
+    }
+
     // The chosen one first, then the rest in the order they are offered.
     const queue = [chosen, ...(settings.fallback
       ? forSubject(subject, need.base).filter((s) => !s.manual && s.id !== chosen.id) : [])];
 
-    let outcome: SubjectOutcome = { at, source: chose, ok: false, wrote: 0,
-                                    note: 'Nothing was tried.' };
-    for (const source of queue) {
-      if (subject === 'stocks' && !need.tickers.length) {
-        outcome = { at, source: source.id, ok: true, wrote: 0,
-                    note: 'No holdings to price yet.' };
-        break;
-      }
-      try {
-        const got = await source.fetch!(need);
-        const rows = Object.entries(got.ticks).filter(([, v]) => Number.isFinite(v) && v > 0);
-        const stmt = ctx.db.$raw.prepare(
-          'INSERT INTO market_ticks (at, key, value, source, live) VALUES (?, ?, ?, ?, 1)');
-        for (const [key, value] of rows) stmt.run(at, key, value, source.id);
+    let outcome: SubjectOutcome;
 
-        outcome = { at, source: source.id, ok: true, wrote: rows.length,
-                    note: source.id === chose ? got.note : `${source.label} answered instead. ${got.note}` };
-        break;
-      } catch (e) {
-        outcome = { at, source: source.id, ok: false, wrote: 0, note: (e as Error).message };
+    if (subject === 'stocks') {
+      // A batch of tickers where one source can price some and leave the rest — see
+      // fillStocks for why that is not the same as the source having answered.
+      outcome = await fillStocks(ctx, at, chose, queue, need);
+    } else {
+      // One figure, or one small table, asked of a source at a time. There is nothing partial
+      // to hand on here, so the first source that comes back with something usable wins —
+      // but resolving with nothing to write is still silence, not an answer, and moves on to
+      // the next source exactly as a thrown error would.
+      outcome = { at, source: chose, ok: false, wrote: 0, note: 'Nothing was tried.' };
+      const stmt = insertTick(ctx);
+      for (const source of queue) {
+        try {
+          const got = await source.fetch!(need);
+          const rows = Object.entries(got.ticks).filter(([, v]) => Number.isFinite(v) && v > 0);
+          if (rows.length) {
+            for (const [key, value] of rows) stmt.run(at, key, value, source.id);
+            outcome = { at, source: source.id, ok: true, wrote: rows.length,
+                        note: source.id === chose ? got.note : `${source.label} answered instead. ${got.note}` };
+            break;
+          }
+          outcome = { at, source: source.id, ok: false, wrote: 0, note: got.note };
+        } catch (e) {
+          outcome = { at, source: source.id, ok: false, wrote: 0, note: (e as Error).message };
+        }
       }
     }
 

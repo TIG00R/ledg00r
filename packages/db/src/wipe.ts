@@ -122,6 +122,10 @@ export const LOGS = {
     label: 'Uploaded marks', what: 'every picture uploaded to stand as an icon',
     tables: ['images'],
   },
+  statements: {
+    label: 'Wealth statements', what: 'every daily snapshot saved, automatic or corrected by hand',
+    tables: ['wealth_statements'],
+  },
 } satisfies Record<string, LogSpec>;
 
 export type LogName = keyof typeof LOGS;
@@ -232,7 +236,29 @@ export function ensureStructuralNodes(db: Db): void {
       VALUES ('gold', 'asset', 'Gold', NULL, 'g', 'live_price', 'gold_24k_g', 0);
     INSERT OR IGNORE INTO nodes (id, kind, name, parent_id, currency, valuation, price_key, opening_qty)
       VALUES ('brokerage-cash', 'cash', 'Brokerage wallet', NULL, 'EGP', 'face', 'brokerage_cash', 0);
+    -- The clouds are a second wallet at the same broker: cash, held the same way, waiting
+    -- for compound interest that has not been built yet. Until then it is exactly the
+    -- brokerage wallet's own row, a second time, under its own name and its own key.
+    INSERT OR IGNORE INTO nodes (id, kind, name, parent_id, currency, valuation, price_key, opening_qty)
+      VALUES ('clouds-cash', 'cash', 'Clouds', NULL, 'EGP', 'face', 'clouds_cash', 0);
   `);
+  // The book itself is structure too, on the same terms as the wallet it owns: an owner who
+  // has never heard the word "exchange" still needs one for every order and every position to
+  // belong to, and 'main' is the one this ledger has always had — the fixed id is what lets
+  // every capability that touches the share book default to it without first looking it up.
+  if (hasTable(db, 'exchanges')) {
+    db.$raw.exec(`
+      INSERT OR IGNORE INTO exchanges (id, name, wallet_node_id, clouds_node_id, archived, created_at)
+        VALUES ('main', 'Main', 'brokerage-cash', 'clouds-cash', 0, '${new Date().toISOString()}');
+    `);
+  }
+}
+
+/** A table a migration earlier than this call may not have created yet. Checked, not assumed. */
+function hasTable(db: Db, name: string): boolean {
+  return !!db.$raw.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+  ).get(name);
 }
 
 /**

@@ -80,7 +80,8 @@ export function buildDataset(db: Db, now: Date): { data: DataSet; market: Market
     })) as DataSet['goldLots'],
     orders: db.select().from(t.orders).all().map((o) => ({
       id: o.id, seq: o.seq, date: o.date, time: o.time ?? undefined, ticker: o.ticker,
-      side: o.side, shares: o.shares, price: o.price, total: o.total, status: o.status,
+      side: o.side, shares: o.shares, price: o.price, total: o.total,
+      fee: o.fee ?? 0, intention: o.intention ?? null, status: o.status,
     })) as DataSet['orders'],
     expenses: db.select().from(t.expenses).all().map((e) => ({
       id: e.id, seq: e.seq, date: e.date, amount: e.amount, currency: e.currency,

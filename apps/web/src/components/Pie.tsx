@@ -3,38 +3,40 @@ import { useState } from 'react';
 export interface PieSlice { label: string; value: number; color: string }
 
 /**
- * A pie seen from a low chair.
+ * A pie, drawn flat: a circle, seen straight on.
  *
- * The chart was drawn flat, straight down onto the circle, which is the honest way to read
- * a share: the angle is the quantity and nothing about the drawing distorts it. Tilting the
- * disc back and giving it a thickness keeps the angles exactly as they were — the same
- * wedges, the same arithmetic — and only changes where the ink lands, so the figures under
- * the chart and the legend beside it still say what the picture says.
+ * Straight down onto the circle is the honest way to read a share — the angle is the
+ * quantity and nothing about the drawing distorts it. It was tilted back and given a
+ * thickness for a while, which kept the angles exactly as they were and only changed where
+ * the ink landed; what that cost is that a wedge near the front carries more area on screen
+ * than a wedge of the same size near the back, so the eye can be talked into the wrong
+ * ranking. A chart of shares is worth more read straight, so straight is the default and the
+ * tilt is something a caller has to ask for by name.
  *
- * What the tilt costs is that a wedge near the front now carries more area on screen than a
- * wedge of the same size near the back, so the eye can be talked into the wrong ranking.
- * That is why the percentage stays written out under every entry in the legend rather than
- * being left to the drawing.
- *
- * The solid is built from three kinds of face: the lid, the band around the outside, and the
- * flat cut where one wedge leaves off and the next begins. Only the faces turned towards the
- * viewer are drawn; the rest are behind the lid and would never be seen. Faces are laid down
- * back to front, and the lids last, because a lid is above every wall on the board.
+ * Tilted, the solid is built from three kinds of face: the lid, the band around the outside,
+ * and the flat cut where one wedge leaves off and the next begins. Only the faces turned
+ * towards the viewer are drawn; the rest are behind the lid and would never be seen. Faces
+ * are laid down back to front, and the lids last, because a lid is above every wall on the
+ * board. Flat, there are no walls at all and only the lids are drawn.
  */
-export function Pie({ slices, size = 232, format, caption }: {
+export function Pie({ slices, size = 232, format, caption, tilt = 1, depth = 0 }: {
   slices: PieSlice[]; size?: number;
   format?: (v: number) => string;
   /** Shown under the chart while nothing is being pointed at. */
   caption?: React.ReactNode;
+  /** How far the disc is laid back: 1 is face on — a circle — and 0 is edge on. */
+  tilt?: number;
+  /** How thick the disc is, in the same units as the radius. Nought is a flat circle. */
+  depth?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const total = slices.reduce((s, x) => s + x.value, 0) || 1;
 
   const cx = size / 2;
   const rx = cx - 10;             // room for the wedge that pulls out
-  const ry = rx * TILT;
+  const ry = rx * tilt;
   const cy = POP + ry + 4;
-  const height = cy + ry + DEPTH + POP + 4;
+  const height = cy + ry + depth + POP + 4;
 
   let from = 0;
   const wedges = slices.map((s, i) => {
@@ -44,8 +46,8 @@ export function Pie({ slices, size = 232, format, caption }: {
     const w = {
       s, i, from, to,
       top: lid(cx, cy, rx, ry, from, to),
-      walls: walls(cx, cy, rx, ry, from, to),
-      pop: { x: Math.sin(rad(mid)) * POP, y: -Math.cos(rad(mid)) * POP * TILT },
+      walls: depth > 0 ? walls(cx, cy, rx, ry, from, to, depth) : [],
+      pop: { x: Math.sin(rad(mid)) * POP, y: -Math.cos(rad(mid)) * POP * tilt },
     };
     from = to;
     return w;
@@ -101,10 +103,6 @@ export function Pie({ slices, size = 232, format, caption }: {
   );
 }
 
-/** How far the disc is laid back: 1 is face on, 0 is edge on. */
-const TILT = 0.56;
-/** How thick the disc is, in the same units as the radius. */
-const DEPTH = 26;
 /** How far a wedge steps out along its own bisector while it is pointed at. */
 const POP = 8;
 
@@ -134,7 +132,7 @@ function lid(cx: number, cy: number, rx: number, ry: number, a1: number, a2: num
  * body is on the far side of it: for the edge the wedge starts at, that is anywhere in the
  * left half of the circle, and for the edge it ends at, the right half.
  */
-function walls(cx: number, cy: number, rx: number, ry: number, a1: number, a2: number) {
+function walls(cx: number, cy: number, rx: number, ry: number, a1: number, a2: number, depth: number) {
   const out: Array<{ d: string; depth: number; side: 'rim' | 'cut' }> = [];
 
   const b1 = Math.max(a1, 90), b2 = Math.min(a2, 270);
@@ -145,7 +143,7 @@ function walls(cx: number, cy: number, rx: number, ry: number, a1: number, a2: n
       side: 'rim',
       depth: Math.cos(rad((b1 + b2) / 2)),
       d: `M ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} `
-       + `L ${p2.x} ${round(p2.y + DEPTH)} A ${rx} ${ry} 0 ${large} 0 ${p1.x} ${round(p1.y + DEPTH)} Z`,
+       + `L ${p2.x} ${round(p2.y + depth)} A ${rx} ${ry} 0 ${large} 0 ${p1.x} ${round(p1.y + depth)} Z`,
     });
   }
 
@@ -156,8 +154,8 @@ function walls(cx: number, cy: number, rx: number, ry: number, a1: number, a2: n
     out.push({
       side: 'cut',
       depth: Math.cos(rad(a)) / 2,
-      d: `M ${cx} ${cy} L ${p.x} ${p.y} L ${p.x} ${round(p.y + DEPTH)} `
-       + `L ${cx} ${round(cy + DEPTH)} Z`,
+      d: `M ${cx} ${cy} L ${p.x} ${p.y} L ${p.x} ${round(p.y + depth)} `
+       + `L ${cx} ${round(cy + depth)} Z`,
     });
   }
 

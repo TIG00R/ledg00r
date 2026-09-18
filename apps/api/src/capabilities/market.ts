@@ -4,7 +4,7 @@ import type { AppCtx } from '../context.js';
 import { noted, refusal } from './shared.js';
 import { readBase } from './currencies.js';
 import { forSubject, SUBJECTS, type Subject } from '../market/sources.js';
-import { readLog, readSourceSettings, refreshMarket, writeSourceSettings } from '../market/refresh.js';
+import { pricedAt, readLog, readSourceSettings, refreshMarket, writeSourceSettings } from '../market/refresh.js';
 
 /**
  * Where the outside numbers come from.
@@ -43,6 +43,10 @@ export const marketCaps = (ctxOf: () => AppCtx) => [
         last: z.object({
           at: z.string(), source: z.string(), ok: z.boolean(), note: z.string(), wrote: z.number(),
         }).nullable(),
+        /** when the figure this subject is serving right now was actually taken — not when
+         *  it was last attempted, which `last.at` already says, but the tick behind today's
+         *  number. Null for a subject nothing has ever been recorded for. */
+        pricedAt: z.string().nullable(),
       })),
     }),
     handler: async () => {
@@ -62,6 +66,7 @@ export const marketCaps = (ctxOf: () => AppCtx) => [
             id: o.id, label: o.label, what: o.what, cadence: o.cadence, manual: !!o.manual,
           })),
           last: log[s.id] ?? null,
+          pricedAt: pricedAt(ctx, s.id),
         })),
       };
     },

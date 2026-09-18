@@ -180,6 +180,12 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
  * cannot be made to fit a phone by any amount of squeezing — the only honest answers are to
  * scroll it or to stack it, and stacking keeps every figure readable.
  */
-export function Row({ cols, children, style }: { cols: string; children: ReactNode; style?: React.CSSProperties }) {
-  return <div className="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 16, alignItems: 'center', ...style }}>{children}</div>;
+export function Row({ cols, children, style, ...rest }: { cols: string; children: ReactNode; style?: React.CSSProperties }
+    & Omit<React.HTMLAttributes<HTMLDivElement>, 'style' | 'children'>) {
+  return (
+    <div className="row" style={{ display: 'grid', gridTemplateColumns: cols, gap: 16, alignItems: 'center', ...style }}
+         {...rest}>
+      {children}
+    </div>
+  );
 }

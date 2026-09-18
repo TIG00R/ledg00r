@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { command, query, NodeId, Outcome } from '@ledger/contracts';
+import { command, query, NodeId, Outcome, Refusal } from '@ledger/contracts';
 import { schema as t, allBalances } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import { installmentDueDate, defaultIntention, intentionsFor, intentionLabel,
@@ -7,7 +7,7 @@ import { installmentDueDate, defaultIntention, intentionsFor, intentionLabel,
 import { assetKindOf, isDebtNode } from '../zakat-assets.js';
 import { readMarket } from '../read.js';
 import type { AppCtx } from '../context.js';
-import { noted, refusal, newId } from './shared.js';
+import { noted, refusal, newId, post, today, DryRun, sourceReading, SOURCE_FIELDS } from './shared.js';
 
 /**
  * Things you own that are not money.
@@ -41,6 +41,7 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       acquiredOn: z.string().nullable(),
       nisabMetOn: z.string().nullable(),
       archived: z.boolean(),
+      ...SOURCE_FIELDS,
     })),
     handler: async ({ includeArchived }) => {
       const ctx = ctxOf();
@@ -81,7 +82,18 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
         .map((n) => {
           const mine = installments.filter((i) => i.propertyId === n.id);
           const planTotal = mine.reduce((s, i) => s + i.amountEgp, 0);
-          const paid = mine.filter((i) => i.paidAt).reduce((s, i) => s + i.amountEgp, 0);
+          /**
+           * What has actually gone into it.
+           *
+           * The opening/down payment is money paid before the plan's own rows existed, and it
+           * is already sitting in the property's value — reading `paid` as only the rows on
+           * the plan is what let this screen say PAID 0 on a property that opened at three
+           * quarters of a million. Every paid installment counts too, whether or not it
+           * bought a share of the thing: the plan tracks what was actually handed over, not
+           * only the part that bought equity.
+           */
+          const paid = mine.length === 0 ? 0 : (n.openingQty ?? 0)
+            + mine.filter((i) => i.paidAt).reduce((s, i) => s + i.amountEgp, 0);
           const next = mine
             .filter((i) => !i.paidAt)
             .map((i) => i.dueDate
@@ -98,7 +110,9 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
           const held = n as typeof n & {
             intention?: string | null; intentionSince?: string | null;
             acquiredOn?: string | null; nisabMetOn?: string | null;
+            sourceCurrency?: string | null; sourceAmount?: number | null; sourceRate?: number | null;
           };
+          const value = valueOf(n, balances[n.id] ?? n.openingQty);
 
           return {
             id: n.id, name: n.name, kind,
@@ -119,12 +133,17 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
              * pound figure beside a dollar picker, and so read as though choosing a currency
              * had rewritten the amount in pounds.
              */
-            value: valueOf(n, balances[n.id] ?? n.openingQty),
-            amount: balances[n.id] ?? n.openingQty,
+            value, amount: balances[n.id] ?? n.openingQty,
             currency: n.currency, unit: n.unit,
             planTotal, paid, remaining: planTotal - paid,
             payments: mine.length, nextDue: next as string | null,
             archived: n.archived,
+            // The third reading: what the money that paid for this outright would be worth
+            // now, had it never left its own currency. Nothing for a plan, and nothing for an
+            // asset bought before this was tracked or with no account named at all.
+            ...sourceReading(
+              { currency: held.sourceCurrency ?? null, amount: held.sourceAmount ?? null, rate: held.sourceRate ?? null },
+              value, market),
           };
         });
     },
@@ -134,13 +153,19 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
     name: 'asset.add',
     context: 'holdings',
     summary: 'Add something you own — a property, a vehicle, anything else — with its mark and colour.',
-    detail: 'An asset bought on a plan starts at nothing and grows as payments are made; one paid for outright starts at what it is worth.',
+    detail: 'An asset bought on a plan starts at nothing and grows as payments are made. One paid for outright starts at what it is worth — named an account and the money actually leaves it; left unnamed, the worth is simply stated, the way a fresh installation states what you already own.',
     input: z.object({
       name: z.string().min(1).max(80),
       kind: z.enum(['property', 'vehicle', 'equipment', 'other']).default('other'),
       ownership: z.enum(['owned', 'installments']).default('owned'),
       value: z.number().min(0).default(0),
       currency: z.string().regex(/^[A-Z]{3}$/).default('EGP'),
+      /**
+       * What paid for it, when bought outright. Left unnamed — "Initial payment" on the
+       * screen — the worth is stated as given, the same as an opening balance: nothing is
+       * deducted from anywhere, because nothing here can say where the money came from.
+       */
+      accountId: NodeId.optional(),
       icon: z.string().max(80).optional(),
       color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
       /**
@@ -152,31 +177,92 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       intentionSince: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       acquiredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       nisabMetOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    }),
-    output: z.object({ id: z.string(), summary: z.string() }),
+    }).merge(DryRun),
+    // The id is part of the answer — whatever calls this next (a plan, an intention) needs it
+    // to say which asset it means — so a refusal is offered beside it rather than folded into
+    // the ordinary Outcome, which has nowhere to carry one.
+    output: z.union([z.object({ id: z.string(), summary: z.string() }), Refusal]),
     handler: async (input) => {
-      const { db } = ctxOf();
+      const ctx = ctxOf();
+      const { db } = ctx;
       const id = newId(input.kind === 'property' ? 'prop' : input.kind === 'vehicle' ? 'veh' : 'asset');
       const intention = input.intention ?? defaultIntention(input.kind);
       const stated = intentionsFor(input.kind).some((o) => o.id === intention)
         ? intention : defaultIntention(input.kind);
-      db.insert(t.nodes).values({
-        id, kind: 'asset', name: input.name, currency: input.currency,
-        valuation: 'fixed', openingQty: input.ownership === 'installments' ? 0 : input.value,
-        assetKind: input.kind, ownership: input.ownership,
-        intention: stated,
-        // a lunar year has to run from somewhere, and the day it was stated is that day
-        intentionSince: input.intentionSince ?? input.acquiredOn ?? ctxOf().now.toISOString().slice(0, 10),
-        acquiredOn: input.acquiredOn ?? null,
-        nisabMetOn: input.nisabMetOn ?? null,
-        icon: input.icon ?? null, color: input.color ?? null, archived: false,
-      }).run();
-      return {
-        id,
-        summary: input.ownership === 'installments'
-          ? `${input.name} added, starting at nothing until payments are made`
-          : `${input.name} added at ${input.value} ${input.currency}`,
+
+      // Bought outright, out of a named account: the account is checked before anything is
+      // written, so a bad id never leaves an asset sitting in the ledger with nothing paid
+      // for it. A plan starts at nothing regardless of what is named here — the down payment
+      // is one of its own installments, paid the way any of them are.
+      const buying = !!input.accountId && input.ownership !== 'installments' && input.value > 0;
+      const acct = buying ? ctx.ledger().node(input.accountId!) : undefined;
+      if (buying && !acct) {
+        return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
+      }
+
+      const create = (source?: { sourceAccountId: string; sourceCurrency: string; sourceAmount: number; sourceRate: number }) => {
+        db.insert(t.nodes).values({
+          id, kind: 'asset', name: input.name, currency: input.currency,
+          valuation: 'fixed',
+          openingQty: input.ownership === 'installments' ? 0 : buying ? 0 : input.value,
+          assetKind: input.kind, ownership: input.ownership,
+          intention: stated,
+          // a lunar year has to run from somewhere, and the day it was stated is that day
+          intentionSince: input.intentionSince ?? input.acquiredOn ?? ctx.now.toISOString().slice(0, 10),
+          acquiredOn: input.acquiredOn ?? null,
+          nisabMetOn: input.nisabMetOn ?? null,
+          icon: input.icon ?? null, color: input.color ?? null, archived: false,
+          ...source,
+        }).run();
       };
+
+      if (!buying) {
+        // Asking is not doing. A dry run answers with what would be written and writes
+        // nothing, which is the whole of the promise `dryRun` makes.
+        if (!input.dryRun) create();
+        return {
+          id,
+          summary: input.ownership === 'installments'
+            ? `${input.name} added, starting at nothing until payments are made`
+            : `${input.name} added at ${input.value} ${input.currency}`,
+        };
+      }
+
+      // Bought out of a named account: the node and the movement that pays for it either
+      // both land or neither does — a refused purchase must not leave an asset behind it with
+      // nothing paid for it, the same guarantee a correction gets.
+      let failed: Refusal | undefined;
+      let summary = '';
+      const rollback = Symbol('rolled back');
+      try {
+        db.$raw.transaction(() => {
+          const market = readMarket(db);
+          const valueEgp = input.value * (input.currency === 'EGP' ? 1 : (market.fxRates[input.currency] ?? 1));
+          const acctRate = acct!.currency === 'EGP' ? 1 : (market.fxRates[acct!.currency ?? 'EGP'] ?? 1);
+          const costNative = valueEgp / acctRate;
+          // The other side of the same purchase: what actually left the account, in its own
+          // currency, at the rate that applied — kept so the asset can be asked what that
+          // money would be worth now, apart from what the asset itself did.
+          create({
+            sourceAccountId: input.accountId!, sourceCurrency: acct!.currency ?? 'EGP',
+            sourceAmount: costNative, sourceRate: acctRate,
+          });
+          const res = post(ctx, {
+            date: today(ctx), kind: 'purchase', note: undefined,
+            legs: [{ fromNodeId: input.accountId!, qtyFrom: costNative, toNodeId: id, qtyTo: input.value }],
+          }, `${input.name} added, ${Math.round(costNative)} ${acct!.currency ?? ''} out of ${acct!.name}`,
+          { dryRun: input.dryRun });
+          if (!res.ok) { failed = res; throw rollback; }
+          summary = res.summary;
+          // Everything above ran — the account was found, the money was there, the movement
+          // balanced — and on a dry run all of it is now undone. The answer stands; the
+          // ledger is untouched.
+          if (input.dryRun) throw rollback;
+        })();
+      } catch (e) {
+        if (e !== rollback) throw e;
+      }
+      return failed ?? { id, summary };
     },
   }),
 

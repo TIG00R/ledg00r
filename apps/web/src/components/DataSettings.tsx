@@ -69,7 +69,7 @@ export function DataSettings() {
                     {c.what}
                   </div>
                 </div>
-                <span className="mono" style={{ textAlign: 'right', fontSize: 14 }}>
+                <span className="mono" style={{ fontSize: 14 }}>
                   {c.count.toLocaleString('en-US')}
                 </span>
                 <span style={{ display: 'flex', justifyContent: 'flex-end' }}>

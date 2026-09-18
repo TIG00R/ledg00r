@@ -1,12 +1,29 @@
 import { z } from 'zod';
-import { command, query, DateOnly, NodeId, Ticker, Outcome } from '@ledger/contracts';
-import { schema as t, type Db } from '@ledger/db';
-import { eq } from 'drizzle-orm';
-import { computedPositions, installmentDueDate, monthLabelOf } from '@ledger/engine';
+import { command, query, DateOnly, NodeId, Ticker, Outcome, type Refusal } from '@ledger/contracts';
+import { schema as t, type Db, type Exchange } from '@ledger/db';
+import { eq, and, inArray } from 'drizzle-orm';
+import { computedPositions, installmentDueDate, monthLabelOf, avgCostBefore, realizedOnSale } from '@ledger/engine';
+import type { Order as EngineOrder } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun } from './shared.js';
+import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun, nameOf,
+         sourceReading, SOURCE_FIELDS } from './shared.js';
 import { nextSeq } from './spending.js';
-import { readMarket, buildDataset } from '../read.js';
+import { readMarket } from '../read.js';
+
+/**
+ * The book a caller means, when nothing here checks first.
+ *
+ * Almost every capability that touches the share book means the one it has always had, so an
+ * `exchangeId` that is left out defaults to this rather than every existing call — the
+ * screens, the assistant, a year of scripts — having to start naming one.
+ */
+const DEFAULT_EXCHANGE_ID = 'main';
+const ExchangeIdIn = z.string().min(1).default(DEFAULT_EXCHANGE_ID);
+
+/** The exchange a call names, or the one it means by saying nothing. */
+function exchangeOf(db: Db, exchangeId: string): Exchange | undefined {
+  return db.select().from(t.exchanges).where(eq(t.exchanges.id, exchangeId)).get();
+}
 
 /**
  * Metal, shares and property.
@@ -55,6 +72,11 @@ function payInstallment(
   if (inst.paidAt) return refusal('duplicate', 'That installment is already marked paid.', 'Correct it instead, if the payment was wrong.');
 
   const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
+  // Whatever it is called, a paid installment is money that went into the property, so it
+  // counts towards what the property is worth — a maintenance charge or a fee is still
+  // recorded as what it is (the note says so, and buysEquity still reads it back), but it no
+  // longer vanishes from the property's value the way a payment that bought a share of it
+  // does.
   const equity = !/maintenance|service|fee/i.test(inst.note);
   const date = input.date ?? today(ctx);
 
@@ -70,7 +92,7 @@ function payInstallment(
 
   return post(ctx, {
     date, kind: 'installment', note: inst.note || undefined,
-    legs: [equity && property
+    legs: [property
       ? { fromNodeId: from, qtyFrom: inst.amountEgp, toNodeId: property.id, qtyTo: inst.amountEgp }
       : { fromNodeId: from, qtyFrom: inst.amountEgp }],
   }, `${inst.amountEgp} to ${property?.name ?? inst.propertyId}${equity ? '' : ' — buys no equity'}`,
@@ -109,12 +131,249 @@ function quoted(
   };
 }
 
+/**
+ * What a sale earned, ready to store on its own row.
+ *
+ * Read from the orders already on the book — never the one being written — so a sale is
+ * measured against the average of every share of that ticker held the instant before it, the
+ * same average `positions.list` shows. A buy stores nothing: there is no sale to measure.
+ *
+ * `proceeds` is what the sale actually brought into the wallet, the broker's charge already
+ * taken off — a fee is money that did not arrive, so a sale that only broke even before the
+ * commission reads as the small loss it was.
+ *
+ * Scoped to the one exchange the sale was placed on. The same ticker can be held on two
+ * exchanges at once now, each with its own average cost, and a sale on one must never be
+ * measured against shares sitting in a book it cannot see.
+ */
+function realizedFields(
+  db: Db, exchangeId: string, ticker: string, side: 'BUY' | 'SELL', shares: number, proceeds: number, beforeSeq: number,
+): { realizedPnl: number | null; realizedPnlPct: number | null } {
+  if (side !== 'SELL') return { realizedPnl: null, realizedPnlPct: null };
+  const prior = db.select().from(t.orders)
+    .where(and(eq(t.orders.ticker, ticker), eq(t.orders.exchangeId, exchangeId))).all() as unknown as EngineOrder[];
+  const { avgBuy } = avgCostBefore(prior, ticker, beforeSeq);
+  const { pnl, pct } = realizedOnSale(avgBuy, shares, proceeds);
+  return { realizedPnl: pnl, realizedPnlPct: pct };
+}
+
+/**
+ * The two answers an intention can be, read back out of a free-text column.
+ *
+ * Anything else — an empty column on an order logged before it was asked for, or a word
+ * written straight into the database — reads as none at all rather than as either answer,
+ * because guessing which one was meant is worse than saying nobody said.
+ */
+function statedIntention(v: string | null | undefined): 'personal' | 'investment' | null {
+  return v === 'personal' || v === 'investment' ? v : null;
+}
+
+/**
+ * A share buy's own source money, the same idea a metal lot keeps — which account it is
+ * understood to have been funded from, that account's currency, what it comes to there, and
+ * the rate applied.
+ *
+ * A share is bought out of the pooled brokerage wallet rather than a named account directly,
+ * so unlike gold nothing here actually moves on the strength of it — this is a fact kept
+ * alongside the order, not a second leg. Which is also why it is only ever recorded when the
+ * caller names an account: nothing here guesses which of several accounts might have funded a
+ * buy that never said. `preferredRate` lets a correction that leaves the account alone keep
+ * the rate already on the row rather than silently jumping to today's, the same way changing
+ * one field on a lot leaves the others as they were.
+ */
+function orderSource(
+  ctx: AppCtx, accountId: string | null | undefined, rateApplied: number | undefined,
+  bookCurrency: string | null, totalInBookCurrency: number, preferredRate?: number | null,
+): { refusal: Refusal } | { fields: { accountId: string; sourceCurrency: string; sourceAmount: number; sourceRate: number } | null } {
+  if (!accountId) return { fields: null };
+  const acct = ctx.ledger().node(accountId);
+  if (!acct) return { refusal: refusal('unknown_node', `${accountId} is not an account in this ledger.`) };
+  const market = readMarket(ctx.db);
+  const bookCur = bookCurrency ?? 'EGP';
+  const costEgp = bookCur === 'EGP' ? totalInBookCurrency : totalInBookCurrency * (market.fxRates[bookCur] ?? 1);
+  const acctCur = acct.currency ?? 'EGP';
+  const sourceRate = rateApplied ?? preferredRate ?? (acctCur === 'EGP' ? 1 : market.fxRates[acctCur] ?? 1);
+  return { fields: { accountId, sourceCurrency: acctCur, sourceAmount: costEgp / sourceRate, sourceRate } };
+}
+
+/**
+ * The source money behind a position, walked the same way `computedPositions` walks its cost.
+ *
+ * A position can be built from several buys, and a sale narrows what is left the same way it
+ * narrows the cost: proportionally, against the average, never against one buy in particular
+ * — so a sale here reduces the source money by the same fraction it reduces the shares.
+ *
+ * Anything less than the whole picture is reported as no source at all rather than a partial
+ * one: a buy behind today's shares with nothing recorded, or two buys funded in different
+ * currencies, both mean there is no single honest answer to "the money that bought this", so
+ * none is guessed.
+ */
+function sourceBehindPosition(orders: Array<{
+  seq: number; side: string; shares: number; status: string;
+  sourceCurrency: string | null; sourceAmount: number | null; sourceRate: number | null;
+}>): { currency: string; amount: number; rate: number } | null {
+  let shares = 0, amount = 0, thenEgp = 0;
+  let currency: string | null = null;
+  let complete = true;
+  for (const o of [...orders].sort((a, b) => a.seq - b.seq)) {
+    if (o.status !== 'executed') continue;
+    if (o.side === 'BUY') {
+      shares += o.shares;
+      if (o.sourceCurrency && o.sourceAmount && o.sourceRate) {
+        if (currency && currency !== o.sourceCurrency) complete = false;
+        currency = currency ?? o.sourceCurrency;
+        amount += o.sourceAmount;
+        thenEgp += o.sourceAmount * o.sourceRate;
+      } else {
+        complete = false;
+      }
+    } else {
+      const frac = shares > 0 ? Math.min(1, o.shares / shares) : 0;
+      amount -= amount * frac;
+      thenEgp -= thenEgp * frac;
+      shares -= o.shares;
+    }
+  }
+  if (!complete || !currency || !(shares > 0) || !(amount > 0)) return null;
+  return { currency, amount, rate: thenEgp / amount };
+}
+
 export const holdingCaps = (ctxOf: () => AppCtx) => [
+  query({
+    name: 'exchange.list',
+    context: 'holdings',
+    summary: 'Every exchange this ledger keeps a book for — its own wallet, its own clouds wallet, its own orders.',
+    detail: 'Every capability that reads or writes the share book takes an exchangeId and defaults to the first one, so this is where a second book\'s id is found.',
+    input: z.object({ includeArchived: z.boolean().default(false) }),
+    output: z.array(z.object({
+      id: z.string(), name: z.string(),
+      /** the broker's own mark — an icon name or `img:<id>`; null until one is given */
+      logo: z.string().nullable(),
+      walletNodeId: z.string(), cloudsNodeId: z.string(),
+      archived: z.boolean(),
+    })),
+    handler: async ({ includeArchived }) => {
+      const { db } = ctxOf();
+      return db.select().from(t.exchanges).all()
+        .filter((e) => includeArchived || !e.archived)
+        .map((e) => ({
+          id: e.id, name: e.name, logo: e.logo ?? null,
+          walletNodeId: e.walletNodeId, cloudsNodeId: e.cloudsNodeId,
+          archived: e.archived,
+        }));
+    },
+  }),
+
+  command({
+    name: 'exchange.add',
+    context: 'holdings',
+    summary: 'Open a second book. It gets its own wallet and its own clouds wallet, on exactly the terms the first exchange\'s were made.',
+    detail: 'Nothing that already calls order.log, book.transfer or positions.list has to change: each still defaults to the first exchange, and this is how a caller opens another one beside it.',
+    input: z.object({
+      name: z.string().min(1).max(80),
+      /** the broker's mark — an icon name, or `img:<id>` for a logo already uploaded */
+      logo: z.string().max(120).optional(),
+    }),
+    output: z.object({
+      id: z.string(), walletNodeId: z.string(), cloudsNodeId: z.string(), summary: z.string(),
+    }),
+    handler: async ({ name, logo }) => {
+      const { db } = ctxOf();
+      const id = newId('exch');
+      const walletNodeId = newId('wallet');
+      const cloudsNodeId = newId('clouds');
+      // The same furniture the first exchange has, made the same way `ensureStructuralNodes`
+      // makes it for that one: cash, held at the broker, face-valued in pounds, waiting for an
+      // order to spend it. Only the ids differ — the first exchange kept the ones it always had.
+      db.insert(t.nodes).values({
+        id: walletNodeId, kind: 'cash', name: `${name} wallet`,
+        currency: 'EGP', valuation: 'face', priceKey: walletNodeId, openingQty: 0, archived: false,
+      }).run();
+      db.insert(t.nodes).values({
+        id: cloudsNodeId, kind: 'cash', name: `${name} clouds`,
+        currency: 'EGP', valuation: 'face', priceKey: cloudsNodeId, openingQty: 0, archived: false,
+      }).run();
+      db.insert(t.exchanges).values({
+        id, name, logo: logo ?? null, walletNodeId, cloudsNodeId,
+        archived: false, createdAt: new Date().toISOString(),
+      }).run();
+      return { id, walletNodeId, cloudsNodeId, summary: `${name} opened, with its own wallet and its own clouds` };
+    },
+  }),
+
+  command({
+    name: 'exchange.rename',
+    context: 'holdings',
+    summary: 'Rename an exchange, or give it the broker\'s mark. Its wallet, its clouds wallet and everything logged against it keep their own names.',
+    detail: 'The name and the mark are the same edit to the same row, so either may be given on its own: a book being renamed keeps the mark it has, and a book given a mark keeps the name it has.',
+    input: z.object({
+      exchangeId: z.string().min(1),
+      name: z.string().min(1).max(80).optional(),
+      /** an icon name, or `img:<id>` for a logo already uploaded; an empty string takes it off */
+      logo: z.string().max(120).optional(),
+    }),
+    output: Outcome,
+    handler: async ({ exchangeId, name, logo }) => {
+      const { db } = ctxOf();
+      const row = db.select().from(t.exchanges).where(eq(t.exchanges.id, exchangeId)).get();
+      if (!row) return refusal('not_found', `${exchangeId} is not an exchange in this ledger.`);
+      if (name === undefined && logo === undefined) {
+        return refusal('invalid_period', 'Nothing was given to change.',
+                       'Give a name, a mark, or both.');
+      }
+      db.update(t.exchanges).set({
+        ...(name === undefined ? {} : { name }),
+        ...(logo === undefined ? {} : { logo: logo === '' ? null : logo }),
+      }).where(eq(t.exchanges.id, exchangeId)).run();
+      return noted(name === undefined ? `${row.name} wears its broker's mark now`
+                 : `${row.name} renamed to ${name}`);
+    },
+  }),
+
+  command({
+    name: 'exchange.archive',
+    context: 'holdings',
+    summary: 'Retire an exchange. One with no orders and a wallet that has never moved is forgotten outright; one that has ever been used is archived instead.',
+    detail: 'The same rule as everywhere else in this ledger: a thing is deleted only when nothing points at it. An exchange that has logged an order, or whose wallet or clouds wallet has ever carried a movement, is kept — off the pickers, its book still readable exactly as it was — rather than pulled out from under records that still name it.',
+    effect: 'irreversible',
+    input: z.object({ exchangeId: z.string().min(1) }),
+    output: Outcome,
+    handler: async ({ exchangeId }) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.exchanges).where(eq(t.exchanges.id, exchangeId)).get();
+      if (!row) return refusal('not_found', `${exchangeId} is not an exchange in this ledger.`);
+      if (exchangeId === DEFAULT_EXCHANGE_ID) {
+        // The three holdings the ledger is built on cannot be deleted either, for the same
+        // reason: without this one there is nowhere for every capability that means "the
+        // book" without naming one to default to.
+        return refusal('immutable', `${row.name} is the book every other capability defaults to.`,
+                       'It holds nothing and costs nothing to keep. Open a second exchange instead.');
+      }
+
+      const orderCount = ctx.db.select().from(t.orders).where(eq(t.orders.exchangeId, exchangeId)).all().length;
+      const wallets = [row.walletNodeId, row.cloudsNodeId];
+      const moved = ctx.db.select().from(t.legs).all()
+        .filter((l) => wallets.includes(l.fromNodeId ?? '')
+                    || wallets.includes(l.toNodeId ?? '')
+                    || wallets.includes(l.feeNodeId ?? '')).length;
+
+      if (orderCount === 0 && moved === 0) {
+        ctx.db.delete(t.exchanges).where(eq(t.exchanges.id, exchangeId)).run();
+        ctx.db.delete(t.nodes).where(inArray(t.nodes.id, wallets)).run();
+        return noted(`${row.name} forgotten — nothing had ever been recorded against it`);
+      }
+
+      ctx.db.update(t.exchanges).set({ archived: true }).where(eq(t.exchanges.id, exchangeId)).run();
+      ctx.db.update(t.nodes).set({ archived: true }).where(inArray(t.nodes.id, wallets)).run();
+      return noted(`${row.name} archived — its book stays readable, and it is off the pickers`);
+    },
+  }),
+
   command({
     name: 'metal.buy',
     context: 'holdings',
     summary: 'Buy gold or silver, paid for out of a named account. Grams in, money out.',
-    detail: 'Give the price per gram you actually paid. Net worth does not change — value moves between two things you own — but the split does.',
+    detail: 'Give the price per gram you actually paid. Net worth does not change — value moves between two things you own — except for the making charge and any flat fee, which are spent rather than held.',
     input: z.object({
       accountId: NodeId,
       metal: z.enum(['gold', 'silver']).default('gold'),
@@ -124,6 +383,14 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       currency: z.string().length(3).optional(),
       /** the making charge — مصنعية — per gram, in the same currency as the price */
       makingPerGram: z.number().min(0).optional(),
+      /**
+       * A flat charge on the purchase itself, in the account's own currency — a dealer's
+       * commission, a transfer charge, a receipt fee. It is not the making charge, which is
+       * quoted per gram and rides on the gram price; this is one charge for the purchase,
+       * however much metal it bought. Like the making charge it buys no weight, so it leaves
+       * the account and the holding does not grow by it.
+       */
+      fee: z.number().min(0).default(0),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
       /**
@@ -157,7 +424,16 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       // Workmanship leaves the same account and buys no weight, so it rides as the leg's fee
       // rather than as part of what the metal cost: the money goes, the holding does not grow
       // by it, and the gram is never valued at a price that included it.
+      // The flat charge sits alongside it: both leave the account, neither buys a gram, so
+      // they ride together as the leg's fee and the gram is never valued at a price that
+      // included either of them.
       const makingNative = q.makingEgp / rate;
+      const chargesNative = makingNative + input.fee;
+      // What the lot is recorded as costing, though: the making charge is added to the gram
+      // price before the weight multiplies it, so the total on the row is the same total the
+      // dealer actually asked for — grams x (price a gram + making a gram) — not the metal
+      // alone with the workmanship left to be inferred from a second column.
+      const totalEgp = costEgp + q.makingEgp;
       const date = input.date ?? today(ctx);
       const id = newId('lot');
 
@@ -165,23 +441,30 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         date, kind: 'purchase', note: input.note,
         legs: [{
           fromNodeId: input.accountId, qtyFrom: costNative, toNodeId: holding.id, qtyTo: input.grams,
-          ...(makingNative > 0 ? { feeQty: makingNative, feeNodeId: input.accountId } : {}),
+          ...(chargesNative > 0 ? { feeQty: chargesNative, feeNodeId: input.accountId } : {}),
         }],
       }, `${input.grams} g of ${input.metal} at ${q.priceNative} ${q.currency} a gram${
         q.makingNative > 0 ? ` plus ${q.makingNative} ${q.currency} a gram making` : ''
-      }, ${Math.round(costNative + makingNative)} ${acct.currency ?? ''} out of ${acct.name}`,
+      }${input.fee > 0 ? ` and a ${input.fee} ${acct.currency ?? ''} fee` : ''
+      }, ${Math.round(costNative + chargesNative)} ${acct.currency ?? ''} out of ${acct.name}`,
       {
         dryRun: input.dryRun,
         index: [{ kind: 'lot', recordId: id, title: `${input.metal} buy ${input.grams} g`, body: input.note ?? '' }],
         after: (db, movementId) => {
           db.insert(t.goldLots).values({
             id, seq: nextSeq(db, 'gold_lots'), dateText: date, date, metal: input.metal,
-            direction: 'buy', grams: input.grams, pricePerGram: perGram, totalEgp: costEgp,
-            usdPaid: acct.currency === 'USD' ? costNative : costEgp / (market.usdEgp || 1),
+            direction: 'buy', grams: input.grams, pricePerGram: perGram, totalEgp, fee: input.fee,
+            usdPaid: acct.currency === 'USD' ? costNative + chargesNative : totalEgp / (market.usdEgp || 1),
             accountId: input.accountId, movementId, note: input.note ?? null,
             intention: input.intention,
             currency: q.currency, priceNative: q.priceNative,
             makingPerGram: q.makingNative, makingEgp: q.makingEgp,
+            // The account's own side of the same purchase — what actually left it, in its
+            // own currency, at the rate that applied — kept apart from `currency`/
+            // `priceNative` above, which are the dealer's quote and answer a different
+            // question entirely.
+            sourceCurrency: acct.currency ?? 'EGP', sourceAmount: costNative + chargesNative,
+            sourceRate: rate,
           }).run();
         },
       });
@@ -201,6 +484,11 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       currency: z.string().length(3).optional(),
       /** what the dealer takes off per gram — the making charge you do not get back */
       makingPerGram: z.number().min(0).optional(),
+      /**
+       * A flat fee taken out of the proceeds, in the account's own currency — a dealer's or a
+       * bank's charge for the sale itself, distinct from the making charge quoted per gram.
+       */
+      fee: z.number().min(0).default(0),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
       /** which weight it came out of: the worn jewellery, or the holding */
@@ -239,7 +527,15 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
                        'Lower the deduction, or raise the price a gram.');
       }
       const rate = acct.currency === 'EGP' ? 1 : market.fxRates[acct.currency ?? 'EGP'] ?? 1;
-      const proceeds = proceedsEgp / rate;
+      // The making charge is quoted a gram and comes off before the rate is applied, because
+      // it was struck in the metal's own quoted currency; the fee is a flat charge on the sale
+      // itself, given directly in the account's currency, so it comes off after.
+      const proceeds = proceedsEgp / rate - input.fee;
+      if (!(proceeds > 0)) {
+        return refusal('unbalanced',
+                       `A fee of ${input.fee} ${acct.currency ?? ''} takes the whole sale.`,
+                       'Lower the fee, or raise the price a gram.');
+      }
       const date = input.date ?? today(ctx);
 
       return post(ctx, {
@@ -247,6 +543,7 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         legs: [{ fromNodeId: holding.id, qtyFrom: input.grams, toNodeId: input.accountId, qtyTo: proceeds }],
       }, `${input.grams} g of ${input.metal} at ${q.priceNative} ${q.currency} a gram${
         q.makingNative > 0 ? ` less ${q.makingNative} ${q.currency} a gram making` : ''
+      }${input.fee > 0 ? ` less a ${input.fee} ${acct.currency ?? ''} fee` : ''
       }, ${Math.round(proceeds)} ${acct.currency ?? ''} into ${acct.name}`,
       {
         dryRun: input.dryRun,
@@ -255,7 +552,14 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
           db.insert(t.goldLots).values({
             id: newId('lot'), seq: nextSeq(db, 'gold_lots'), dateText: date, date, metal: input.metal,
             direction: 'sell', grams: input.grams, pricePerGram: perGram,
-            totalEgp: input.grams * perGram, usdPaid: 0,
+            // Selling, the making charge comes off the gram price before the weight
+            // multiplies it, the same formula run the other way — so the total recorded is
+            // what was actually paid out, not the gross the making charge was then taken from.
+            totalEgp: proceedsEgp, usdPaid: 0,
+            // What the sale itself cost, in the account's currency. `totalEgp` is the metal
+            // less the making charge; this is taken off after, and is kept so correcting the
+            // sale later can take it off again rather than handing it back.
+            fee: input.fee,
             accountId: input.accountId, movementId, note: input.note ?? null,
             intention: input.intention,
             currency: q.currency, priceNative: q.priceNative,
@@ -274,6 +578,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
     input: z.object({
       /** where the money comes from, or goes back to; not an account when a dividend paid it */
       accountId: NodeId.optional(),
+      /** which exchange's wallet the money moves into or out of; the first one unless said */
+      exchangeId: ExchangeIdIn,
       direction: z.enum(['in', 'out']).default('in'),
       /**
        * What put the money there. An account of yours, or a distribution from a share.
@@ -288,14 +594,20 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
        * both `abuk` and `ABUK` holds neither.
        */
       ticker: z.string().min(1).max(12).regex(/^[A-Za-z][A-Za-z0-9.]*$/, 'not a ticker').optional(),
+      /** in the currency of whichever side the money leaves — the account, or the book itself */
       amount: z.number().positive(),
+      /** the rate actually given, when the account and the book are held in different currencies */
+      rateApplied: z.number().positive().optional(),
+      /** taken out of what leaves, in the same currency as the amount */
+      fee: z.number().min(0).default(0),
       date: DateOnly.optional(), note: z.string().max(300).optional(),
     }).merge(DryRun),
     output: Outcome,
     handler: async (input) => {
       const ctx = ctxOf();
-      const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.priceKey, 'brokerage_cash')).get()
-                ?? ctx.db.select().from(t.nodes).where(eq(t.nodes.id, 'brokerage-cash')).get();
+      const exchange = exchangeOf(ctx.db, input.exchangeId);
+      if (!exchange) return refusal('not_found', `${input.exchangeId} is not an exchange in this ledger.`);
+      const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, exchange.walletNodeId)).get();
       if (!book) return refusal('not_found', 'This ledger has no brokerage account.', 'Add one with account.add first.');
       const out = input.direction === 'out';
       const byDividend = !out && input.source === 'dividends';
@@ -336,15 +648,33 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         });
       }
 
+      // The book and the account can be held in different currencies, the same as any two
+      // accounts of yours — so this is an exchange when they differ, priced at the rate
+      // actually given rather than assumed to be one-for-one, exactly as movement.transfer
+      // reads a transfer between two accounts.
+      const fromCur = (out ? book.currency : acct!.currency) ?? 'EGP';
+      const toCur = (out ? acct!.currency : book.currency) ?? 'EGP';
+      const crosses = fromCur !== toCur;
+      const market = readMarket(ctx.db);
+      const mid = crosses ? (market.fxRates[fromCur] ?? 1) / (market.fxRates[toCur] ?? 1) : undefined;
+      const rate = input.rateApplied ?? (crosses ? mid : undefined);
+      const net = Math.max(0, input.amount - input.fee);
+      const arrives = rate ? net * rate : net;
+
       return post(ctx, {
-        date: input.date ?? today(ctx), kind: 'transfer', note: input.note,
+        date: input.date ?? today(ctx), kind: crosses ? 'exchange' : 'transfer', note: input.note,
         legs: [out
-          ? { fromNodeId: book.id, toNodeId: input.accountId, qtyFrom: input.amount }
-          : { fromNodeId: input.accountId, toNodeId: book.id, qtyFrom: input.amount }],
+          ? { fromNodeId: book.id, toNodeId: input.accountId, qtyFrom: net, rateApplied: rate,
+              feeQty: input.fee || undefined, feeNodeId: input.fee ? book.id : undefined }
+          : { fromNodeId: input.accountId, toNodeId: book.id, qtyFrom: net, rateApplied: rate,
+              feeQty: input.fee || undefined, feeNodeId: input.fee ? input.accountId : undefined }],
       }, out
-        ? `${input.amount} out of the book into ${acct?.name ?? '?'}`
-        : `${input.amount} into the book out of ${acct?.name ?? '?'}`,
-      { dryRun: input.dryRun });
+        ? `${input.amount} ${fromCur} out of the book, ${Math.round(arrives)} ${toCur} into ${acct?.name ?? '?'}`
+        : `${input.amount} ${fromCur} out of ${acct?.name ?? '?'}, ${Math.round(arrives)} ${toCur} into the book`,
+      { dryRun: input.dryRun,
+        warnings: crosses && !input.rateApplied
+          ? [`No rate was given, so the mid-market rate of ${mid?.toFixed(4)} was recorded.`]
+          : [] });
     },
   }),
 
@@ -357,51 +687,98 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       ticker: Ticker, side: z.enum(['BUY', 'SELL']),
       shares: z.number().positive(), price: z.number().positive(),
       status: z.enum(['executed', 'pending', 'cancelled']).default('executed'),
+      /** which exchange this order was placed on; the first one unless said */
+      exchangeId: ExchangeIdIn,
+      /**
+       * What the broker charged for this order, once, in the wallet's own currency — never
+       * per share. A buy takes the shares' price plus the fee out of the wallet; a sale puts
+       * the price less the fee back into it.
+       */
+      fee: z.number().min(0).default(0),
+      /** why these shares are held — personal, or held as a holding — which decides whether zakat reaches them */
+      intention: z.enum(['personal', 'investment']).optional(),
       date: DateOnly.optional(), time: z.string().max(8).optional(),
       /** why you did it — the part worth reading back a year later */
       note: z.string().max(500).optional(),
+      /**
+       * The account this buy is understood to have been funded from, when it can be named.
+       * Read only on an executed BUY — a share is bought out of the pooled brokerage wallet,
+       * so naming one moves nothing, but it lets the purchase be asked what that account's
+       * own money would be worth now, apart from what the share itself did.
+       */
+      accountId: NodeId.optional(),
+      /** the rate that applied that day, EGP per unit of that account's currency; today's rate stands in if not said */
+      rateApplied: z.number().positive().optional(),
     }).merge(DryRun),
     output: Outcome,
     handler: async (input) => {
       const ctx = ctxOf();
       const date = input.date ?? today(ctx);
       const total = input.shares * input.price;
+      /**
+       * What the wallet actually moves. The fee is charged for the order, not for each share
+       * in it, so it is added once to a buy and taken once off a sale — `total` stays what the
+       * shares themselves came to, which is what the price column is read against.
+       */
+      const cash = input.side === 'BUY' ? total + input.fee : total - input.fee;
+      if (input.side === 'SELL' && !(cash > 0)) {
+        return refusal('unbalanced', `A fee of ${input.fee} takes the whole sale.`,
+                       'Lower the fee, or raise the price a share.');
+      }
       const id = newId('ord');
 
       if (input.status !== 'executed') {
         if (input.dryRun) return noted(`${input.side} ${input.shares} ${input.ticker} would be logged as ${input.status}`);
         ctx.db.insert(t.orders).values({
           id, seq: nextSeq(ctx.db, 'orders'), date, time: input.time ?? null,
+          exchangeId: input.exchangeId,
           ticker: input.ticker, side: input.side, shares: input.shares,
-          price: input.price, total, status: input.status, note: input.note ?? null,
+          price: input.price, total, fee: input.fee, intention: input.intention ?? null,
+          status: input.status, note: input.note ?? null,
         }).run();
         return noted(`${input.side} ${input.shares} ${input.ticker} logged as ${input.status} — nothing moved`);
       }
 
-      const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, 'brokerage-cash')).get();
+      const exchange = exchangeOf(ctx.db, input.exchangeId);
+      if (!exchange) return refusal('not_found', `${input.exchangeId} is not an exchange in this ledger.`);
+      const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, exchange.walletNodeId)).get();
       const position = ctx.db.select().from(t.nodes).where(eq(t.nodes.priceKey, input.ticker)).get();
       if (!book) return refusal('not_found', 'This ledger has no brokerage cash account.');
 
+      const src = input.side === 'BUY'
+        ? orderSource(ctx, input.accountId, input.rateApplied, book.currency, cash)
+        : { fields: null } as const;
+      if ('refusal' in src) return src.refusal;
+
       const legs = position
         ? [input.side === 'BUY'
-            ? { fromNodeId: book.id, qtyFrom: total, toNodeId: position.id, qtyTo: input.shares }
-            : { fromNodeId: position.id, qtyFrom: input.shares, toNodeId: book.id, qtyTo: total }]
+            ? { fromNodeId: book.id, qtyFrom: cash, toNodeId: position.id, qtyTo: input.shares }
+            : { fromNodeId: position.id, qtyFrom: input.shares, toNodeId: book.id, qtyTo: cash }]
         : [input.side === 'BUY'
-            ? { fromNodeId: book.id, qtyFrom: total }
-            : { toNodeId: book.id, qtyFrom: total }];
+            ? { fromNodeId: book.id, qtyFrom: cash }
+            : { toNodeId: book.id, qtyFrom: cash }];
 
       return post(ctx, { date, kind: input.side === 'BUY' ? 'purchase' : 'sale', note: input.note, legs },
-        `${input.side} ${input.shares} ${input.ticker} at ${input.price}`,
+        `${input.side} ${input.shares} ${input.ticker} at ${input.price}${input.fee > 0 ? `, fee ${input.fee}` : ''}`,
         {
           dryRun: input.dryRun,
           index: [{ kind: 'order', recordId: id, title: `${input.ticker} ${input.side}`, body: `${input.shares} at ${input.price}` }],
           warnings: position ? [] : [`No position node exists for ${input.ticker}, so only the cash side was recorded.`],
           after: (db, movementId) => {
+            const seq = nextSeq(db, 'orders');
+            const { realizedPnl, realizedPnlPct } = realizedFields(db, input.exchangeId, input.ticker, input.side, input.shares, cash, seq);
             db.insert(t.orders).values({
-              id, seq: nextSeq(db, 'orders'), date, time: input.time ?? null,
+              id, seq, date, time: input.time ?? null,
+              exchangeId: input.exchangeId,
               ticker: input.ticker, side: input.side, shares: input.shares,
-              price: input.price, total, status: 'executed', movementId,
+              price: input.price, total, fee: input.fee, intention: input.intention ?? null,
+              status: 'executed', movementId,
               note: input.note ?? null,
+              realizedPnl, realizedPnlPct,
+              accountId: src.fields?.accountId ?? null,
+              sourceCurrency: src.fields?.sourceCurrency ?? null,
+              sourceAmount: src.fields?.sourceAmount ?? null,
+              sourceRate: src.fields?.sourceRate ?? null,
             }).run();
           },
         });
@@ -411,15 +788,25 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'order.correct',
     context: 'holdings',
-    summary: 'Correct an order already logged — the ticker, the side, the shares, the price, the status, the date, the note.',
+    summary: 'Correct an order already logged — the ticker, the side, the shares, the price, the fee, the intention, the status, the date, the note.',
     detail: 'An executed order moved cash and the position, so correcting one reverses that movement and writes it again. An order that never executed moved nothing, and only its record changes.',
     input: z.object({
       orderId: z.string(),
       ticker: Ticker.optional(), side: z.enum(['BUY', 'SELL']).optional(),
       shares: z.number().positive().optional(), price: z.number().positive().optional(),
       status: z.enum(['executed', 'pending', 'cancelled']).optional(),
+      /** which exchange this order belongs to; the one already on the row unless said */
+      exchangeId: z.string().min(1).optional(),
       date: DateOnly.optional(), time: z.string().max(8).optional(),
       note: z.string().max(500).optional(),
+      /** what the broker charged for the order as a whole; the one already on the row unless said */
+      fee: z.number().min(0).optional(),
+      /** why these shares are held; the answer already on the row unless said */
+      intention: z.enum(['personal', 'investment']).optional(),
+      /** the account this buy is understood to have been funded from; the one already on the row unless said */
+      accountId: NodeId.optional(),
+      /** the rate applied that day; the one already on the row unless said */
+      rateApplied: z.number().positive().optional(),
     }),
     output: Outcome,
     handler: async (input) => {
@@ -433,11 +820,23 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         shares: input.shares ?? row.shares,
         price: input.price ?? row.price,
         status: input.status ?? row.status,
+        exchangeId: input.exchangeId ?? row.exchangeId ?? DEFAULT_EXCHANGE_ID,
         date: input.date ?? row.date,
         time: input.time ?? row.time ?? null,
         note: input.note ?? row.note ?? null,
+        fee: input.fee ?? (row as { fee?: number | null }).fee ?? 0,
+        intention: input.intention ?? (row as { intention?: string | null }).intention ?? null,
       };
       const total = next.shares * next.price;
+      // The same arithmetic order.log does: the charge belongs to the order, so it is added
+      // once to a buy and taken once off a sale, and `total` stays what the shares came to.
+      const cash = next.side === 'BUY' ? total + next.fee : total - next.fee;
+      // What is not being asked to change keeps what the row already says — including the
+      // rate, so correcting the shares or the price does not quietly re-quote a buy's source
+      // money at today's rate instead of the one that actually applied.
+      const nextAccountId = input.accountId ?? (row as { accountId?: string | null }).accountId ?? undefined;
+      const sameAccount = !input.accountId || input.accountId === (row as { accountId?: string | null }).accountId;
+      const preferredRate = sameAccount ? (row as { sourceRate?: number | null }).sourceRate ?? undefined : undefined;
 
       return atomically(ctx, () => {
         undoMovement(ctx, row.movementId);
@@ -447,37 +846,59 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         if (next.status !== 'executed') {
           ctx.db.insert(t.orders).values({
             id: input.orderId, seq: row.seq, date: next.date, time: next.time,
+            exchangeId: next.exchangeId,
             ticker: next.ticker, side: next.side, shares: next.shares,
-            price: next.price, total, status: next.status, note: next.note,
+            price: next.price, total, fee: next.fee, intention: next.intention,
+            status: next.status, note: next.note,
           }).run();
           return noted(`${next.side} ${next.shares} ${next.ticker} corrected — logged as ${next.status}, nothing moved`);
         }
 
-        const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, 'brokerage-cash')).get();
+        const exchange = exchangeOf(ctx.db, next.exchangeId);
+        if (!exchange) return refusal('not_found', `${next.exchangeId} is not an exchange in this ledger.`);
+        const book = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, exchange.walletNodeId)).get();
         if (!book) return refusal('not_found', 'This ledger has no brokerage cash account.');
         const position = ctx.db.select().from(t.nodes).where(eq(t.nodes.priceKey, next.ticker)).get();
 
+        if (next.side === 'SELL' && !(cash > 0)) {
+          return refusal('unbalanced', `A fee of ${next.fee} takes the whole sale.`,
+                         'Lower the fee, or raise the price a share.');
+        }
+
+        const src = next.side === 'BUY'
+          ? orderSource(ctx, nextAccountId, input.rateApplied, book.currency, cash, preferredRate)
+          : { fields: null } as const;
+        if ('refusal' in src) return src.refusal;
+
         const legs = position
           ? [next.side === 'BUY'
-              ? { fromNodeId: book.id, qtyFrom: total, toNodeId: position.id, qtyTo: next.shares }
-              : { fromNodeId: position.id, qtyFrom: next.shares, toNodeId: book.id, qtyTo: total }]
+              ? { fromNodeId: book.id, qtyFrom: cash, toNodeId: position.id, qtyTo: next.shares }
+              : { fromNodeId: position.id, qtyFrom: next.shares, toNodeId: book.id, qtyTo: cash }]
           : [next.side === 'BUY'
-              ? { fromNodeId: book.id, qtyFrom: total }
-              : { toNodeId: book.id, qtyFrom: total }];
+              ? { fromNodeId: book.id, qtyFrom: cash }
+              : { toNodeId: book.id, qtyFrom: cash }];
 
         return post(ctx, {
           date: next.date, kind: next.side === 'BUY' ? 'purchase' : 'sale',
           note: next.note ?? undefined, legs,
-        }, `corrected: ${next.side} ${next.shares} ${next.ticker} at ${next.price}`,
+        }, `corrected: ${next.side} ${next.shares} ${next.ticker} at ${next.price}${next.fee > 0 ? `, fee ${next.fee}` : ''}`,
         {
           index: [{ kind: 'order', recordId: input.orderId,
                     title: `${next.ticker} ${next.side}`, body: `${next.shares} at ${next.price}` }],
           warnings: position ? [] : [`No position node exists for ${next.ticker}, so only the cash side was recorded.`],
           after: (db, movementId) => {
+            const { realizedPnl, realizedPnlPct } = realizedFields(db, next.exchangeId, next.ticker, next.side, next.shares, cash, row.seq);
             db.insert(t.orders).values({
               id: input.orderId, seq: row.seq, date: next.date, time: next.time,
+              exchangeId: next.exchangeId,
               ticker: next.ticker, side: next.side, shares: next.shares,
-              price: next.price, total, status: 'executed', movementId, note: next.note,
+              price: next.price, total, fee: next.fee, intention: next.intention,
+              status: 'executed', movementId, note: next.note,
+              realizedPnl, realizedPnlPct,
+              accountId: src.fields?.accountId ?? null,
+              sourceCurrency: src.fields?.sourceCurrency ?? null,
+              sourceAmount: src.fields?.sourceAmount ?? null,
+              sourceRate: src.fields?.sourceRate ?? null,
             }).run();
           },
         });
@@ -503,6 +924,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       note: z.string().max(300).optional(),
       /** worn or held — the answer that decides whether zakat reaches this weight */
       intention: z.enum(['personal', 'investment']).optional(),
+      /** the flat charge on the lot — paid on a buy, taken off a sale — in the account's currency; the lot's own unless said */
+      fee: z.number().min(0).optional(),
     }),
     output: Outcome,
     handler: async (input) => {
@@ -528,7 +951,12 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         makingPerGram: input.makingPerGram ?? lot.makingPerGram ?? 0,
       }, lot.pricePerGram);
       const perGram = q.perGramEgp;
-      const totalEgp = grams * perGram;
+      // The metal alone — grams at the gram price, with nothing added yet. The making charge
+      // rides apart from it below, added for a buy and taken off for a sell, which is the same
+      // formula the fresh capabilities use and the one the entry form previews.
+      const metalEgp = grams * perGram;
+      const buying = lot.direction === 'buy';
+      const totalEgp = buying ? metalEgp + q.makingEgp : metalEgp - q.makingEgp;
       const intention = input.intention
         ?? (lot as { intention?: string | null }).intention ?? 'investment';
 
@@ -563,17 +991,26 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       const acct = ctx.ledger().node(accountId);
       if (!acct) return refusal('unknown_node', `${accountId} is not an account in this ledger.`);
       const rate = acct.currency === 'EGP' ? 1 : market.fxRates[acct.currency ?? 'EGP'] ?? 1;
-      const native = totalEgp / rate;
+      const native = metalEgp / rate;
       const makingNative = q.makingEgp / rate;
-      const buying = lot.direction === 'buy';
       // The making charge is spent buying and forgone selling, the same way it is when the
       // lot is first recorded: a fee on the money going out, a deduction from what comes in.
-      if (!buying && !(totalEgp - q.makingEgp > 0)) {
+      if (!buying && !(metalEgp - q.makingEgp > 0)) {
         return refusal('unbalanced',
                        `A making charge of ${q.makingNative} ${q.currency} a gram takes the whole sale.`,
                        'Lower the deduction, or raise the price a gram.');
       }
-      const proceeds = (totalEgp - q.makingEgp) / rate;
+      // The lot's own flat charge, in the account's currency, whichever way it went. Left out
+      // of a correction it would be silently forgiven: the reversal returns what the lot
+      // actually moved and the rewrite would move the gross, so the account would gain the
+      // fee every time anything on the row was corrected — including a change to the note.
+      const fee = input.fee ?? lot.fee ?? 0;
+      const proceeds = (metalEgp - q.makingEgp) / rate - fee;
+      if (!buying && !(proceeds > 0)) {
+        return refusal('unbalanced',
+                       `A fee of ${fee} ${acct.currency ?? ''} takes the whole sale.`,
+                       'Lower the fee, or raise the price a gram.');
+      }
 
       return atomically(ctx, () => {
         undoMovement(ctx, lot.movementId);
@@ -583,7 +1020,7 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
           date, kind: buying ? 'purchase' : 'sale', note,
           legs: [buying
             ? { fromNodeId: accountId, qtyFrom: native, toNodeId: holding.id, qtyTo: grams,
-                ...(makingNative > 0 ? { feeQty: makingNative, feeNodeId: accountId } : {}) }
+                ...(makingNative + fee > 0 ? { feeQty: makingNative + fee, feeNodeId: accountId } : {}) }
             : { fromNodeId: holding.id, qtyFrom: grams, toNodeId: accountId, qtyTo: proceeds }],
         }, `corrected: ${grams} g of ${metal} at ${q.priceNative} ${q.currency} a gram${
           q.makingNative > 0 ? `, ${q.makingNative} ${q.currency} a gram making` : ''
@@ -594,11 +1031,19 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
           after: (db, movementId) => {
             db.insert(t.goldLots).values({
               id: input.lotId, seq: lot.seq, dateText: date, date, metal,
-              direction: lot.direction, grams, pricePerGram: perGram, totalEgp,
-              usdPaid: acct.currency === 'USD' ? native : totalEgp / (market.usdEgp || 1),
+              direction: lot.direction, grams, pricePerGram: perGram, totalEgp, fee,
+              usdPaid: acct.currency === 'USD'
+                ? (buying ? native + makingNative + fee : native)
+                : totalEgp / (market.usdEgp || 1),
               accountId, movementId, note: note ?? null, intention,
               currency: q.currency, priceNative: q.priceNative,
               makingPerGram: q.makingNative, makingEgp: q.makingEgp,
+              // Only a buy has source money behind it — a sale gives money back rather than
+              // spending it, so correcting one clears whatever a previous buy at this id left,
+              // instead of a sale wrongly inheriting a buy's own reading.
+              ...(buying
+                ? { sourceCurrency: acct.currency ?? 'EGP', sourceAmount: native + makingNative + fee, sourceRate: rate }
+                : { sourceCurrency: null, sourceAmount: null, sourceRate: null }),
             }).run();
           },
         });
@@ -639,22 +1084,28 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
     name: 'positions.list',
     context: 'holdings',
     summary: 'The share book: every position, its cost, and what it is worth at the price you last set.',
-    detail: 'Shares are held from the orders you logged, and valued at whatever price was last recorded for each ticker — fetched from the source chosen under Prices, or set by hand — so a position with no price is shown at cost and says so, rather than quietly counting as zero.',
-    input: z.object({}),
+    detail: 'Shares are held from the orders you logged, and valued at whatever price was last recorded for each ticker — fetched from the source chosen under Prices, or set by hand — so a position with no price is shown at cost and says so, rather than quietly counting as zero. Scoped to one exchange, the first unless another is named: the same ticker can be a position on two exchanges at once, each with its own shares and its own average cost.',
+    input: z.object({ exchangeId: ExchangeIdIn }),
     output: z.array(z.object({
       ticker: z.string(), shares: z.number(), avgBuy: z.number(),
       cost: z.number(), price: z.number(), value: z.number(), gain: z.number(),
       priced: z.boolean(), pricedAt: z.string().nullable(),
+      ...SOURCE_FIELDS,
     })),
-    handler: async () => {
+    handler: async ({ exchangeId }) => {
       const ctx = ctxOf();
-      const { data } = buildDataset(ctx.db, ctx.now);
       const market = readMarket(ctx.db);
       const at = new Map(ctx.db.$raw.prepare(`
         SELECT key, at FROM market_ticks WHERE id IN (SELECT MAX(id) FROM market_ticks GROUP BY key)
       `).all().map((r: any) => [r.key, r.at]));
+      // Only this exchange's own orders — a position is never built from shares sitting in a
+      // book it cannot see.
+      const rawOrders = ctx.db.select().from(t.orders).where(eq(t.orders.exchangeId, exchangeId)).all();
+      const byTicker = new Map<string, typeof rawOrders>();
+      for (const o of rawOrders) (byTicker.get(o.ticker) ?? byTicker.set(o.ticker, []).get(o.ticker)!).push(o);
+      const engineOrders = rawOrders as unknown as EngineOrder[];
 
-      return computedPositions(data.orders, market.prices).map((p) => {
+      return computedPositions(engineOrders, market.prices).map((p) => {
         const priced = market.prices[p.ticker] != null;
         // an unpriced holding is worth what it cost until told otherwise, which is honest
         // rather than optimistic
@@ -663,6 +1114,7 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
           ...p, value, priced,
           pricedAt: (at.get(`price_${p.ticker}`) as string) ?? null,
           gain: value - p.cost,
+          ...sourceReading(sourceBehindPosition(byTicker.get(p.ticker) ?? []), value, market),
         };
       });
     },
@@ -790,6 +1242,12 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       installmentId: z.string(),
       accountId: NodeId.optional(),
       date: DateOnly.optional(),
+      /**
+       * The day this was originally due — kept even once paid, so the plan still says whether
+       * a payment was made on time. Separate from `date`, which is when it was actually paid:
+       * conflating the two lost a due date the moment anything else on a paid row was fixed.
+       */
+      dueDate: DateOnly.optional(),
       amountEgp: z.number().positive().optional(),
       note: z.string().max(300).optional(),
     }),
@@ -818,11 +1276,10 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       const from = input.accountId ?? inst.payFrom ?? paidFrom;
       if (!from) return refusal('unknown_node', 'Say which account the payment should have come out of.');
       const date = input.date ?? inst.paidAt;
+      const dueDate = input.dueDate ?? inst.dueDate;
       const amount = input.amountEgp ?? inst.amountEgp;
       const note = input.note ?? inst.note;
       const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
-      // what a payment buys is read from what it is called, so a renamed one is re-read
-      const equity = !/maintenance|service|fee/i.test(note);
 
       // The reversal has to happen before the new payment is written — the money has to be
       // back in the old account before it can leave the new one.
@@ -833,14 +1290,16 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
 
         return post(ctx, {
           date, kind: 'installment', note: note || undefined,
-          legs: [equity && property
+          // Whatever it bought, a paid installment counts towards the property's value — see
+          // payInstallment.
+          legs: [property
             ? { fromNodeId: from, qtyFrom: amount, toNodeId: property.id, qtyTo: amount }
             : { fromNodeId: from, qtyFrom: amount }],
         }, `corrected: ${amount} out of ${ctx.db.select().from(t.nodes).where(eq(t.nodes.id, from)).get()?.name ?? from}`,
         {
           after: (db, movementId) => {
             db.update(t.installments).set({ paidAt: date, movementId, payFrom: from,
-                                            amountEgp: amount, note })
+                                            amountEgp: amount, note, dueDate })
               .where(eq(t.installments.id, input.installmentId)).run();
             settleOwnership(db, inst.propertyId);
           },
@@ -857,6 +1316,8 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
           + 'An order that is pending or cancelled moved no money and so appears here and '
           + 'nowhere in the positions.',
     input: z.object({
+      /** which exchange's orders to read; the first one unless said */
+      exchangeId: ExchangeIdIn,
       ticker: z.string().optional(),
       side: z.enum(['BUY', 'SELL']).optional(),
       status: z.enum(['executed', 'pending', 'cancelled']).optional(),
@@ -866,21 +1327,41 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
     }),
     output: z.array(z.object({
       id: z.string(), date: z.string(), time: z.string().nullable(),
+      exchangeId: z.string(),
       ticker: z.string(), side: z.string(), shares: z.number(), price: z.number(),
       total: z.number(), status: z.string(),
+      /** what the broker charged for the order as a whole — added to a buy, taken off a sale */
+      fee: z.number(),
+      /** why these shares are held, stated on the order; null where none was ever stated */
+      intention: z.enum(['personal', 'investment']).nullable(),
       note: z.string().nullable(), movementId: z.string().nullable(),
+      /**
+       * What this sale earned against the average cost of every share behind it, stored the
+       * day it was sold. Null for a buy, and null for a sale logged before this was tracked —
+       * that ledger never saw a figure, so none is shown rather than one made up after the fact.
+       */
+      realizedPnl: z.number().nullable(),
+      /** the same result as a percentage of what the shares sold had cost */
+      realizedPnlPct: z.number().nullable(),
     })),
     handler: async (input) => {
       const { db } = ctxOf();
       return db.select().from(t.orders).all()
-        .filter((o) => (!input.ticker || o.ticker === input.ticker.toUpperCase())
+        .filter((o) => o.exchangeId === input.exchangeId
+                    && (!input.ticker || o.ticker === input.ticker.toUpperCase())
                     && (!input.side || o.side === input.side)
                     && (!input.status || o.status === input.status)
                     && (!input.from || o.date >= input.from)
                     && (!input.to || o.date <= input.to))
         .sort((a, b) => b.date.localeCompare(a.date) || b.seq - a.seq)
         .slice(0, input.limit)
-        .map(({ seq: _seq, ...o }) => o);
+        // Intention is a free-text column in the database, so it is read back as one of the
+        // two answers or as none at all — never as whatever string happens to be sitting there.
+        .map(({ seq: _seq, ...o }) => ({
+          ...o,
+          fee: o.fee ?? 0,
+          intention: statedIntention(o.intention),
+        }));
     },
   }),
 
@@ -897,20 +1378,37 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       currency: z.string(), priceNative: z.number(),
       /** the making charge a gram, in that currency, and what it came to in pounds */
       makingPerGram: z.number(), makingEgp: z.number(),
+      /** the lot's flat charge, in the account's currency — paid on a buy, taken off a sale */
+      fee: z.number(),
       note: z.string().nullable(), movementId: z.string().nullable(),
       accountId: z.string().nullable(),
       intention: z.string(),
+      /** this lot's weight at today's price — what `sourceComparison` reads it against */
+      valueEgp: z.number(),
+      ...SOURCE_FIELDS,
     })),
     handler: async ({ metal }) => {
       const { db } = ctxOf();
+      const market = readMarket(db);
       return db.select().from(t.goldLots).all()
         .filter((l) => !metal || (l.metal ?? 'gold') === metal)
-        .map((l) => ({ ...l, metal: l.metal ?? 'gold',
-                       intention: (l as { intention?: string | null }).intention ?? 'investment',
-                       // rows written before metal could be quoted in anything but pounds
-                       currency: l.currency ?? 'EGP',
-                       priceNative: l.priceNative ?? l.pricePerGram,
-                       makingPerGram: l.makingPerGram ?? 0, makingEgp: l.makingEgp ?? 0 }))
+        .map((l) => {
+          const perGramNow = (l.metal ?? 'gold') === 'silver' ? (market.prices.silver_g ?? 0) : market.goldPerG;
+          const valueEgp = l.grams * perGramNow;
+          return { ...l, metal: l.metal ?? 'gold',
+                   intention: (l as { intention?: string | null }).intention ?? 'investment',
+                   // rows written before metal could be quoted in anything but pounds
+                   currency: l.currency ?? 'EGP',
+                   priceNative: l.priceNative ?? l.pricePerGram,
+                   makingPerGram: l.makingPerGram ?? 0, makingEgp: l.makingEgp ?? 0,
+                   // rows written before a sale could carry one
+                   fee: l.fee ?? 0,
+                   valueEgp,
+                   ...sourceReading(
+                     { currency: l.sourceCurrency ?? null, amount: l.sourceAmount ?? null, rate: l.sourceRate ?? null },
+                     valueEgp, market),
+                 };
+        })
         .sort((a, b) => (b.date ?? b.dateText).localeCompare(a.date ?? a.dateText));
     },
   }),
@@ -947,7 +1445,12 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
         .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
 
       const total = rows.reduce((s2, r) => s2 + r.amountEgp, 0);
-      const paid = rows.filter((r) => r.paidAt).reduce((s2, r) => s2 + r.amountEgp, 0);
+      // What has actually gone into it: the opening/down payment counts as paid, the same as
+      // it does on the assets list — it sat in the property's value before this plan's own
+      // rows existed, and reading only the rows is what made this and `assets.list` disagree
+      // about the same property.
+      const paid = rows.length === 0 ? 0 : (node?.openingQty ?? 0)
+        + rows.filter((r) => r.paidAt).reduce((s2, r) => s2 + r.amountEgp, 0);
       // A share of nothing is nought rather than an error: an empty plan is a plan not yet made.
       const share = (n: number) => (total > 0 ? n / total : 0);
       return {
@@ -1138,8 +1641,30 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
                               set: { enabled: input.enabled, fromNodeId: from! } }).run();
       const name = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, input.propertyId)).get()?.name;
       return noted(input.enabled
-        ? `${name ?? input.propertyId} will post its installments out of ${from}`
+        ? `${name ?? input.propertyId} will post its installments out of ${nameOf(ctx.db, from)}`
         : `${name ?? input.propertyId} is back to being recorded by hand`);
+    },
+  }),
+
+  query({
+    name: 'autopay.list',
+    context: 'holdings',
+    summary: 'Every property with autopay configured, on or off.',
+    detail: 'The Assets screen and the notification settings both read this rather than each keeping its own memory of what was switched on, so a choice made on one is exactly the choice the other shows.',
+    input: z.object({}),
+    output: z.array(z.object({
+      propertyId: z.string(), property: z.string(), enabled: z.boolean(),
+      fromNodeId: z.string().nullable(), fromName: z.string().nullable(),
+    })),
+    handler: async () => {
+      const { db } = ctxOf();
+      return db.select().from(t.autopay).all().map((a) => ({
+        propertyId: a.propertyId,
+        property: db.select().from(t.nodes).where(eq(t.nodes.id, a.propertyId)).get()?.name ?? a.propertyId,
+        enabled: a.enabled,
+        fromNodeId: a.fromNodeId ?? null,
+        fromName: a.fromNodeId ? nameOf(db, a.fromNodeId) : null,
+      }));
     },
   }),
 ];

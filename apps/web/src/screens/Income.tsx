@@ -4,24 +4,18 @@ import { RecordAmount } from '../components/RecordAmount';
 import { Select } from '../components/Select';
 import { useApp, market } from '../AppState';
 import { money, splitByCurrency, toEgp, fromEgp } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Row, AccountName } from '../components/UI';
+import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
-import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useLive } from '../Live';
 import { Manager } from '../components/Manager';
 import { RecordTable } from '../components/RecordTable';
 import { ledger } from '../api';
-import { Mark } from '../components/Mark';
 import { DateField } from '../components/DateField';
-
-const COLS = '48px minmax(200px,1.4fr) 140px 190px 160px 70px';
 
 export function Income() {
   return (
-    <ModeProvider>
-      <SectionProvider first="sources"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="sources"><Body /></SectionProvider>
   );
 }
 
@@ -111,8 +105,6 @@ function Body() {
   }, [live, version]);
   const LOGGED = landed ?? FALLBACK_LOGGED;
 
-
-  const { mode } = useMode();
   const { tab } = useSection();
   /*
    * A source's mark comes from the source.
@@ -161,11 +153,9 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'sources', label: 'Sources', icon: 'income',
-          hint: 'Where money comes from. Scheduled sources accrue on their own.',
-          editHint: 'Rename a source, change what it pays and how often, add one, retire one.' },
+          hint: 'Where money comes from. Scheduled sources accrue on their own — double-click one to rename it, change what it pays, or retire it.' },
         { id: 'records', label: 'Records', icon: 'ledger',
-          hint: 'Every payment that actually landed, newest first.',
-          editHint: 'Correct what landed — the amount, the account, the date — or reverse one that never did.' },
+          hint: 'Every payment that actually landed, newest first.' },
       ]} />
       <Panel>
         <Stats>
@@ -181,17 +171,7 @@ function Body() {
         </div>
       </Panel>
 
-      {/* These head the reading rows below, and only those: the records tab draws its own
-          table with its own headings, and the editor draws a different set of fields again —
-          over which "Lands in" sat above the picker for the asset that earns the money. */}
-      {tab === 'sources' && mode !== 'edit' && (
-        <Row cols={COLS} style={{ padding: '0 18px' }}>
-          <span /><span className="ov">Source</span><span className="ov">Amount</span>
-          <span className="ov">When it arrives</span><span className="ov">Lands in</span><span />
-        </Row>
-      )}
-
-      {tab === 'sources' && mode === 'edit' ? (
+      {tab === 'sources' && (
         <Manager
           markFamily="income"
           addLabel="Add a source"
@@ -258,26 +238,62 @@ function Body() {
               options: [{ value: '', label: 'Nothing — it is not rent' },
                         ...lettable.map((n) => ({ value: n.id, label: n.name }))] },
           ]}
-          rows={[...scheduled, ...occasional].map((src) => ({
-            id: src.id,
-            mark: src.icon ?? 'income',
-            colour: src.scheduled ? '#2E7D52' : '#B37E00',
-            values: {
-              name: src.name,
-              amount: src.amount ?? '',
-              currency: src.currency,
-              cadence: src.scheduled ? src.cadence : 'irregular',
-              dayOfMonth: String(src.dayOfMonth ?? 1),
-              annualOn: String(src.startDate?.slice(5, 7) ?? 1),
-              toAccountId: src.toNodeId,
-              assetId: (src as { assetId?: string | null }).assetId ?? '',
-            },
-          }))}
+          rows={[...scheduled, ...occasional].map((src) => {
+            const { bank, account } = accountName(src.toNodeId);
+            const paid = perSourceNative(src.id);
+            return {
+              id: src.id,
+              mark: src.icon ?? 'income',
+              colour: src.scheduled ? '#2E7D52' : '#B37E00',
+              values: {
+                name: src.name,
+                amount: src.amount ?? '',
+                currency: src.currency,
+                cadence: src.scheduled ? src.cadence : 'irregular',
+                dayOfMonth: String(src.dayOfMonth ?? 1),
+                annualOn: String(src.startDate?.slice(5, 7) ?? 1),
+                toAccountId: src.toNodeId,
+                assetId: (src as { assetId?: string | null }).assetId ?? '',
+              },
+              /* what a closed row cannot otherwise say: where it lands, and — for an
+                 occasional source — what it has actually paid this year so far */
+              trailing: (
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2,
+                              fontSize: 11, color: 'var(--faint)', lineHeight: 1.4 }}>
+                  <span>{bank ? `${bank} · ${account}` : account}</span>
+                  <span>
+                    {src.scheduled ? 'next 1 Oct'
+                      : paid.count ? `${nativeMoney(paid)} so far this year` : 'nothing yet this year'}
+                  </span>
+                </span>
+              ),
+            };
+          })}
           onSave={(id, patch) => {
             const src = data.incomeSources.find((x) => x.id === id);
             // what the row is after this edit, so the account follows the currency on screen
             const after = { currency: src?.currency ?? '', toAccountId: src?.toNodeId ?? '',
                             ...patch } as Record<string, string | number>;
+            /**
+             * Which account this save actually names.
+             *
+             * The old account cannot hold a currency it was never changing to hold, so
+             * changing the currency really does have to move it — `accountFor` picks a
+             * sensible one that can. But the picker offers only active accounts, and an
+             * account that has since been archived is not offered there either — so calling
+             * `accountFor` whether or not the currency changed re-derived the account from that
+             * same narrowed list every time, and a source that had quietly landed on an
+             * archived account was reassigned to whatever active account came first the next
+             * time anything else on the row was saved, with nobody having touched this field.
+             * Left alone when the currency has not changed, the row keeps naming exactly the
+             * account it already named — archived or not — and only a real currency change, or
+             * the owner's own pick from the field itself, moves it.
+             */
+            const currencyChanged = src != null && patch.currency !== undefined
+              && String(patch.currency) !== src.currency;
+            const toAccountId = currencyChanged
+              ? (accountFor(after) || undefined)
+              : ((patch.toAccountId as string | undefined) || src?.toNodeId || undefined);
             return run('income.source.update', {
             sourceId: id,
             name: patch.name as string | undefined,
@@ -288,7 +304,7 @@ function Body() {
             dayOfMonth: patch.dayOfMonth === 'last' ? 'last'
                       : patch.dayOfMonth != null ? Number(patch.dayOfMonth) : undefined,
             icon: patch.mark as string | undefined,
-            toAccountId: accountFor(after) || undefined,
+            toAccountId,
             assetId: patch.assetId === undefined ? undefined : ((patch.assetId as string) || null),
             });
           }}
@@ -315,71 +331,7 @@ function Body() {
           onArchive={(id) => run('income.source.retire', { sourceId: id })}
           clear={{ log: 'income', what: 'every source of income and its schedule' }}
         />
-      ) : tab === 'sources' ? (
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[...scheduled, ...occasional].map((s) => {
-          const { bank, account } = accountName(s.toNodeId);
-          return (
-            <div key={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Row cols={COLS} style={{
-              padding: '16px 18px', borderRadius: 'var(--r-card)',
-              background: s.scheduled ? 'var(--surface)' : 'var(--raised)',
-              border: '1px solid var(--hairline)',
-            }}>
-              {(() => {
-                const tone = s.scheduled ? 'var(--positive)' : 'var(--gold)';
-                return (
-                  <span style={{
-                    width: 36, height: 36, borderRadius: 9, display: 'flex', alignItems: 'center',
-                    justifyContent: 'center',
-                    background: `color-mix(in srgb, ${tone} var(--tint), transparent)`,
-                  }}>
-                    <Mark mark={s.icon} size={19} color={tone} fallback="income" />
-                  </span>
-                );
-              })()}
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>
-                  {s.scheduled
-                    ? `started ${s.startDate}${s.endDate ? `, ends ${s.endDate}` : ''}`
-                    : 'no schedule'}
-                </div>
-              </div>
-              <div>
-                <div className="mono" style={{ fontSize: 16, fontWeight: 500, color: s.amount == null ? 'var(--muted)' : undefined }}>
-                  {s.amount == null ? 'varies' : money(s.amount, s.currency)}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-                  {s.amount == null
-                    ? (() => {
-                        const paid = perSourceNative(s.id);
-                        return paid.count
-                          ? `avg ${nativeMoney({ ...paid, amount: paid.amount / paid.count })}`
-                          : 'varies';
-                      })()
-                    : 'fixed'}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 13 }}>
-                  {s.scheduled ? `Monthly, on the ${s.dayOfMonth === 'last' ? 'last day' : `${s.dayOfMonth}st`}` : 'Whenever it comes'}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-                  {s.scheduled ? 'next 1 Oct' : `${nativeMoney(perSourceNative(s.id))} so far this year`}
-                </div>
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {bank}<br /><span style={{ fontSize: 11, color: 'var(--faint)' }}>{account}</span>
-              </div>
-              <span />
-            </Row>
-            </div>
-          );
-        })}
-      </div>
-      ) : null}
+      )}
 
       {tab === 'records' && (
       <Panel title="Income that landed"
@@ -402,15 +354,33 @@ function Body() {
                dollar retainer arrived, by default, in an Egyptian account. */
             { key: 'source', label: 'Source', kind: 'pick',
               value: (l) => l.source,
-              field: (d, set) => (
-                <Select ariaLabel="Source" value={d.sourceId}
-                        onChange={(v) => {
-                          const src = data.incomeSources.find((x) => x.id === v);
-                          set({ sourceId: v,
-                                ...(src ? { currency: src.currency, accountId: src.toNodeId } : {}) });
-                        }}
-                        options={occasional.map((x) => ({ value: x.id, label: x.name }))} />
-              ) },
+              /**
+               * What this payment is offered against.
+               *
+               * Adding one only ever names an occasional source — a scheduled one accrues on
+               * its own, so it is never what a logged payment is attributed to fresh. But a
+               * row being corrected can already name one anyway (an older record, or a source
+               * since moved onto a schedule), and the picker has to keep showing what it
+               * actually says: leaving the old source off the list because it is no longer
+               * occasional is exactly how this picker used to fall back to the first name on
+               * it — silently, on open, before anyone had touched a thing.
+               */
+              field: (d, set, row) => {
+                const named = row ? data.incomeSources.find((x) => x.name === row.source) : undefined;
+                const already = named && occasional.some((x) => x.id === named.id);
+                const choices = named && !already
+                  ? [{ value: named.id, label: named.name }, ...occasional.map((x) => ({ value: x.id, label: x.name }))]
+                  : occasional.map((x) => ({ value: x.id, label: x.name }));
+                return (
+                  <Select ariaLabel="Source" value={d.sourceId}
+                          onChange={(v) => {
+                            const src = data.incomeSources.find((x) => x.id === v);
+                            set({ sourceId: v,
+                                  ...(src ? { currency: src.currency, accountId: src.toNodeId } : {}) });
+                          }}
+                          options={choices} />
+                );
+              } },
 
             { key: 'amount', label: 'Amount', kind: 'money',
               value: (l) => toEgp(l.amount, l.currency, market),
@@ -477,11 +447,21 @@ function Body() {
             draftOf: (l) => ({
               date: l.date, amount: l.amount, currency: l.currency,
               accountId: (l as { intoId?: string | null }).intoId ?? '',
-              sourceId: occasional.find((x) => x.name === l.source)?.id ?? '',
+              // Matched against every source, not only the occasional ones the picker usually
+              // offers — see the field above for why. A source renamed or removed since this
+              // payment landed matches nothing at all; the row still names it by the name it
+              // was given, which the picker offers nowhere, so it reads as unresolved rather
+              // than silently landing on whichever source the list happens to start with.
+              sourceId: data.incomeSources.find((x) => x.name === l.source)?.id
+                ?? (l.source ? `unresolved:${l.source}` : ''),
               note: l.note ?? '',
             }),
             build: (d, l) => ({ movementId: l.id, accountId: d.accountId || undefined,
-                                sourceId: d.sourceId || undefined, amount: Number(d.amount),
+                                // an unresolved source is not a choice, so saving leaves the
+                                // source as it was rather than sending a value nothing offered
+                                sourceId: d.sourceId && !String(d.sourceId).startsWith('unresolved:')
+                                  ? d.sourceId : undefined,
+                                amount: Number(d.amount),
                                 date: d.date, note: d.note ?? '' }),
             blocked: (l) => (l.id.startsWith('tx-') ? undefined
               : 'This payment predates the movement log, so there is nothing to rewrite.'),

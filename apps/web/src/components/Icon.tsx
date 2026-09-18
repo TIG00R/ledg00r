@@ -10,7 +10,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, ArrowDown, ArrowRight, SendHorizontal, Percent,
   RefreshCw, ChevronLeft, Sun, Moon, Plus, Pencil, X, AlertTriangle, Bell,
   Clock, Check, Eye, EyeOff, BookOpen, Trash2, Search, Undo2, Handshake,
-  Menu, Squircle, Plug, Blocks, Lock, Palette, Repeat, Tag,
+  Menu, Squircle, Plug, Blocks, Lock, Palette, Repeat, Tag, Copy,
   CalendarDays, CalendarRange, Download,
   type LucideIcon,
 } from 'lucide-react';
@@ -50,6 +50,9 @@ const ART = {
   edit: Pencil, close: X, warn: AlertTriangle, bell: Bell, clock: Clock,
   check: Check, eye: Eye, eyeoff: EyeOff, ledger: BookOpen,
   trash: Trash2, search: Search, undo: Undo2, handshake: Handshake, menu: Menu,
+  // a copy of a row, ready to edit — distinct from `repeat`, which is a standing charge that
+  // posts itself; a duplicate is typed in once and then never posts on its own
+  duplicate: Copy,
   // arrow points the way something travels: across a row, or down a stacked form.
   // `send` is the one that acts rather than points — it is the button, not the path.
   arrow: ArrowRight, arrowdown: ArrowDown, send: SendHorizontal,

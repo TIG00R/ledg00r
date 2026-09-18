@@ -1,25 +1,60 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useApp } from '../AppState';
+import { useApp, market } from '../AppState';
 import { useLive } from '../Live';
 import { ledger } from '../api';
-import { money } from '@ledger/engine';
+import { money, type CurrencySplit } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Chip, Field } from '../components/UI';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { Amount } from '../components/Amount';
 import { Icon } from '../components/Icon';
 import { RecordTable } from '../components/RecordTable';
-import { ModeProvider } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { ActionButton } from '../Live';
+import { CurrencySplits } from '../components/CurrencySplits';
 
 interface Debt {
   id: string; direction: 'lent' | 'borrowed'; counterparty: string;
   principal: number; outstanding: number; repaid: number; currency: string;
+  /** EGP per unit of `currency`, frozen the day this debt was lent or borrowed */
+  rate: number | null;
+  /** false when there is no frozen rate — this debt converts at today's rate instead */
+  rateKnown: boolean;
   startedOn: string; dueOn: string | null; settledOn: string | null;
   accountId: string | null; accountName: string | null;
   note: string | null; nodeId: string;
   settled: boolean; writtenOff: boolean; daysUntilDue: number | null; overdue: boolean;
+}
+
+/**
+ * What a currency's own rate turns a debt into, in EGP.
+ *
+ * A debt not lent in EGP carries the rate it was actually lent at, frozen the day it
+ * happened — the same way an expense freezes its own rate. One recorded before that was
+ * captured has none to read and falls back to today's, which is why `rateKnown` exists:
+ * so a fallback shows itself instead of quietly passing for the real thing.
+ */
+function debtRate(d: Debt): number {
+  if (d.currency === 'EGP') return 1;
+  return d.rate ?? market.fxRates[d.currency] ?? 1;
+}
+
+/** What is still outstanding on a set of debts, grouped by the currency it is held in. */
+function splitDebts(rows: Debt[]): { splits: CurrencySplit[]; totalEgp: number; fallback: number } {
+  const by = new Map<string, { amount: number; egp: number }>();
+  let fallback = 0;
+  for (const d of rows) {
+    if (!d.outstanding) continue;
+    if (!d.rateKnown) fallback += 1;
+    const cur = by.get(d.currency) ?? { amount: 0, egp: 0 };
+    cur.amount += d.outstanding;
+    cur.egp += d.outstanding * debtRate(d);
+    by.set(d.currency, cur);
+  }
+  const splits = [...by.entries()]
+    .map(([currency, v]) => ({ currency, amount: v.amount, egp: v.egp }))
+    .sort((a, b) => b.egp - a.egp);
+  return { splits, totalEgp: splits.reduce((s, x) => s + x.egp, 0), fallback };
 }
 
 /**
@@ -34,9 +69,7 @@ interface Debt {
  */
 export function Debts() {
   return (
-    <ModeProvider>
-      <SectionProvider first="lent"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="lent"><Body /></SectionProvider>
   );
 }
 
@@ -62,6 +95,10 @@ function Body() {
   const tone = isLent ? 'var(--positive)' : 'var(--negative)';
   const accounts = data.nodes.filter((n) => n.kind === 'cash' && n.parentId);
 
+  // What is still outstanding on this side, by the currency it is actually held in — the
+  // same debts the "Owed to you" / "You owe" stat above is adding up.
+  const split = splitDebts(here.filter((d) => !d.settled));
+
   /**
    * The account a new debt starts against, and the currency that goes with it.
    *
@@ -85,11 +122,9 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'lent', label: 'Lent out', icon: 'out',
-          hint: 'Money you are owed. It counts toward what you are worth, and toward zakat.',
-          editHint: 'Change who a debt is with, when it happened, or the note on it.' },
+          hint: 'Money you are owed. It counts toward what you are worth, and toward zakat. Double-click one to change who it is with, or the note on it.' },
         { id: 'borrowed', label: 'Owed by you', icon: 'in',
-          hint: 'Money you owe. It comes off the zakat base when you choose to deduct debts.',
-          editHint: 'Change who a debt is with, when it happened, or the note on it.' },
+          hint: 'Money you owe. It comes off the zakat base when you choose to deduct debts. Double-click one to change who it is with, or the note on it.' },
       ]} />
 
       <Panel>
@@ -104,6 +139,27 @@ function Body() {
           <Stat label="Closed" value={String((rows ?? []).filter((d) => d.settled).length)}
                 sub="repaid in full, or written off" />
         </Stats>
+
+        {/*
+          * The total above is one figure in the display currency; this is what it is made
+          * of — a debt in dollars converted at the rate it was actually lent or borrowed at,
+          * not at whatever the dollar is worth this minute. One recorded before that rate was
+          * captured has none to read and is folded in at today's rate instead, which is what
+          * the note below says, rather than leaving it to look like the real thing.
+          */}
+        {split.splits.length > 0 && (
+          <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--hairline)' }}>
+            <CurrencySplits label={isLent ? 'Owed to you, by currency' : 'You owe, by currency'}
+                            splits={split.splits} totalEgp={split.totalEgp} compact />
+            {split.fallback > 0 && (
+              <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
+                {split.fallback} of these {split.fallback === 1 ? 'was' : 'were'} recorded before a rate
+                was frozen on it, and {split.fallback === 1 ? 'converts' : 'convert'} at today's rate
+                until it is corrected.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* The thing a person actually wants to know about a debt at zakat time. */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginTop: 20,
@@ -168,7 +224,7 @@ function Body() {
                            onChange={(v) => set({ startedOn: v })} />
               ) },
 
-            { key: 'principal', label: 'Principal', kind: 'money', align: 'right', width: '176px',
+            { key: 'principal', label: 'Principal', kind: 'money', width: '176px',
               value: (d) => d.principal,
               cell: (d) => <span className="mono" style={{ fontSize: 13, color: 'var(--muted)' }}>
                 {money(d.principal, d.currency, d.currency === 'EGP' ? 0 : 2)}</span>,
@@ -185,7 +241,7 @@ function Body() {
                 </span>
               ) },
 
-            { key: 'outstanding', label: 'Still owing', kind: 'amount', align: 'right', width: '116px',
+            { key: 'outstanding', label: 'Still owing', kind: 'amount', width: '116px',
               value: (d) => d.outstanding,
               cell: (d) => (
                 <>
@@ -370,9 +426,19 @@ function Settle({ debt, accounts, onClose, onDone }: {
     usable.find((n) => n.id === data.settings.burnAccountId)?.id ?? usable[0]?.id ?? '');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+  const [fee, setFee] = useState(0);
   const lent = debt.direction === 'lent';
-  const all = amount >= debt.outstanding - 0.005;
-  const left = Math.max(0, debt.outstanding - amount);
+  /**
+   * What the payment actually settles.
+   *
+   * A bank charge comes off what arrives, the same as on any other movement here. Money owed
+   * to you was repaid in full and the charge was taken on the way, so the debt falls by the
+   * whole amount; money you are paying back reaches the creditor lighter, so the debt falls
+   * by what is left of it.
+   */
+  const credited = lent ? amount : Math.max(0, amount - fee);
+  const all = credited >= debt.outstanding - 0.005;
+  const left = Math.max(0, debt.outstanding - credited);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -406,6 +472,14 @@ function Settle({ debt, accounts, onClose, onDone }: {
                     : [{ value: '', label: `no ${debt.currency} account` }]} />
         </Field>
 
+        {/* Banks charge for a transfer and for a withdrawal, in the debt's own currency, and
+            whichever way the money is going. */}
+        <Field label={`Fee · ${debt.currency}`}
+               hint={lent ? 'taken out of what reaches your account'
+                          : 'taken out of what reaches them, on top of nothing else'}>
+          <Amount value={fee} ariaLabel="Fee" onChange={setFee} />
+        </Field>
+
         <Field label="Date"><DateField value={date} onChange={setDate} ariaLabel="Date repaid" /></Field>
 
         <Field label="Note">
@@ -415,8 +489,8 @@ function Settle({ debt, accounts, onClose, onDone }: {
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn ghost sm" onClick={() => setAmount(debt.outstanding)}>
-          All of it — {money(debt.outstanding, debt.currency, debt.currency === 'EGP' ? 0 : 2)}
+        <button className="btn ghost sm" onClick={() => setAmount(debt.outstanding + (lent ? 0 : fee))}>
+          All of it — {money(debt.outstanding + (lent ? 0 : fee), debt.currency, debt.currency === 'EGP' ? 0 : 2)}
         </button>
         <button className="btn ghost sm" onClick={() => setAmount(Math.round(debt.outstanding / 2))}>
           Half
@@ -425,10 +499,11 @@ function Settle({ debt, accounts, onClose, onDone }: {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <ActionButton capability="debt.settle"
-          disabled={!(amount > 0) || amount > debt.outstanding + 0.005 || !accountId}
+          disabled={!(amount > 0) || fee >= amount || credited > debt.outstanding + 0.005 || !accountId}
           style={{ background: lent ? 'var(--positive)' : 'var(--negative)', color: '#fff' }}
           onDone={(o) => { if (o.ok) { onDone(); onClose(); } }}
-          input={() => ({ debtId: debt.id, accountId, amount, date, note: note || undefined })}>
+          input={() => ({ debtId: debt.id, accountId, amount, fee: fee || undefined,
+                          date, note: note || undefined })}>
           {all ? (lent ? 'Record the last of it back' : 'Record the final repayment')
                : (lent ? 'Record part of it back' : 'Record a part payment')}
         </ActionButton>
@@ -440,8 +515,10 @@ function Settle({ debt, accounts, onClose, onDone }: {
 
       <p style={{ margin: 0, fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
         {lent
-          ? 'The money returns to the account you choose, and what you are owed falls by the same amount. Net worth does not change.'
-          : 'The money leaves the account you choose, and what you owe falls by the same amount. Net worth does not change.'}
+          ? `The money returns to the account you choose, and what you are owed falls by the same amount.${
+              fee > 0 ? ' Only the fee actually leaves — net worth falls by that and nothing else.' : ' Net worth does not change.'}`
+          : `The money leaves the account you choose, and what you owe falls by what reaches them.${
+              fee > 0 ? ' Only the fee actually leaves — net worth falls by that and nothing else.' : ' Net worth does not change.'}`}
       </p>
     </div>
   );

@@ -33,12 +33,23 @@ export function useMode() {
 }
 
 /**
- * Two modes, because they are two different acts.
+ * Two modes, because they are two different acts — and, now, a narrower thing than they used
+ * to be.
  *
  * Operating records something that happened — money left an account and arrived somewhere,
- * and the ledger gains a movement it can show you later. Editing corrects the record itself:
- * a balance that was wrong, a name, a colour. It leaves no movement behind, because nothing
- * happened. Keeping them apart is what stops a correction from looking like a transaction.
+ * and the ledger gains a movement it can show you later. Editing corrects a record that
+ * writes no movement — a balance restated, a name, a colour. Keeping them apart is what stops
+ * a correction from looking like a transaction, and it used to do a second job as well: on
+ * almost every screen, flipping to Edit was also the only way to reach a row's pencil at all.
+ *
+ * That second job is gone. A row opens for correction by being double-clicked, by Enter with
+ * it focused, or by its own pencil — see `RecordTable` and `Manager` — whichever mode a
+ * screen is in, because a table has no reason to know or care which act somebody came to do.
+ * What is left of this mode is only the handful of screens where Operate and Edit are
+ * genuinely two different things to be doing at once: Accounts and Charity, where recording a
+ * movement (Move money, Give something) sits beside correcting records that write none, and
+ * the aside panel and the "no movement is recorded" chip below say which one is in front of
+ * you.
  */
 export function ModeBar({ operateHint, editHint }: { operateHint: string; editHint: string }) {
   const { mode, setMode } = useMode();

@@ -30,7 +30,7 @@ export { refused, succeeded, LedgerError };
  * Is there a back end at all, and is it this one?
  *
  * The interface runs against fixtures when there is none, which is how it has been built and
- * how it should keep working. Rather than guessing, it asks once and remembers.
+ * how it should keep working. Rather than guessing, it asks.
  *
  * A 200 is not enough to answer with. In development the dev server proxies to whatever port
  * it was pointed at, and something else answering there — another project, a container left
@@ -38,12 +38,20 @@ export { refused, succeeded, LedgerError };
  * live, every read fails, and the screens go quiet rather than falling back to the fixtures
  * they were built on. So the answer has to look like this ledger's answer: JSON, saying it is
  * well, and counting the capabilities it serves.
+ *
+ * Callers that ask at the same moment share the one request in flight rather than each
+ * starting their own — but only until it answers. The answer is not kept beyond that: the
+ * service can go from absent to there, or the other way round, while the page stays open, and
+ * `Live.tsx` asks again on a schedule to notice either. A promise cached forever would have
+ * frozen the very first answer, which is exactly the moment a restart is likeliest to be
+ * asked at and likeliest to get wrong.
  */
-let live: Promise<boolean> | null = null;
+let inflight: Promise<boolean> | null = null;
 export function apiAvailable(): Promise<boolean> {
-  live ??= fetch('/health')
+  inflight ??= fetch('/health')
     .then((r) => (r.ok ? r.json() : null))
     .then((body: any) => body?.ok === true && typeof body?.capabilities === 'number')
-    .catch(() => false);
-  return live;
+    .catch(() => false)
+    .finally(() => { inflight = null; });
+  return inflight;
 }

@@ -136,7 +136,15 @@ export interface Order {
   shares: number;
   price: number;
   total: number;
+  /**
+   * What the broker charged for the order itself, once — never per share. It is added to
+   * what a buy costs and taken off what a sale brings in, which is why every reading of an
+   * order's cash goes through `orderCash` rather than multiplying shares by price again.
+   */
+  fee?: number;
   status: 'pending' | 'executed' | 'cancelled';
+  /** why these shares are held, for zakat — stated on the order, null until one is stated */
+  intention?: 'personal' | 'investment' | null;
   note: string;
   claudeVerdict?: string;
 }

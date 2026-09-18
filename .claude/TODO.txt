@@ -1,0 +1,93 @@
+Legend: [ ] not started · [~] in progress · [x] done, verified
+
+Reviewed and finished on 2026-09-19. Notes under an item say what the code does now.
+
+
+General:
+    [x] put a "fees" option in all money movements, even between acconts with same currency ( sometimes there are fees for sending money between accounts with same currency or for cash withdrawal)
+        - Move money: fee always asked, in the currency being sent.
+        - Fund the book: fee always asked now, both directions, whether or not the
+          account and the wallet share a currency. The rate box stays tied to a
+          currency crossing, since that is the only time there is a rate to give.
+        - metal.buy: a flat fee beside the making charge, on the purchase as well as
+          the sale. It leaves the account and buys no gram; corrections keep it.
+        - debt.settle: a fee on a repayment either way. The amount is what leaves and
+          the fee comes off what arrives, the same rule every other movement follows —
+          so money repaid to you settles the debt in full and lands lighter, and money
+          you send settles only what reaches them.
+
+In expenses and budgets:
+    [x] use pie chart instead of line
+        - The line chart is gone and "Where it went" draws the Pie component, with each
+          destination's share written beside its row as well.
+
+In Assets:
+    [x] assets circle is too small for contents, make sure it accomodates the values inside + show intention in view mode too not just in edit mode
+        - Ring is 196px; paid/remaining (or worth) sit inside it. The intention reads
+          whether the card is open or closed.
+    [x] remove button and table of edit payment plan, installment plans tab is enough
+
+In Stocks:
+    [x] there should be multiple exchanges, each with their own book, orders, wallets, stocks .. etc etc . so just add another object on top of the current one, and make an option to add a new exchange, the new exchange should have its own elements of all the current stocks exchange has
+    [x] remove funded from and rate from buying new stock ( they're not functioning anyway, and balance is still deduced from brokrage wallet ) so leave everything as is and just remove that bank drop down menu and the rate
+    [x] as a zakat option add intention for each stock order and remove it from its own tab view
+        - Orders carry their own intention, asked in a "Held for" column while the zakat
+          module is on. The Intentions tab is gone.
+    [x] orders should have a fees field ( added to the overall price of that order). in buy it should be added to the overall price of the order, and in sell it should be deduced from the price. make sure math is correct, fees here shouldn't be per stock. it should be per the entire order (don't multiply its value * stock number) it should represent the overall fee of that order
+        - One charge for the order, never multiplied by shares. A buy takes price plus
+          fee out of the wallet and the fee becomes part of the position's cost; a sale
+          puts price less fee back and is measured against that. A fee that would
+          swallow a sale is refused. The Total column shows what actually moved.
+    [x] fund the book box should be on the right as we said, right ? also if we're adding from an account with currency different than brokarage wallet currency there should be an exchange ration box and fees. same applies for money out. fees field applies for both in and out, applies if the account we're taking from matches same currency or not. sometimes they take fees anyway
+        - The panel sits beside the ring on a wide screen, and wraps underneath on a
+          narrow one. Fee always offered; rate offered when the currencies differ.
+    [x] now we have avg buy and avg cost show same value in "the book" view remove cost and show only avg cost which is the avg of buy orders of that stock that we currently own
+    [x] show image of ticker in orders log too
+
+
+Second pass, same day:
+    [x] budgets and expenses still a line
+        - The pool's spent-against-ceiling bar is a pie now: spent and left, or — once it is
+          past — what the ceiling covered against what was spent beyond it.
+        - The by-currency strip under Expenses (CurrencySplits, also on Income and Debts) is
+          a pie too. No thin bars left on either screen.
+    [x] assets circle is too small
+        - 276px across with a 118 radius, the figures inside grown with it and stacked one
+          above the other so a seven-figure pair has the whole width of the hole. Cards are
+          480px minimum so the ring is never squeezed.
+    [x] exchanges: rename, a logo beside the name, a horizontal switch at the top of the page
+        - The switch is the first thing on the screen, one button per book with its mark
+          beside its name; the wallet, clouds and stocks figures and everything below them
+          read whichever book is lit. A pencil renames the open book and a mark button opens
+          the usual picker, upload included. exchange.rename now takes a name, a mark, or
+          both; exchange.add takes a mark on the way in.
+
+
+Third pass, same day:
+    [x] expenses should use circle chart
+        - Every pie is drawn flat now — a circle seen straight on, not a tilted disc. The tilt
+          is still available to anything that asks for it by name, and nothing does.
+        - The Expenses tab has its own "Where it went" circle: one wedge per destination, read
+          from the same records the log below draws, with the amount and the share beside each.
+    [x] money moved from an account into the stocks book was not visible in the accounts
+        - It was recorded — the movement and the action log both had it — but three things
+          hid it. A broker's wallet is cash with no bank above it, and the Accounts screen
+          drew only accounts held at a bank, so the destination existed nowhere on that screen
+          and the wallets of a second exchange existed nowhere at all. They are drawn now
+          under "Held outside a bank", counted in the cash total and in the by-currency ring.
+        - The account picker on the Records tab had the same rule, so the book's own side of a
+          transfer could not be read back. It offers every account now, wallets included.
+        - A movement with a fee on it showed what arrived, not what left: 1,000 sent with a 20
+          fee read as 980. The amount column says what left the account, with what arrived and
+          what the bank kept underneath it, and there is a Fee column of its own to sort by.
+
+
+Not from this list, found while working:
+    - tests/db/migrate.test.ts fails on "a gold lot written under the old reading is
+      brought up": it deletes schema_version 34 and re-runs migrate, but migrate skips
+      every step at or below MAX(version), so the step never runs again. It failed
+      before this work and is unrelated to it.
+    - apps/web/src/screens/Portfolio.tsx calls wealth.statement.series without the
+      `typeof call === 'function'` guard every other screen uses, so it throws against a
+      ledger that does not serve it — which is what breaks the two portfolio tests in
+      apps/web/test/screens/withService.test.tsx. Also pre-existing.

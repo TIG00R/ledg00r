@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { intentionsFor, type Intention } from '@ledger/engine';
 import { Icon } from './Icon';
 
@@ -8,6 +9,10 @@ import { Icon } from './Icon';
  * point of the question: a home owes nothing however much it is worth, a flat held to resell
  * owes on its full value, and a flat let out owes on nothing but the rent. Putting those
  * sentences in a help page instead would leave the owner choosing between three words.
+ *
+ * The choice is read-only until Edit is pressed. A radio that writes the moment it is
+ * clicked is a click nobody can take back — the answer decides a lunar year, so it is
+ * chosen, looked at, and only then saved. Nothing reaches `onChange` before Save does.
  */
 export function IntentionPicker({ kind, value, onChange, disabled, tone = 'var(--zakat)' }: {
   kind: string;
@@ -17,38 +22,78 @@ export function IntentionPicker({ kind, value, onChange, disabled, tone = 'var(-
   tone?: string;
 }) {
   const options = intentionsFor(kind);
+  const current = options.find((o) => o.id === value) ?? null;
+  const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState<Intention | null>(value ?? null);
+
+  // The record can change under an editor that has not touched anything yet — closed, it
+  // simply follows; open, it keeps what the owner is in the middle of choosing.
+  useEffect(() => { if (!editing) setPending(value ?? null); }, [value, editing]);
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: current ? tone : 'var(--muted)' }}>
+            {current ? current.label : 'Not set'}
+          </div>
+          {current && (
+            <div style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.5, marginTop: 3 }}>
+              {current.blurb}
+            </div>
+          )}
+        </div>
+        <button className="btn quiet" onClick={() => { setPending(value ?? null); setEditing(true); }}
+          disabled={disabled} aria-label="Edit what this is held for" title="Edit"
+          style={{ padding: 7, border: 'none' }}>
+          <Icon name="edit" size={14} />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div role="radiogroup" aria-label="What this is held for"
-         style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-      {options.map((o) => {
-        const on = o.id === value;
-        return (
-          <button key={o.id} role="radio" aria-checked={on} disabled={disabled}
-            onClick={() => onChange(o.id)}
-            style={{
-              textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--r-card)', cursor: disabled ? 'default' : 'pointer',
-              background: on ? `color-mix(in srgb, ${tone} var(--tint), transparent)` : 'var(--surface)',
-              border: `1px solid ${on ? `color-mix(in srgb, ${tone} 40%, transparent)` : 'var(--hairline)'}`,
-              opacity: disabled ? 0.6 : 1,
-              transition: 'background 150ms var(--ease), border-color 150ms var(--ease)',
-            }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                width: 15, height: 15, borderRadius: 999, flex: '0 0 15px',
-                border: `1px solid ${on ? tone : 'var(--hairline-strong)'}`,
-                background: on ? tone : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+    <div>
+      <div role="radiogroup" aria-label="What this is held for"
+           style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
+        {options.map((o) => {
+          const on = o.id === pending;
+          return (
+            <button key={o.id} role="radio" aria-checked={on}
+              onClick={() => setPending(o.id)}
+              style={{
+                textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--r-card)', cursor: 'pointer',
+                background: on ? `color-mix(in srgb, ${tone} var(--tint), transparent)` : 'var(--surface)',
+                border: `1px solid ${on ? `color-mix(in srgb, ${tone} 40%, transparent)` : 'var(--hairline)'}`,
+                transition: 'background 150ms var(--ease), border-color 150ms var(--ease)',
               }}>
-                {on && <Icon name="check" size={10} color="var(--accent-ink)" motion="none" />}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  width: 15, height: 15, borderRadius: 999, flex: '0 0 15px',
+                  border: `1px solid ${on ? tone : 'var(--hairline-strong)'}`,
+                  background: on ? tone : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {on && <Icon name="check" size={10} color="var(--accent-ink)" motion="none" />}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: on ? tone : 'var(--ink)' }}>{o.label}</span>
               </span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: on ? tone : 'var(--ink)' }}>{o.label}</span>
-            </span>
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)', lineHeight: 1.5, marginTop: 7 }}>
-              {o.blurb}
-            </span>
-          </button>
-        );
-      })}
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)', lineHeight: 1.5, marginTop: 7 }}>
+                {o.blurb}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="btn-pair" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
+        <button className="btn go sm" disabled={pending == null}
+          onClick={() => { if (pending != null) onChange(pending); setEditing(false); }}>
+          <Icon name="check" size={13} motion="none" /> Save
+        </button>
+        <button className="btn ghost sm" onClick={() => { setPending(value ?? null); setEditing(false); }}>
+          <Icon name="close" size={13} motion="none" /> Cancel
+        </button>
+      </span>
     </div>
   );
 }

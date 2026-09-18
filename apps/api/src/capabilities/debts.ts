@@ -4,6 +4,7 @@ import { schema as t } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, DryRun } from './shared.js';
+import { rateFor } from './spending.js';
 import { readMarket } from '../read.js';
 
 /**
@@ -84,6 +85,10 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
       id: z.string(), direction: z.string(), counterparty: z.string(),
       principal: z.number(), outstanding: z.number(), repaid: z.number(),
       currency: z.string(), startedOn: z.string(), dueOn: z.string().nullable(),
+      /** EGP per unit of `currency`, frozen the day this debt was lent or borrowed */
+      rate: z.number().nullable(),
+      /** false when there is no frozen rate to show — EGP conversion falls back to today's */
+      rateKnown: z.boolean(),
       /** the day it closed, whether by the last repayment or by being written off */
       settledOn: z.string().nullable(),
       /** the account the money left, or arrived in, when the debt was recorded */
@@ -115,6 +120,7 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
             id: d.id, direction: d.direction, counterparty: d.counterparty,
             principal: d.principal, outstanding, repaid: d.principal - outstanding,
             currency: d.currency, startedOn: d.startedOn, dueOn: d.dueOn,
+            rate: d.rate ?? null, rateKnown: d.currency === 'EGP' || d.rate != null,
             settledOn: d.settledAt ?? null,
             accountId: opened?.accountId ?? null, accountName: opened?.name ?? null,
             payments: repayments(ctx, d.nodeId, d.direction, opened?.movementId ?? null),
@@ -154,6 +160,9 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
       const startedOn = input.startedOn ?? today(ctx);
       const id = newId('debt');
       const nodeId = `debt-${id}`;
+      // Frozen the day it happened, the way an expense freezes its own rate — so a rate
+      // that moves afterwards does not reach back and change what this debt is worth.
+      const rate = currency === 'EGP' ? 1 : rateFor(ctx.db, currency);
 
       /*
        * The debt is a node, so everything that walks nodes sees it without being told — and
@@ -185,7 +194,7 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
         after: (db, movementId) => {
           db.insert(t.debts).values({
             id, direction: input.direction, counterparty: input.counterparty,
-            principal: input.amount, currency, startedOn, dueOn: input.dueOn ?? null,
+            principal: input.amount, currency, rate, startedOn, dueOn: input.dueOn ?? null,
             note: input.note ?? null, nodeId, createdAt: ctx.now.toISOString(),
           }).run();
           void movementId;
@@ -204,11 +213,17 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
     name: 'debt.settle',
     context: 'debts',
     summary: 'Record a repayment — money coming back to you, or money you are paying back.',
-    detail: 'Repaying part of a debt reduces what is outstanding; repaying all of it closes the debt. Leave the amount out to settle whatever is left.',
+    detail: 'Repaying part of a debt reduces what is outstanding; repaying all of it closes the debt. Leave the amount out to settle whatever is left. A bank charge on the payment is a fee: it comes off what arrives, exactly as it does on a transfer, so money paid back to you lands lighter and money you send arrives at the creditor lighter.',
     input: z.object({
       debtId: z.string(),
       accountId: NodeId,
       amount: z.number().positive().optional(),
+      /**
+       * What the bank took for making the payment, in the debt's own currency — a transfer
+       * charge, a cash-withdrawal charge. The same rule every movement here follows: the
+       * amount is what leaves, the fee comes off what arrives.
+       */
+      fee: z.number().min(0).default(0),
       date: DateOnly.optional(),
       note: z.string().max(300).optional(),
     }).merge(DryRun),
@@ -222,29 +237,49 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
       const acct = ctx.ledger().node(input.accountId);
       if (!acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
 
+      const lent = debt.direction === 'lent';
       const outstanding = Math.abs(ctx.ledger().balance(debt.nodeId));
-      const amount = input.amount ?? outstanding;
-      if (amount > outstanding + 0.005) {
+      /**
+       * What the payment settles, as against what leaves.
+       *
+       * Money owed to you was repaid in full and the bank took its charge on the way — the
+       * debt is discharged by the whole amount, and only what is left of it reaches the
+       * account. Money you are paying back is the other way round: the charge comes out of
+       * what you sent, so the creditor is paid the remainder and that is all the debt can be
+       * credited with.
+       */
+      const amount = input.amount ?? (lent ? outstanding : outstanding + input.fee);
+      if (input.fee >= amount) {
+        return refusal('unbalanced', 'The fee is at least as large as the payment.',
+                       'Lower the fee, or raise the amount being paid.');
+      }
+      const credited = lent ? amount : amount - input.fee;
+      if (credited > outstanding + 0.005) {
         return refusal('unbalanced',
-          `Only ${outstanding} ${debt.currency} is outstanding, and that is ${amount - outstanding} more.`,
+          `Only ${outstanding} ${debt.currency} is outstanding, and that is ${credited - outstanding} more.`,
           'Repay what is left, or leave the amount out to settle it exactly.');
       }
 
-      const lent = debt.direction === 'lent';
       const date = input.date ?? today(ctx);
-      const closes = amount >= outstanding - 0.005;
+      const closes = credited >= outstanding - 0.005;
 
       return post(ctx, {
         date, kind: 'transfer',
         note: input.note ?? (lent
           ? `${debt.counterparty} repaid ${amount}`
           : `Repaid ${amount} to ${debt.counterparty}`),
+        // The same shape a transfer takes: what leaves is the amount, what arrives is the
+        // amount less the fee, and the fee is charged against whichever side sent it.
         legs: [lent
-          ? { fromNodeId: debt.nodeId, toNodeId: input.accountId, qtyFrom: amount }
-          : { fromNodeId: input.accountId, toNodeId: debt.nodeId, qtyFrom: amount }],
+          ? { fromNodeId: debt.nodeId, toNodeId: input.accountId, qtyFrom: amount - input.fee,
+              feeQty: input.fee || undefined, feeNodeId: input.fee ? debt.nodeId : undefined }
+          : { fromNodeId: input.accountId, toNodeId: debt.nodeId, qtyFrom: amount - input.fee,
+              feeQty: input.fee || undefined, feeNodeId: input.fee ? input.accountId : undefined }],
       }, lent
-        ? `${amount} ${debt.currency} back from ${debt.counterparty}${closes ? ' — settled' : ''}`
-        : `${amount} ${debt.currency} repaid to ${debt.counterparty}${closes ? ' — settled' : ''}`,
+        ? `${amount} ${debt.currency} back from ${debt.counterparty}${
+            input.fee > 0 ? `, ${input.fee} of it taken as a fee` : ''}${closes ? ' — settled' : ''}`
+        : `${amount} ${debt.currency} repaid to ${debt.counterparty}${
+            input.fee > 0 ? `, ${input.fee} of it taken as a fee` : ''}${closes ? ' — settled' : ''}`,
       {
         dryRun: input.dryRun,
         after: (db) => {
@@ -401,9 +436,17 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
       const now = ctx.now.toISOString().slice(0, 10);
       const rows = ctx.db.select().from(t.debts).all().filter((d) => !d.settledAt);
 
+      /*
+       * Converted at the rate this debt was actually lent or borrowed at — frozen on the
+       * debt the day it was recorded, the same way an expense freezes its own rate — rather
+       * than whatever the market happens to say right now. A debt from before that rate was
+       * captured has none to read, and falls back to today's; `debts.list` says which ones,
+       * via `rateKnown`, so the screen can show the fallback rather than hide it.
+       */
       const inBase = (d: typeof rows[number]) => {
         const q = Math.abs(ledger.balance(d.nodeId));
-        return d.currency === 'EGP' ? q : q * (market.fxRates[d.currency] ?? 1);
+        if (d.currency === 'EGP') return q;
+        return q * (d.rate ?? market.fxRates[d.currency] ?? 1);
       };
       const lent = rows.filter((d) => d.direction === 'lent');
       const borrowed = rows.filter((d) => d.direction === 'borrowed');

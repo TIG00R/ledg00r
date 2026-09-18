@@ -72,22 +72,18 @@ const FLOWS: Flow[] = [
 /**
  * The shape of the page.
  *
- * Sources on the left, your own accounts in the middle, where it went on the right. What
- * changed is the middle: accounts belonging to one bank are laid out side by side inside
- * that bank's boundary, one row per institution, rather than stacked in a single column.
+ * Sources on the left, your own accounts in the middle, where it went on the right. Every
+ * card in every column stacks vertically, full width of its column — the same rhythm the
+ * source and sink columns have always used, now shared by the accounts in the middle.
  *
- * Stacking them was what produced the overlapping boxes. A boundary was drawn around
- * whichever cards happened to belong to an institution, and once a column held more than one
- * bank those cards were not next to each other — so one bank's rectangle was drawn straight
- * through another's. Laying each bank out as its own row means a boundary can only ever
- * contain its own accounts, and two boundaries cannot occupy the same band of the page.
+ * Accounts belonging to one bank still get their own contiguous band, one per institution:
+ * a boundary is drawn around a bank's own vertical run of cards, and because each bank's run
+ * occupies its own range of the page rather than sharing a column with another bank's cards,
+ * two boundaries can never be drawn through each other.
  */
 const CARD_W: Record<Column, number> = { source: 250, account: 250, sink: 270 };
 const CARD_H = 118;
 const GAP = 22;
-/** between two accounts of the same bank, side by side — wide enough for a band between
-    them to be seen, rather than a stub squeezed into the join */
-const GAP_X = 76;
 /** inside an institution's boundary, and the room its name needs above the cards */
 const PAD = 16;
 const HEAD = 30;
@@ -177,27 +173,17 @@ export function Flow() {
   }
 
   /**
-   * A bank with more accounts than fit across is wrapped rather than allowed to run off the
-   * page. Four is what a laptop shows without scrolling sideways; beyond that the row grows
-   * downwards, still inside its own boundary.
+   * Every account in a bank's row stacks under the one before it, full width of the column —
+   * the same vertical rhythm as the source and sink columns either side.
    */
-  const PER_LINE = 4;
-  const linesOf = (r: { members: Entity[] }) => {
-    const out: Entity[][] = [];
-    for (let i = 0; i < r.members.length; i += PER_LINE) out.push(r.members.slice(i, i + PER_LINE));
-    return out;
-  };
   const rowH = (r: { name?: string; members: Entity[] }) => {
-    const n = linesOf(r).length;
-    return n * CARD_H + (n - 1) * GAP + (r.name ? HEAD + PAD * 2 : 0);
+    const n = r.members.length;
+    return n * CARD_H + Math.max(n - 1, 0) * GAP + (r.name ? HEAD + PAD * 2 : 0);
   };
-  const rowW = (r: { members: Entity[] }) => {
-    const across = Math.min(r.members.length, PER_LINE);
-    return across * CARD_W.account + (across - 1) * GAP_X;
-  };
+  const rowW = () => CARD_W.account;
 
   const accountsH = bankRows.reduce((h, r) => h + rowH(r), 0) + Math.max(bankRows.length - 1, 0) * GAP;
-  const accountsW = Math.max(0, ...bankRows.map((r) => rowW(r) + (r.name ? PAD * 2 : 0)));
+  const accountsW = Math.max(0, ...bankRows.map((r) => rowW() + (r.name ? PAD * 2 : 0)));
   const stackH = (col: Entity[]) => col.length * CARD_H + Math.max(col.length - 1, 0) * GAP;
 
   const body = Math.max(accountsH, stackH(columns.source), stackH(columns.sink));
@@ -209,21 +195,17 @@ export function Flow() {
   const box: Record<string, Box> = {};
   const groups: Array<{ name: string; x: number; y: number; w: number; h: number }> = [];
 
-  // the middle: a row per bank, its accounts side by side inside it
+  // the middle: a row per bank, its accounts stacked vertically inside it
   let y = TOP + (body - accountsH) / 2;
   for (const r of bankRows) {
     const inset = r.name ? PAD : 0;
     let cardY = y + (r.name ? HEAD + PAD : 0);
-    for (const line of linesOf(r)) {
-      let x = ACCOUNT_X + inset;
-      for (const e of line) {
-        box[e.id] = { x, y: cardY, w: CARD_W.account, h: CARD_H };
-        x += CARD_W.account + GAP_X;
-      }
+    for (const e of r.members) {
+      box[e.id] = { x: ACCOUNT_X + inset, y: cardY, w: CARD_W.account, h: CARD_H };
       cardY += CARD_H + GAP;
     }
     if (r.name) {
-      groups.push({ name: r.name, x: ACCOUNT_X, y, w: rowW(r) + PAD * 2, h: rowH(r) });
+      groups.push({ name: r.name, x: ACCOUNT_X, y, w: rowW() + PAD * 2, h: rowH(r) });
     }
     y += rowH(r) + GAP;
   }

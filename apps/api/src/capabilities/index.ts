@@ -20,6 +20,7 @@ import { notebookCaps } from './notebook.js';
 import { actionCaps } from './actions.js';
 import { budgetCaps } from './budgets.js';
 import { dataCaps } from './data.js';
+import { statementCaps } from './statements.js';
 
 /**
  * The registry.
@@ -51,6 +52,7 @@ export function buildRegistry(ctxOf: () => AppCtx): Registry {
     ...actionCaps(ctxOf),
     ...budgetCaps(ctxOf),
     ...dataCaps(ctxOf),
+    ...statementCaps(ctxOf),
   ] as Capability[];
 
   const reg: Registry = {};

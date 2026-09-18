@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { useApp, market as staticMarket } from '../AppState';
-import { money, fmt } from '@ledger/engine';
+import { money, fmt, toEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Chip, Field } from '../components/UI';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { Segmented } from '../components/Segmented';
 import { RecordTable } from '../components/RecordTable';
 import { HawlBar } from '../components/Intention';
-import { ModeProvider } from '../components/ModeBar';
+import { Icon } from '../components/Icon';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { ActionButton, useLive } from '../Live';
 import { ledger } from '../api';
+import {
+  OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, RowLine, Problems, Balance,
+  QuantityBalance, defaultAccountId,
+} from '../components/Operations';
 
 type Metal = 'gold' | 'silver';
 
@@ -23,6 +27,8 @@ interface Lot {
   currency: string; priceNative: number;
   /** the making charge — مصنعية — a gram in that currency, and what it came to in pounds */
   makingPerGram: number; makingEgp: number;
+  /** a sale's flat charge, in the account's currency; nought on a purchase */
+  fee: number;
   /** the account the money came out of, or went into */
   accountId: string | null;
   /** worn, or held as a store of value — the answer decides whether zakat reaches it */
@@ -39,28 +45,18 @@ interface Lot {
  */
 export function Metals() {
   return (
-    <ModeProvider>
-      <SectionProvider first="metals"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="metals"><Body /></SectionProvider>
   );
 }
 
 function Body() {
-  const { dm, balances, data, market, currencies, dm: _dm } = useApp();
+  const { dm, balances, data } = useApp();
   const { tab } = useSection();
   const { run, live, version } = useLive();
 
   const [metal, setMetal] = useState<Metal>('gold');
   const [lots, setLots] = useState<Lot[] | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
-  const [side, setSide] = useState<'buy' | 'sell'>('buy');
-  const [trade, setTrade] = useState({
-    accountId: data.settings.burnAccountId, grams: 0, pricePerGram: 0, note: '',
-    intention: 'investment' as 'personal' | 'investment',
-    /* what the dealer quotes in, and the workmanship they charge on top of the metal */
-    currency: 'EGP', makingPerGram: 0,
-  });
-  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
 
   /** the zakat reading of this weight, worked out by the ledger rather than by this screen */
   const [zakatLines, setZakatLines] = useState<any[] | null>(null);
@@ -102,10 +98,10 @@ function Body() {
   const holdingG = Math.max(0, weightOf('investment'));
 
   const bought = mine.filter((l) => l.direction === 'buy');
-  /* What the metal actually cost: the gram, plus the workmanship charged on top of it. The
-     making charge buys no weight and cannot be sold back, so leaving it out of the average
-     would report a holding as having cost less than the money that left the account. */
-  const paid = bought.reduce((s, l) => s + l.totalEgp + (l.makingEgp ?? 0), 0);
+  /* What the metal actually cost: the gram, plus the workmanship charged on top of it. A
+     lot's totalEgp is already the two summed — grams x (price a gram + making a gram) — so
+     the average is read straight off it rather than added to a second time. */
+  const paid = bought.reduce((s, l) => s + l.totalEgp, 0);
   const makingPaid = bought.reduce((s, l) => s + (l.makingEgp ?? 0), 0);
   const boughtG = bought.reduce((s, l) => s + l.grams, 0);
   const avgCost = boughtG ? paid / boughtG : 0;
@@ -113,21 +109,14 @@ function Body() {
 
 
   const tone = metal === 'gold' ? 'var(--gold)' : '#9AA3AD';
-  const accounts = data.nodes.filter((n) => n.kind === 'cash');
-  const short = side === 'sell' && trade.grams > held;
-
-  /* The quote, as it was given: a price a gram in some currency, and the workmanship charged
-     on top of it. Everything the ledger stores is pounds, so this is only what the form
-     shows and what the capability is handed — the conversion happens once, on the way in. */
-  const fx = trade.currency === 'EGP' ? 1 : market.fxRates[trade.currency] ?? 1;
-  const quotedPrice = trade.pricePerGram || perGram / fx;
-  const quotedTotal = trade.grams
-    * (side === 'buy' ? quotedPrice + trade.makingPerGram : quotedPrice - trade.makingPerGram);
-  /* Selling for less than the dealer keeps is a typed figure rather than a sale. */
-  const swallowed = side === 'sell' && trade.makingPerGram >= quotedPrice;
 
   return (
-    <Page>
+    <Page aside={(
+      <OperationPanel title="Record a movement"
+        hint="Metal is paid for out of a named account, and selling puts the money back into one. Net worth does not change beyond what a making charge or a fee actually costs.">
+        <MetalTrade metal={metal} perGram={perGram} held={held} onDone={load} />
+      </OperationPanel>
+    )}>
       {/*
         * Which metal, and what it is worth today.
         *
@@ -150,13 +139,12 @@ function Body() {
       </div>
 
       <Sections sections={[
-        // Holdings is a reading of the records, not a thing to correct, so it carries no
-        // Edit switch — what would be corrected is on the Records tab beside it.
+        // Holdings is a reading of the records, not a thing to correct — what would be
+        // corrected is on the Records tab beside it.
         { id: 'metals', label: 'Holdings', icon: 'gold',
           hint: 'What you hold and what it is worth at the price recorded for it.' },
         { id: 'records', label: 'Records', icon: 'ledger',
-          hint: 'Every purchase and sale, with the reason it was made.',
-          editHint: 'Correct a purchase or a sale, or take one off the ledger.' },
+          hint: 'Every purchase and sale, with the reason it was made. Double-click one to correct it, or take it off the ledger.' },
       ]} />
 
       {tab === 'metals' && (
@@ -186,114 +174,6 @@ function Body() {
                 sub={wornG ? 'jewellery in use — outside zakat' : 'none recorded as worn'} />
         </Stats>
       </Panel>
-      )}
-
-      {/* Holdings offers no Edit switch of its own, so the form that records a movement
-          must not vanish because some other screen was left in editing. */}
-      {tab === 'metals' && (
-        <Panel title="Record a movement"
-               hint="Metal is paid for out of a named account, and selling puts the money back into one. Net worth does not change — value moves between two things you own.">
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Segmented<'buy' | 'sell'> value={side} onChange={setSide} ariaLabel="Buying or selling"
-              options={[
-                { id: 'buy', label: 'Buying', icon: 'in', tone: 'var(--positive)' },
-                { id: 'sell', label: 'Selling', icon: 'out', tone: 'var(--negative)' },
-              ]} />
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {side === 'buy' ? `${metal} in, money out` : `${metal} out, money in`}
-            </span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 18 }}>
-            <Field label="Date"><DateField value={logDate} onChange={setLogDate} ariaLabel="Date of the movement" /></Field>
-            <Field label="Grams" hint={side === 'sell' ? `${held.toFixed(1)} g held` : undefined}>
-              <Amount value={trade.grams} ariaLabel="Grams" onChange={(n) => setTrade({ ...trade, grams: n })} />
-            </Field>
-            {/* A dealer quotes in whatever they trade in. The currency is asked for beside
-                the price rather than assumed from the account, because the two are different
-                questions: what was agreed, and where the money came from. */}
-            <Field label="Quoted in" hint="the currency the dealer priced it in">
-              <Select ariaLabel="Currency the price is quoted in" value={trade.currency}
-                      onChange={(v) => setTrade({ ...trade, currency: v })}
-                      options={currencies.map((c) => ({
-                        value: c.code, label: `${c.symbol} ${c.code}`, hint: c.name,
-                      }))} />
-            </Field>
-            <Field label="Price per gram"
-                   hint={perGram ? `in force: ${fmt(perGram / fx, fx === 1 ? 0 : 2)} ${trade.currency}` : 'no price recorded'}>
-              <Amount value={trade.pricePerGram} ariaLabel="Price per gram" onChange={(n) => setTrade({ ...trade, pricePerGram: n })} placeholder={String(Math.round(perGram / fx) || 0)} />
-            </Field>
-            {/* مصنعية: the workmanship, charged by the gram on top of the metal. Buying, it
-                is money spent that buys no weight; selling, it is what the dealer keeps. */}
-            <Field label="Making charge per gram"
-                   hint={side === 'buy' ? 'مصنعية — paid on top of the metal'
-                                        : 'مصنعية — taken off what you are paid'}>
-              <Amount value={trade.makingPerGram} ariaLabel="Making charge per gram"
-                      onChange={(n) => setTrade({ ...trade, makingPerGram: n })} />
-            </Field>
-            <Field label="Total"
-                   hint={side === 'buy' ? 'the metal and the making, in the quoted currency'
-                                        : 'the metal less the making, in the quoted currency'}>
-              <input className="mono" readOnly aria-label="Total"
-                     value={`${fmt(quotedTotal)} ${trade.currency}`} />
-            </Field>
-            <Field label={side === 'buy' ? 'Paid from' : 'Proceeds into'}>
-              <Select ariaLabel="Account" value={trade.accountId}
-                      onChange={(v) => setTrade({ ...trade, accountId: v })}
-                      options={accounts.map((n) => ({
-                        value: n.id, label: `${n.name} · ${n.currency}`,
-                        hint: data.institutions.find((i) => i.id === n.parentId)?.name,
-                      }))} />
-            </Field>
-            <Field label="Held for"
-                   hint={trade.intention === 'personal'
-                     ? 'worn in ordinary use, so zakat does not reach it'
-                     : 'a store of value, so zakat reaches it once it passes nisab and carries a lunar year'}>
-              <Select ariaLabel="What this metal is held for" value={trade.intention}
-                      onChange={(v) => setTrade({ ...trade, intention: v as 'personal' | 'investment' })}
-                      options={[
-                        { value: 'investment', label: 'A holding', hint: 'zakatable' },
-                        { value: 'personal', label: 'Worn — jewellery', hint: 'not zakatable' },
-                      ]} />
-            </Field>
-            <Field label="Note" hint="why, for reading back later">
-              <input aria-label="Note" placeholder="a dealer, a gift, a plan"
-                     value={trade.note} onChange={(e) => setTrade({ ...trade, note: e.target.value })} />
-            </Field>
-          </div>
-
-          {short && (
-            <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--negative)' }}>
-              You hold {held.toFixed(1)} g, which is {(trade.grams - held).toFixed(1)} g short.
-            </p>
-          )}
-          {swallowed && (
-            <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--negative)' }}>
-              A making charge of {fmt(trade.makingPerGram)} {trade.currency} a gram takes the
-              whole sale. Lower it, or raise the price a gram.
-            </p>
-          )}
-
-
-          <div style={{ marginTop: 16 }}>
-            {/* One width, whichever way the movement goes: a button that grows with the
-                number typed beside it moves under the cursor while it is being aimed at. */}
-            <ActionButton capability={side === 'buy' ? 'metal.buy' : 'metal.sell'}
-              disabled={!(trade.grams > 0) || short || swallowed || !(trade.pricePerGram || perGram)}
-              className={side === 'sell' ? 'btn danger' : 'btn go'}
-              style={{ width: 170, justifyContent: 'center' }}
-              onDone={(o) => { if (o.ok) { setTrade({ ...trade, grams: 0, note: '' }); load(); } }}
-              input={() => ({
-                accountId: trade.accountId, metal, grams: trade.grams,
-                pricePerGram: quotedPrice, currency: trade.currency,
-                makingPerGram: trade.makingPerGram || undefined,
-                date: logDate, note: trade.note || undefined,
-                intention: trade.intention,
-              })}>
-              {side === 'buy' ? 'Record a buy' : 'Record a sell'}
-            </ActionButton>
-          </div>
-        </Panel>
       )}
 
       {tab === 'metals' && live && (() => {
@@ -382,13 +262,13 @@ function Body() {
                           onChange={(v) => set({ direction: v })}
                           options={[{ value: 'buy', label: 'Buy', hint: 'money out, grams in' },
                                     { value: 'sell', label: 'Sell', hint: 'grams out, money in' }]} />) },
-            { key: 'grams', label: 'Grams', kind: 'amount', align: 'right', width: '112px',
+            { key: 'grams', label: 'Grams', kind: 'amount', width: '112px',
               value: (l) => l.grams,
               cell: (l) => <span className="mono" style={{ color: tone }}>
                 {l.direction === 'sell' ? '−' : '+'}{l.grams}</span>,
               field: (d, set) => <Amount value={d.grams ?? 0} ariaLabel="Grams"
                                          onChange={(n) => set({ grams: n })} /> },
-            { key: 'price', label: 'Price / g', kind: 'amount', align: 'right', width: '124px',
+            { key: 'price', label: 'Price / g', kind: 'amount', width: '124px',
               value: (l) => l.pricePerGram,
               /* Quoted in dollars, it is read back in dollars: the pound figure is in the
                  total beside it, and printing both here said the same thing twice. */
@@ -403,22 +283,43 @@ function Body() {
                                          onChange={(n) => set({ pricePerGram: n })} /> },
             /* مصنعية: what the workmanship cost by the gram, in the currency it was quoted
                in. Nought on a lot bought as bullion, which is most of them. */
-            { key: 'making', label: 'Making / g', kind: 'amount', align: 'right', width: '118px',
+            { key: 'making', label: 'Making / g', kind: 'amount', width: '118px',
               value: (l) => l.makingPerGram ?? 0,
               cell: (l) => (l.makingPerGram
                 ? <span className="mono">{fmt(l.makingPerGram)}</span>
                 : <span style={{ color: 'var(--faint)' }}>—</span>),
               field: (d, set) => <Amount value={d.makingPerGram ?? 0} ariaLabel="Making charge a gram"
                                          onChange={(n) => set({ makingPerGram: n })} /> },
-            { key: 'total', label: 'Total', kind: 'amount', align: 'right', width: '136px',
+            { key: 'total', label: 'Total', kind: 'amount', width: '136px',
               value: (l) => l.totalEgp,
               // What it came to follows from the grams and the price; it is not typed in.
               cell: (l) => <span className="mono">{dm(l.totalEgp)}</span>,
-              field: (d) => (
-                <span className="mono" style={{ color: 'var(--faint)' }}>
-                  {dm((Number(d.grams) || 0) * (Number(d.pricePerGram) || 0))}
-                </span>
-              ) },
+              // The making charge is a per-gram amount added to the gram price before the
+              // weight multiplies it — buying it is spent, selling it is taken off — so the
+              // preview while adding or correcting a row has to run the same formula the
+              // capability does, or the figure shown here would disagree with what gets saved.
+              field: (d, set, row) => {
+                const direction = row?.direction ?? d.direction ?? 'buy';
+                const grams = Number(d.grams) || 0;
+                const price = Number(d.pricePerGram) || 0;
+                const making = Number(d.makingPerGram) || 0;
+                const total = grams * (direction === 'sell' ? price - making : price + making);
+                return (
+                  <span className="mono" style={{ color: 'var(--faint)' }}>
+                    {dm(total)}
+                  </span>
+                );
+              } },
+            // The flat charge on the deal itself, in the account's own currency — one charge
+            // for the lot, however many grams it was, which is what separates it from the
+            // making charge in the column before it.
+            { key: 'fee', label: 'Fee', kind: 'amount', width: '110px',
+              value: (l) => l.fee ?? 0,
+              cell: (l) => (l.fee
+                ? <span className="mono" style={{ color: 'var(--negative)' }}>{dm(l.fee)}</span>
+                : <span style={{ color: 'var(--faint)' }}>—</span>),
+              field: (d, set) => <Amount value={Number(d.fee) || 0} ariaLabel="Fee"
+                                         onChange={(n) => set({ fee: n })} /> },
             { key: 'account', label: 'Paid from', kind: 'pick', width: '148px',
               value: (l) => accountName(l.accountId),
               cell: (l) => <span style={{ fontSize: 12, color: 'var(--muted)' }}>{accountName(l.accountId)}</span>,
@@ -472,13 +373,14 @@ function Body() {
             // Buying and selling are different capabilities and one gesture.
             capability: (d) => (d.direction === 'sell' ? 'metal.sell' : 'metal.buy'),
             blank: { date: new Date().toISOString().slice(0, 10), direction: 'buy',
-                     grams: 0, pricePerGram: 0, makingPerGram: 0,
-                     accountId: data.settings.burnAccountId,
+                     grams: 0, pricePerGram: 0, makingPerGram: 0, fee: 0,
+                     accountId: defaultAccountId(data, data.settings.burnAccountId),
                      intention: 'investment', note: '' },
             valid: (d) => Number(d.grams) > 0 && !!d.accountId,
             build: (d) => ({ metal, accountId: d.accountId, grams: Number(d.grams),
                              pricePerGram: Number(d.pricePerGram) || undefined,
                              makingPerGram: Number(d.makingPerGram) || undefined,
+                             fee: Number(d.fee) || undefined,
                              date: d.date, note: d.note || undefined,
                              intention: d.intention || 'investment' }),
           }}
@@ -495,10 +397,17 @@ function Body() {
             // which no date field can hold, so it is offered empty and left alone if it is
             // left empty.
             draftOf: (l) => ({ date: l.date ?? '', grams: l.grams,
-                               pricePerGram: l.pricePerGram, accountId: l.accountId ?? '',
+                               pricePerGram: l.pricePerGram, makingPerGram: l.makingPerGram ?? 0,
+                               // The lot's own flat charge, whichever way it went. Opened
+                               // without it the row would save as though the deal never cost
+                               // anything, and the account would quietly gain it back.
+                               fee: l.fee ?? 0,
+                               accountId: l.accountId ?? '',
                                intention: l.intention ?? 'investment', note: l.note ?? '' }),
             build: (d, l) => ({ lotId: l.id, grams: Number(d.grams),
                                 pricePerGram: Number(d.pricePerGram),
+                                makingPerGram: Number(d.makingPerGram) || undefined,
+                                fee: Number(d.fee) || 0,
                                 accountId: d.accountId || undefined,
                                 intention: d.intention || undefined,
                                 date: d.date || undefined, note: d.note ?? '' }),
@@ -517,5 +426,307 @@ function Body() {
       </Panel>
       )}
     </Page>
+  );
+}
+
+/**
+ * Buying and selling metal, in the same shape Move money uses: pick where it leaves, see
+ * what that holds before and after, the same going the other way, then the amount and what
+ * it costs on top of the metal itself.
+ *
+ * Buying is money leaving an account and grams arriving in the holding; selling is the same
+ * movement read backwards — the holding is what "From" or "To" means when there is no
+ * account to pick, since there is only ever the one holding of this metal. Net worth does
+ * not move on its own: only a making charge or a flat fee genuinely leaves, the same way a
+ * fee is the only thing Move money ever takes off the top.
+ */
+function MetalTrade({ metal, perGram, held, onDone }: {
+  metal: Metal; perGram: number; held: number; onDone: () => void;
+}) {
+  const { data, market, currencies } = useApp();
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  // The living-burn account is often unset, and seeding this with an id that names no
+  // account left "Paid from" showing the first account on the list while actually holding
+  // none — invisible here (there is no balance hint on this field), but real: the button
+  // stayed enabled and the write was refused for a NodeId that was never really chosen.
+  const [trade, setTrade] = useState({
+    accountId: defaultAccountId(data, data.settings.burnAccountId), grams: 0, pricePerGram: 0, note: '',
+    intention: 'investment' as 'personal' | 'investment',
+    /* what the dealer quotes in, and the workmanship they charge on top of the metal */
+    currency: 'EGP', makingPerGram: 0,
+    /* a flat charge on the sale itself, in the account's own currency — distinct from the
+       making charge, which is quoted a gram in whatever currency the metal itself was */
+    fee: 0,
+  });
+  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const accounts = data.nodes.filter((n) => n.kind === 'cash');
+  // Distinct from the "Gold held"/"Silver held" stat above — the same words in both places
+  // read as two different totals disagreeing with each other.
+  const holdingLabel = `Your ${metal}`;
+  const short = side === 'sell' && trade.grams > held;
+
+  /* The quote, as it was given: a price a gram in some currency, and the workmanship charged
+     on top of it. Everything the ledger stores is pounds, so this is only what the form
+     shows and what the capability is handed — the conversion happens once, on the way in. */
+  const fx = trade.currency === 'EGP' ? 1 : market.fxRates[trade.currency] ?? 1;
+  const quotedPrice = trade.pricePerGram || perGram / fx;
+  const quotedTotal = trade.grams
+    * (side === 'buy' ? quotedPrice + trade.makingPerGram : quotedPrice - trade.makingPerGram);
+  /* Selling for less than the dealer keeps is a typed figure rather than a sale. */
+  const swallowed = side === 'sell' && trade.makingPerGram >= quotedPrice;
+
+  // Buying, choosing "Initial payment" says this weight is already yours — an opening
+  // position, not a purchase — so no price, no making charge and no account is asked for.
+  const startingWeight = side === 'buy' && trade.accountId === INITIAL_PAYMENT;
+
+  // Which account this actually means, nothing chosen yet defaults to — worked out fresh on
+  // every render rather than baked into `trade`'s initial state, since that state can freeze
+  // at whatever the ledger held (often nothing at all) the instant this screen first mounted.
+  const accountIdOrDefault = trade.accountId || defaultAccountId(data, data.settings.burnAccountId);
+
+  // The account named is where the money comes from on a buy, and where it lands on a sale.
+  const acct = accounts.find((n) => n.id === accountIdOrDefault);
+  const acctRate = acct && acct.currency !== 'EGP' ? (market.fxRates[acct.currency ?? 'EGP'] ?? 1) : 1;
+  // What the metal itself is worth in the account's own currency, before any flat fee — what
+  // leaves the account on a buy, what a sale earns before its fee comes off.
+  const amountInAcctCurrency = (quotedTotal * fx) / acctRate;
+  const feeSwallows = side === 'sell' && trade.fee > 0 && !(amountInAcctCurrency - trade.fee > 0);
+  // The making charge, read in pounds — money spent, or kept by the dealer, that buys or
+  // sells no weight, so it is the one thing here that behaves exactly like a transfer's fee.
+  const makingEgp = toEgp(trade.grams * trade.makingPerGram, trade.currency, market);
+  const feeEgp = toEgp(trade.fee, acct?.currency ?? 'EGP', market);
+  const lostEgp = makingEgp + feeEgp;
+
+  if (startingWeight) {
+    const problems: string[] = [];
+    if (!(trade.grams > 0)) problems.push('The amount has to be more than nothing.');
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Field label="From">
+          <SourceAccountSelect value={trade.accountId} ariaLabel="Paid from"
+            onChange={(v) => setTrade({ ...trade, accountId: v })} />
+        </Field>
+
+        <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--faint)' }}>
+          <Icon name="arrowdown" size={16} />
+        </div>
+
+        <Field label="Into">
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>your {metal} holding</span>
+        </Field>
+        <QuantityBalance before={held} after={held + trade.grams} format={(n) => `${n.toFixed(1)} g`} />
+
+        <Field label="Date"><DateField value={logDate} onChange={setLogDate} ariaLabel="Date of the movement" /></Field>
+        <Field label="Grams">
+          <Amount value={trade.grams} ariaLabel="Grams" onChange={(n) => setTrade({ ...trade, grams: n })} />
+        </Field>
+        <Field label="Held for"
+               hint={trade.intention === 'personal'
+                 ? 'worn in ordinary use, so zakat does not reach it'
+                 : 'a store of value, so zakat reaches it once it passes nisab and carries a lunar year'}>
+          <Select ariaLabel="What this metal is held for" value={trade.intention}
+                  onChange={(v) => setTrade({ ...trade, intention: v as 'personal' | 'investment' })}
+                  options={[
+                    { value: 'investment', label: 'A holding', hint: 'zakatable' },
+                    { value: 'personal', label: 'Worn — jewellery', hint: 'not zakatable' },
+                  ]} />
+        </Field>
+        <Field label="Note" hint="why, for reading back later">
+          <input aria-label="Note" placeholder="carried over from before this ledger"
+                 value={trade.note} onChange={(e) => setTrade({ ...trade, note: e.target.value })} />
+        </Field>
+
+        <div style={{ padding: '12px 14px', borderRadius: 'var(--r-card)', background: 'var(--raised)',
+                      border: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <RowLine label="Recorded" value={`${trade.grams} g`} tone="var(--muted)" />
+          <div style={{ height: 1, background: 'var(--hairline)', margin: '2px 0' }} />
+          <RowLine label="Net worth changes by"
+                   value={perGram ? `+${money(trade.grams * perGram, 'EGP')}` : 'unknown — no price recorded'}
+                   tone="var(--positive)" />
+        </div>
+        <p style={{ margin: 0, fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
+          No money moves. This states what you already hold — nothing is deducted from any
+          account, and nothing here says where it came from.
+        </p>
+
+        {problems.length > 0 && <Problems list={problems} />}
+
+        <ActionButton capability="account.correctBalance" disabled={problems.length > 0}
+          className="btn go" style={{ width: 170, justifyContent: 'center' }}
+          onDone={(o) => { if (o.ok) { setTrade({ ...trade, grams: 0, note: '' }); onDone(); } }}
+          input={() => ({ accountId: metal, actual: held + trade.grams })}>
+          Record the starting weight
+        </ActionButton>
+      </div>
+    );
+  }
+
+  // The holding side of the movement has nothing to pick — there is only ever the one
+  // holding of this metal — so it is a fixed label rather than a picker, the way Move money
+  // itself falls back to plain text once there is nothing left to choose between.
+  const holdingField = <span style={{ fontSize: 13, color: 'var(--muted)' }}>your {metal} holding</span>;
+  const holdingBalance = (
+    <QuantityBalance before={held} after={held + (side === 'buy' ? trade.grams : -trade.grams)}
+                     format={(n) => `${n.toFixed(1)} g`} />
+  );
+  const accountField = side === 'buy'
+    ? <SourceAccountSelect value={accountIdOrDefault} ariaLabel="Paid from"
+        onChange={(v) => setTrade({ ...trade, accountId: v })} />
+    : <Select ariaLabel="Account" value={accountIdOrDefault}
+              onChange={(v) => setTrade({ ...trade, accountId: v })}
+              options={accounts.map((n) => ({
+                value: n.id, label: `${n.name} · ${n.currency}`,
+                hint: data.institutions.find((i) => i.id === n.parentId)?.name,
+              }))} />;
+  const accountBalance = acct && (
+    <Balance node={acct}
+             delta={side === 'buy' ? -(amountInAcctCurrency + trade.fee)
+                                   : Math.max(0, amountInAcctCurrency - trade.fee)} />
+  );
+
+  const problems: string[] = [];
+  if (!(trade.grams > 0)) problems.push('The amount has to be more than nothing.');
+  if (short) problems.push(`You hold ${held.toFixed(1)} g, which is ${(trade.grams - held).toFixed(1)} g short.`);
+  if (swallowed) problems.push(`A making charge of ${fmt(trade.makingPerGram)} ${trade.currency} a gram takes the whole sale. Lower it, or raise the price a gram.`);
+  if (feeSwallows) problems.push(`A fee of ${trade.fee} ${acct?.currency ?? ''} takes the whole sale. Lower it, or raise the price a gram.`);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Segmented<'buy' | 'sell'> value={side} onChange={setSide} ariaLabel="Buying or selling"
+          options={[
+            { id: 'buy', label: 'Buying', icon: 'in', tone: 'var(--positive)' },
+            { id: 'sell', label: 'Selling', icon: 'out', tone: 'var(--negative)' },
+          ]} />
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          {side === 'buy' ? `${metal} in, money out` : `${metal} out, money in`}
+        </span>
+      </div>
+
+      <Field label="Date"><DateField value={logDate} onChange={setLogDate} ariaLabel="Date of the movement" /></Field>
+
+      <Field label={side === 'buy' ? 'Paid from' : holdingLabel}>
+        {side === 'buy' ? accountField : holdingField}
+      </Field>
+      {side === 'buy' ? accountBalance : holdingBalance}
+
+      <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--faint)' }}>
+        <Icon name="arrowdown" size={16} />
+      </div>
+
+      <Field label={side === 'buy' ? holdingLabel : 'Proceeds into'}>
+        {side === 'buy' ? holdingField : accountField}
+      </Field>
+      {side === 'buy' ? holdingBalance : accountBalance}
+
+      <Field label="Grams">
+        <Amount value={trade.grams} ariaLabel="Grams" onChange={(n) => setTrade({ ...trade, grams: n })} />
+      </Field>
+
+      {/* A dealer quotes in whatever they trade in. The currency is asked for beside the
+          price rather than assumed from the account, because the two are different
+          questions: what was agreed, and where the money came from. */}
+      <Field label="Quoted in" hint="the currency the dealer priced it in">
+        <Select ariaLabel="Currency the price is quoted in" value={trade.currency}
+                onChange={(v) => setTrade({ ...trade, currency: v })}
+                options={currencies.map((c) => ({
+                  value: c.code, label: `${c.symbol} ${c.code}`, hint: c.name,
+                }))} />
+      </Field>
+      <Field label="Price per gram"
+             hint={perGram ? `in force: ${fmt(perGram / fx, fx === 1 ? 0 : 2)} ${trade.currency}` : 'no price recorded'}>
+        <Amount value={trade.pricePerGram} ariaLabel="Price per gram" onChange={(n) => setTrade({ ...trade, pricePerGram: n })}
+                placeholder={String(Math.round(perGram / fx) || 0)} />
+      </Field>
+      {/* مصنعية: the workmanship, charged by the gram on top of the metal. Buying, it is
+          money spent that buys no weight; selling, it is what the dealer keeps. */}
+      <Field label="Making charge per gram"
+             hint={side === 'buy' ? 'مصنعية — paid on top of the metal'
+                                  : 'مصنعية — taken off what you are paid'}>
+        <Amount value={trade.makingPerGram} ariaLabel="Making charge per gram"
+                onChange={(n) => setTrade({ ...trade, makingPerGram: n })} />
+      </Field>
+      <Field label="Total"
+             hint={side === 'buy' ? 'the metal and the making, in the quoted currency'
+                                  : 'the metal less the making, in the quoted currency'}>
+        <input className="mono" readOnly aria-label="Total"
+               value={`${fmt(quotedTotal)} ${trade.currency}`} />
+      </Field>
+
+      {/* A dealer charges for the deal, not only for the metal — a commission on a purchase is
+          as ordinary as one on a sale, and neither is the making charge, which is quoted by
+          the gram. Paid on a buy, taken off a sale, and in both cases money that buys no
+          weight. */}
+      <Field label={`Fee · ${acct?.currency ?? 'EGP'}`}
+             hint={side === 'buy' ? 'a flat charge on the purchase itself, on top of the making charge'
+                                  : 'a flat charge on the sale itself, on top of the making charge'}>
+        <Amount value={trade.fee} ariaLabel="Fee" onChange={(n) => setTrade({ ...trade, fee: n })} />
+      </Field>
+
+      <Field label="Held for"
+             hint={trade.intention === 'personal'
+               ? 'worn in ordinary use, so zakat does not reach it'
+               : 'a store of value, so zakat reaches it once it passes nisab and carries a lunar year'}>
+        <Select ariaLabel="What this metal is held for" value={trade.intention}
+                onChange={(v) => setTrade({ ...trade, intention: v as 'personal' | 'investment' })}
+                options={[
+                  { value: 'investment', label: 'A holding', hint: 'zakatable' },
+                  { value: 'personal', label: 'Worn — jewellery', hint: 'not zakatable' },
+                ]} />
+      </Field>
+      <Field label="Note" hint="why, for reading back later">
+        <input aria-label="Note" placeholder="a dealer, a gift, a plan"
+               value={trade.note} onChange={(e) => setTrade({ ...trade, note: e.target.value })} />
+      </Field>
+
+      <div style={{
+        padding: '12px 14px', borderRadius: 'var(--r-card)', background: 'var(--raised)',
+        border: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 7,
+      }}>
+        <RowLine label="Leaves"
+                 value={side === 'buy'
+                   ? money(amountInAcctCurrency + trade.fee, acct?.currency ?? 'EGP', acct?.currency === 'EGP' ? 0 : 2)
+                   : `${trade.grams} g`}
+                 tone="var(--negative)" />
+        <RowLine label="Arrives"
+                 value={side === 'buy'
+                   ? `${trade.grams} g`
+                   : money(Math.max(0, amountInAcctCurrency - trade.fee), acct?.currency ?? 'EGP', acct?.currency === 'EGP' ? 0 : 2)}
+                 tone="var(--positive)" />
+        {makingEgp > 0 && <RowLine label="Making charge" value={money(makingEgp, 'EGP')} tone="var(--negative)" muted />}
+        {trade.fee > 0 && <RowLine label="Fee" value={money(feeEgp, 'EGP')} tone="var(--negative)" muted />}
+        <div style={{ height: 1, background: 'var(--hairline)', margin: '2px 0' }} />
+        <RowLine label="Net worth changes by" value={lostEgp > 0 ? `−${money(lostEgp, 'EGP')}` : 'nothing'}
+                 tone={lostEgp > 0 ? 'var(--negative)' : 'var(--faint)'} />
+        <span style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.45 }}>
+          {lostEgp > 0
+            ? 'Only the making charge, and any fee, actually leave. The rest becomes metal, still yours.'
+            : 'The money becomes metal — still yours, weighed differently.'}
+        </span>
+      </div>
+
+      {problems.length > 0 && <Problems list={problems} />}
+
+      <div>
+        {/* One width, whichever way the movement goes: a button that grows with the number
+            typed beside it moves under the cursor while it is being aimed at. */}
+        <ActionButton capability={side === 'buy' ? 'metal.buy' : 'metal.sell'}
+          disabled={!(trade.grams > 0) || !accountIdOrDefault || short || swallowed || feeSwallows || !(trade.pricePerGram || perGram)}
+          className={side === 'sell' ? 'btn danger' : 'btn go'}
+          style={{ width: 170, justifyContent: 'center' }}
+          onDone={(o) => { if (o.ok) { setTrade({ ...trade, grams: 0, note: '' }); onDone(); } }}
+          input={() => ({
+            accountId: accountIdOrDefault, metal, grams: trade.grams,
+            pricePerGram: quotedPrice, currency: trade.currency,
+            makingPerGram: trade.makingPerGram || undefined,
+            fee: trade.fee || undefined,
+            date: logDate, note: trade.note || undefined,
+            intention: trade.intention,
+          })}>
+          {side === 'buy' ? 'Record a buy' : 'Record a sell'}
+        </ActionButton>
+      </div>
+    </div>
   );
 }

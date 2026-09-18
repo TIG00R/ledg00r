@@ -44,7 +44,24 @@ export function Select({ value, options, onChange, ariaLabel, style, disabled }:
   const trigger = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const list = useRef<HTMLUListElement>(null);
-  const chosen = options.find((o) => o.value === value) ?? options[0];
+  /**
+   * What the trigger shows, when nothing offered matches what is held.
+   *
+   * An empty value showing the first option is a starting point nobody has chosen yet — every
+   * blank draft in this application relies on exactly that, and it is what "does not choose it"
+   * means in the comments beside those drafts. A row being corrected is a different case: it
+   * already names something real, by id, and if that id is missing from what is offered — the
+   * option list was drawn too narrow, or the thing it names has since been archived — showing
+   * the first option in its place is not a starting point, it is a different answer wearing the
+   * one that was actually recorded. Saving without noticing would rewrite the record to name
+   * whatever happened to be listed first.
+   *
+   * So only a genuinely empty value falls back to the first option. Anything else that fails to
+   * match says so instead of guessing.
+   */
+  const chosen = options.find((o) => o.value === value) ?? (value ? undefined : options[0]);
+  /** a real value that named nothing offered, rather than a draft that has simply not chosen yet */
+  const unresolved = !chosen && !!value;
   /** where the list sits in the viewport, and how tall it is allowed to be there */
   const [box, setBox] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number }>(
     { left: 0, width: 0, top: 0, maxHeight: MAX_LIST },
@@ -134,18 +151,22 @@ export function Select({ value, options, onChange, ariaLabel, style, disabled }:
         aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel} aria-controls={listId}
         onClick={() => { setOpen((o) => !o); setActive(Math.max(0, options.findIndex((o2) => o2.value === value))); }}
         onKeyDown={onKey}
+        aria-invalid={unresolved || undefined}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 10, cursor: disabled ? 'not-allowed' : 'pointer',
           padding: '9px 11px', fontSize: 14, textAlign: 'left',
           borderRadius: 'var(--r-sm)',
-          // open is the same signal as focus: the border brightens, nothing is added around it
-          border: `1px solid ${open ? 'var(--focus-edge)' : 'var(--control-border)'}`,
-          boxShadow: open ? '0 0 0 1px var(--focus-edge) inset' : 'none',
+          // open is the same signal as focus: the border brightens, nothing is added around it.
+          // Unresolved is a third state, and it stays visible even while open — the point is to
+          // be seen before anyone saves, not to be replaced by the ordinary focus ring.
+          border: `1px solid ${unresolved ? 'var(--negative)' : open ? 'var(--focus-edge)' : 'var(--control-border)'}`,
+          boxShadow: open && !unresolved ? '0 0 0 1px var(--focus-edge) inset' : 'none',
           transition: 'border-color 140ms var(--ease), box-shadow 140ms var(--ease)',
           background: 'var(--control)', color: 'var(--ink)', opacity: disabled ? 0.55 : 1,
         }}>
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {chosen?.label ?? ''}
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                       color: unresolved ? 'var(--negative)' : undefined }}>
+          {unresolved ? 'Not offered here' : chosen?.label ?? ''}
         </span>
         <span style={{ display: 'flex', color: 'var(--faint)', transform: open ? 'rotate(-90deg)' : 'rotate(-90deg) scaleX(-1)',
                        transition: 'transform 180ms var(--ease)' }}>

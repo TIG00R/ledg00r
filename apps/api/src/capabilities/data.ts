@@ -7,6 +7,7 @@ import {
 import { eq, inArray } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
 import { noted, refusal } from './shared.js';
+import { writePref } from '../read.js';
 
 /**
  * Emptying things.
@@ -68,6 +69,13 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
         ctx.db.update(t.nodes).set({ ownership: 'owned' })
           .where(inArray(t.nodes.id, onPlans)).run();
       }
+      // Prices kept no memory of anything but the rows just deleted, so nothing else is true
+      // about a rate or a price any more — including the record of when each one was last
+      // fetched. Left in place, that record would go on telling the automatic fetcher that
+      // every subject is fine for up to `refreshHours` more, and the ledger would sit priced
+      // at nothing until that clock ran out on its own. Forgetting it here is what makes the
+      // next automatic pass treat every subject as never having been looked at.
+      if (log === 'prices') writePref(ctx.db, 'priceSourceLog', {});
 
       return noted(`${LOGS[log].label} cleared — ${removed} row${removed === 1 ? '' : 's'} gone`);
     },
@@ -89,6 +97,11 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
         ctx.db.update(t.nodes).set({ ownership: 'owned' })
           .where(inArray(t.nodes.id, onPlans)).run();
       }
+      // Prices is one of the logs this just cleared, so the same forgetting belongs here —
+      // otherwise the automatic fetcher goes on believing every subject was just looked at,
+      // and a ledger cleared for a fresh start sits with no rates until `refreshHours` passes
+      // on its own.
+      writePref(ctx.db, 'priceSourceLog', {});
       return noted(`Every record log cleared — ${removed} row${removed === 1 ? '' : 's'} gone. The accounts and the settings are as they were.`);
     },
   }),

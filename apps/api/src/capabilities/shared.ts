@@ -3,6 +3,8 @@ import { DomainError, validate, type MovementDraft } from '@ledger/domain';
 import { writeMovementDetailed, changesFor, schema as t, type Db } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import type { Receipt, Refusal } from '@ledger/contracts';
+import { compareToSource, type SourceComparison } from '@ledger/engine';
+import type { MarketState } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 
 /**
@@ -88,6 +90,25 @@ export const today = (ctx: AppCtx) => ctx.now.toISOString().slice(0, 10);
 export const bucketOf = (date: string) => date.slice(0, 7);
 
 /**
+ * How a node reads in a sentence meant for someone reading a receipt, not a database.
+ *
+ * Its own name, with the institution that holds it named beside it when it has one — "EGP
+ * current · Nile Bank" rather than a node id nobody but the ledger recognises. A property or
+ * any other node with no institution is just its name, because there is nothing else to say
+ * about where it sits. A confirmation that names an id instead of this reads as a receipt from
+ * the database rather than one from the ledger.
+ */
+export function nameOf(db: Db, nodeId: string | null | undefined): string {
+  if (!nodeId) return '—';
+  const node = db.select().from(t.nodes).where(eq(t.nodes.id, nodeId)).get();
+  if (!node) return nodeId;
+  const inst = node.parentId
+    ? db.select().from(t.institutions).where(eq(t.institutions.id, node.parentId)).get()
+    : undefined;
+  return inst ? `${node.name} · ${inst.name}` : node.name;
+}
+
+/**
  * Ids are readable on purpose: a person reading the log should recognise what they name.
  *
  * The random tail is what keeps them apart, and it comes from the engine so that every id in
@@ -96,6 +117,47 @@ export const bucketOf = (date: string) => date.slice(0, 7);
 export { newId } from '@ledger/engine';
 
 export const DryRun = z.object({ dryRun: z.boolean().default(false) });
+
+/** The seven fields every `sourceComparison` reading reports, all null together when absent. */
+export const SOURCE_FIELDS = {
+  sourceCurrency: z.string().nullable(),
+  sourceAmount: z.number().nullable(),
+  sourceRateThen: z.number().nullable(),
+  sourceRateNow: z.number().nullable(),
+  sourceValueNowEgp: z.number().nullable(),
+  sourceDiffEgp: z.number().nullable(),
+  sourceDiffPct: z.number().nullable(),
+};
+
+export interface NoSourceReading {
+  sourceCurrency: null; sourceAmount: null; sourceRateThen: null; sourceRateNow: null;
+  sourceValueNowEgp: null; sourceDiffEgp: null; sourceDiffPct: null;
+}
+const NO_SOURCE: NoSourceReading = {
+  sourceCurrency: null, sourceAmount: null, sourceRateThen: null, sourceRateNow: null,
+  sourceValueNowEgp: null, sourceDiffEgp: null, sourceDiffPct: null,
+};
+
+/**
+ * A holding's second reading, flattened onto the row it belongs to.
+ *
+ * Reads back whatever was actually recorded — a currency, an amount, a rate, all three or
+ * none — and asks `compareToSource` what that money would be worth now against what the
+ * holding itself is worth now. Nothing recorded reads back as every field null, not as an
+ * absent one: a screen can spread this straight onto a row without a special case for the
+ * holdings that predate it.
+ */
+export function sourceReading(
+  source: { currency: string | null; amount: number | null; rate: number | null } | null | undefined,
+  holdingValueEgp: number,
+  market: Pick<MarketState, 'fxRates'>,
+): SourceComparison | NoSourceReading {
+  if (!source?.currency || !source.amount || !source.rate) return NO_SOURCE;
+  return compareToSource(
+    { currency: source.currency, amount: source.amount, rate: source.rate },
+    holdingValueEgp, market,
+  ) ?? NO_SOURCE;
+}
 
 
 /**

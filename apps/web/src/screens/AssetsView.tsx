@@ -4,7 +4,6 @@ import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { ledger } from '../api';
 import { Manager } from '../components/Manager';
-import { ConfirmDelete } from '../components/Confirm';
 import { installmentDueDate, daysUntil, nextInstallment, isPrincipal,
          toEgp } from '@ledger/engine';
 import { useCallback, useEffect, useState } from 'react';
@@ -12,11 +11,12 @@ import { Page, Panel, Chip, Stat, Empty, Toggle, Field, AccountName } from '../c
 import { Icon } from '../components/Icon';
 import { Mark } from '../components/Mark';
 import { ActionButton, useLive } from '../Live';
-import { RecordTable } from '../components/RecordTable';
-import { ModeProvider, useMode } from '../components/ModeBar';
+import { RecordTable, isInteractive } from '../components/RecordTable';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { IntentionPicker, HawlBar } from '../components/Intention';
 import { intentionsFor, type Intention } from '@ledger/engine';
+import { sourceAccountOptions, INITIAL_PAYMENT } from '../components/Operations';
+import { useModules } from '../Modules';
 
 /** A payment on a plan, as the ledger reports it. */
 interface Installment {
@@ -32,17 +32,17 @@ interface Installment {
 
 export function Assets() {
   return (
-    <ModeProvider>
-      <SectionProvider first="overview"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="overview"><Body /></SectionProvider>
   );
 }
 
 function Body() {
   const { data, values: v, now, dm, autoPay, setAutoPay, balances, currencies, market } = useApp();
-  const { mode } = useMode();
   const { tab } = useSection();
   const { run, live, version } = useLive();
+  const { enabled } = useModules();
+  /** whether the zakat module is on — the one check every intention control on this screen answers to */
+  const zakatOn = enabled.giving !== false;
   /** which institution a node sits at, for the second line under an account's name */
   const bankOf = (id?: string | null) =>
     data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
@@ -53,17 +53,18 @@ function Body() {
   const setAuto = (patch: Record<string, boolean>) => {
     for (const [id, on] of Object.entries(patch)) {
       setAutoPay(id, { on });
-      void run('autopay.configure', {
-        propertyId: id, enabled: on,
-        fromAccountId: autoPay[id]?.fromNodeId ?? data.settings.burnAccountId,
-      });
+      // An empty account is not an account. `??` kept a blank string, which the ledger
+      // rejects as a malformed id — so the field is left out instead, and the capability
+      // falls back to the account already arranged for this property, or says it needs one.
+      const from = autoPay[id]?.fromNodeId || data.settings.burnAccountId || undefined;
+      void run('autopay.configure', { propertyId: id, enabled: on, ...(from ? { fromAccountId: from } : {}) });
     }
   };
   const payFrom = Object.fromEntries(Object.entries(autoPay).map(([k, x]) => [k, x.fromNodeId]));
   const setPayFrom = (patch: Record<string, string>) => {
     for (const [id, fromNodeId] of Object.entries(patch)) {
       setAutoPay(id, { fromNodeId });
-      if (autoPay[id]?.on) void run('autopay.configure', { propertyId: id, enabled: true, fromAccountId: fromNodeId });
+      if (autoPay[id]?.on && fromNodeId) void run('autopay.configure', { propertyId: id, enabled: true, fromAccountId: fromNodeId });
     }
   };
   /**
@@ -140,11 +141,39 @@ function Body() {
         };
       });
   const props = owned.map((o) => o.id);
-  const [planFor, setPlanFor] = useState<string | null>(null);
   const [upkeep, setUpkeep] = useState({
     propertyId: props[0] ?? '', accountId: data.settings.burnAccountId,
     amount: 0, date: new Date().toISOString().slice(0, 10), note: '',
   });
+
+  /**
+   * Which asset's own settings are open — its intention, its zakat dates, whether it logs its
+   * own installments. Only one at a time, the same rule every per-row editor in this
+   * application keeps: two half-finished corrections have no way to say which Save belongs to
+   * which.
+   */
+  const [openAssetId, setOpenAssetId] = useState<string | null>(null);
+  /** which card the pointer is over, so its edit pencil is offered without crowding every
+   *  card at once — a keyboard reaches the same editor without ever touching this. */
+  const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
+
+  /**
+   * The four tests zakat applies to each thing — what it is, what it is held for, whether the
+   * amount reached nisab, and whether a lunar year has run since — read once here rather than
+   * once per card, so opening a second card's settings does not ask the ledger the same
+   * question again.
+   */
+  const [zakatLines, setZakatLines] = useState<any[] | null>(null);
+  useEffect(() => {
+    if (!live || !zakatOn) { setZakatLines(null); return; }
+    const call = (ledger as any)['zakat.assessment'];
+    if (typeof call !== 'function') { setZakatLines(null); return; }
+    let off = false;
+    call({})
+      .then((a: any) => { if (!off) setZakatLines(a?.assets ?? []); })
+      .catch(() => { if (!off) setZakatLines(null); });
+    return () => { off = true; };
+  }, [live, zakatOn, version]);
 
   /**
    * Every payment on every plan, paid and unpaid.
@@ -245,18 +274,16 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'overview', label: 'Assets', icon: 'assets',
-          hint: 'Everything you own that is not money — a flat, a car, anything else.',
-          editHint: 'Rename an asset, change its mark and colour, add one, archive one.' },
+          hint: 'Everything you own that is not money — a flat, a car, anything else. Double-click one below, press Enter on it, or use its pencil, to edit its mark, its plan, or why it is held.' },
         { id: 'plans', label: 'Installment plans', icon: 'clock',
-          hint: 'What each asset still owes, payment by payment.',
-          editHint: 'Reshape a plan, add a payment, or record something spent on upkeep.' },
-        { id: 'intent', label: 'Intention and zakat', icon: 'zakat',
-          hint: 'Why each thing is held, since when, and what zakat therefore reaches.' },
+          hint: 'What each asset still owes, payment by payment. Double-click a payment to reshape it.' },
       ]} />
 
-      {tab === 'intent' && <Intentions assets={assets} onSaved={loadAssets} />}
+      {/* A card is as wide as the ring plus what stands beside it — 276 of circle, its own
+          padding, and room for a name that is not a word. Below that the two stack, which is
+          what the card does on a phone anyway. */}
       {tab === 'overview' && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 20 }}>
         {owned.map((o) => {
           const { id, price, paid, unpaid, onPlan, colour, settled } = o;
           /**
@@ -271,38 +298,108 @@ function Body() {
             : onPlan && price > 0 ? Math.min((paid / price) * 100, 100) : 100;
           const next = onPlan ? nextDue(id) : null;
           const due = next?.due ?? null;
-          const r = 44, c = 2 * Math.PI * r;
+          const r = 118, c = 2 * Math.PI * r;
+          const openThis = openAssetId === id;
+          /* the raw ledger record behind this card — it alone carries the intention and the
+             zakat dates; `o` above is the arithmetic worked out from it plus the plan */
+          const asset = assets?.find((a) => a.id === id) ?? null;
+          const zakatKind = asset?.kind === 'property' ? 'property' : asset?.kind === 'vehicle' ? 'vehicle' : 'other';
+          const knownIntention = intentionsFor(zakatKind).some((opt) => opt.id === asset?.intention);
+          const zakatLine = zakatLines?.find((l) => l.id === id) ?? null;
+          const startEditing = () => setOpenAssetId(id);
+          const stopEditing = () => setOpenAssetId(null);
           return (
             <section key={id} className="panel"
-                     style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div style={{ display: 'flex', gap: 22, alignItems: 'center' }}>
-              <div style={{ position: 'relative', width: 104, height: 104, flex: '0 0 104px' }}>
-                <svg width="104" height="104" viewBox="0 0 118 118" role="img"
+                     style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18, position: 'relative' }}
+                     onMouseEnter={() => setHoverAssetId(id)}
+                     onMouseLeave={() => setHoverAssetId((h) => (h === id ? null : h))}
+                     tabIndex={openThis ? undefined : 0}
+                     aria-label={openThis ? undefined : `Double-click, or press Enter, to edit ${o.name}'s settings`}
+                     onDoubleClick={openThis ? undefined : (e) => { if (!isInteractive(e.target)) startEditing(); }}
+                     onKeyDown={openThis ? undefined : (e) => {
+                       if (e.key !== 'Enter' || isInteractive(e.target)) return;
+                       e.preventDefault();
+                       startEditing();
+                     }}>
+              {/* The pencil is a mouse affordance, offered on hover so a screenful of cards is
+                  not a screenful of pencils — but the card itself is focusable and answers
+                  Enter, which is how a keyboard reaches the same editor without ever hovering
+                  anything. */}
+              {openThis ? (
+                <button className="btn ghost sm" onClick={stopEditing}
+                        style={{ position: 'absolute', top: 18, right: 18 }}>
+                  <Icon name="close" size={13} motion="none" /> Close
+                </button>
+              ) : (
+                <button className="btn quiet" onClick={startEditing} aria-label={`Edit ${o.name}'s settings`}
+                        title="Edit" style={{
+                          position: 'absolute', top: 14, right: 14, padding: 7, border: 'none',
+                          opacity: hoverAssetId === id ? 1 : 0, transition: 'opacity 120ms var(--ease)',
+                        }}>
+                  <Icon name="edit" size={14} />
+                </button>
+              )}
+              <div style={{ display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* The ring is where the card's own arithmetic lives — the percentage, and what
+                  it is made of, drawn where the eye already goes rather than read a second
+                  time underneath. It is sized for the figures rather than for the circle: a
+                  property costs millions, those numbers are set in a monospace face, and two
+                  of them side by side need the room. The hole inside it, not the ring, is
+                  what had to be big. */}
+              <div style={{ position: 'relative', width: 276, height: 276, flex: '0 0 276px' }}>
+                <svg width="276" height="276" viewBox="0 0 276 276" role="img"
                      aria-label={settled ? `${o.name}, fully owned`
                        : onPlan ? `${o.name} ${pctPaid.toFixed(1)} percent paid`
                        : `${o.name}, owned outright`}>
-                  <circle cx="59" cy="59" r={r} fill="none" stroke="var(--hairline)" strokeWidth="10" />
-                  <circle cx="59" cy="59" r={r} fill="none" strokeWidth="10" strokeLinecap="round"
+                  <circle cx="138" cy="138" r={r} fill="none" stroke="var(--hairline)" strokeWidth="13" />
+                  <circle cx="138" cy="138" r={r} fill="none" strokeWidth="13" strokeLinecap="round"
                           stroke={settled ? 'var(--positive)' : colour}
-                          strokeDasharray={`${(pctPaid / 100) * c} ${c}`} transform="rotate(-90 59 59)" />
+                          strokeDasharray={`${(pctPaid / 100) * c} ${c}`} transform="rotate(-90 138 138)" />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                              alignItems: 'center', justifyContent: 'center' }}>
+                              alignItems: 'center', justifyContent: 'center', gap: 2, padding: '0 26px' }}>
                   {/* A thing bought outright is not 100% of a contract — it simply has none,
                       so it shows what it is rather than a percentage that means nothing. */}
                   {settled ? (
                     <>
-                      <span className="mono" style={{ fontSize: 20, fontWeight: 500, color: 'var(--positive)' }}>100%</span>
-                      <span style={{ fontSize: 10, color: 'var(--positive)' }}>fully owned</span>
+                      <span className="mono" style={{ fontSize: 30, fontWeight: 600, color: 'var(--positive)' }}>100%</span>
+                      <span style={{ fontSize: 11, color: 'var(--positive)' }}>fully owned</span>
+                      <div style={{ textAlign: 'center', marginTop: 10 }}>
+                        <div className="ov" style={{ fontSize: 10 }}>Paid</div>
+                        <div className="mono" style={{ fontSize: 17, fontWeight: 500, color: 'var(--positive)' }}>{dm(paid)}</div>
+                      </div>
                     </>
                   ) : onPlan ? (
                     <>
-                      <span className="mono" style={{ fontSize: 20, fontWeight: 500 }}>{pctPaid.toFixed(1)}%</span>
-                      <span style={{ fontSize: 10, color: 'var(--faint)' }}>paid</span>
+                      <span className="mono" style={{ fontSize: 30, fontWeight: 600 }}>{pctPaid.toFixed(1)}%</span>
+                      <span style={{ fontSize: 11, color: 'var(--faint)' }}>paid</span>
+                      {/* Paid and remaining are the two halves the percentage is made of, so
+                          they sit inside it too — the price they add up to stays underneath,
+                          it is the one figure that is context rather than progress. One above
+                          the other rather than side by side: two seven-figure sums in a row
+                          are what used to run out of the circle, and stacking them gives each
+                          the full width of the hole. */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10, alignItems: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="ov" style={{ fontSize: 9 }}>Paid</div>
+                          <div className="mono" style={{ fontSize: 15, fontWeight: 500, color: 'var(--positive)', whiteSpace: 'nowrap' }}>{dm(paid)}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="ov" style={{ fontSize: 9 }}>Remaining</div>
+                          <div className="mono" style={{ fontSize: 15, fontWeight: 500, color: 'var(--negative)', whiteSpace: 'nowrap' }}>{dm(unpaid)}</div>
+                        </div>
+                      </div>
                     </>
                   ) : (
-                    <Mark mark={o.icon} size={30} color={colour}
-                          fallback={o.icon === 'car' ? 'car' : 'building'} />
+                    <>
+                      <Mark mark={o.icon} size={32} color={colour}
+                            fallback={o.icon === 'car' ? 'car' : 'building'} />
+                      <div style={{ textAlign: 'center', marginTop: 10 }}>
+                        <div className="ov" style={{ fontSize: 10 }}>Worth</div>
+                        <div className="mono" style={{ fontSize: 20, fontWeight: 500 }}>{dm(o.worth)}</div>
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--faint)' }}>owned outright</span>
+                    </>
                   )}
                 </div>
               </div>
@@ -319,35 +416,30 @@ function Body() {
                   </div>
                 </div>
               </div>
-              {/* The figures sit under the ring rather than beside the name, because they are
-                  what the ring is: the same paid and outstanding, written out. One under the
-                  other, in the order the arithmetic runs — the price, then what has gone
-                  against it, then what is left — so millions never break between the currency
-                  and the digits, and paid and remaining carry the colours they carry
-                  everywhere else rather than being told apart by their labels alone. */}
-              <div style={{ display: 'grid', gap: 12 }}>
-                {onPlan ? (
-                  <>
-                    <Stat label="Total price" value={dm(price)} nowrap />
-                    <Stat label="Paid" value={dm(paid)} color="var(--positive)" nowrap />
-                    <Stat label="Remaining" value={dm(unpaid)} color="var(--negative)" nowrap />
-                  </>
-                ) : (
-                  <Stat label="Worth" value={dm(o.worth)} nowrap />
-                )}
-              </div>
-              {mode === 'edit' && onPlan && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <button className="btn ghost" style={{ alignSelf: 'flex-start' }}
-                            onClick={() => setPlanFor(planFor === id ? null : id)}>
-                      <Icon name="edit" size={14} />
-                      {planFor === id ? 'Close the plan' : `Edit ${o.name}'s payment plan`}
-                    </button>
-                  </div>
-                )}
-                {/* Arranging for a plan to post itself is a setting, not an operation — it is
-                    decided once, alongside renaming the thing and changing its mark. */}
-                {mode === 'edit' && onPlan && (
+              {/* Only the contract total stays beneath the ring — it is the reference figure
+                  the ring's own paid-and-remaining add up to, not a third reading of the same
+                  progress. */}
+              {onPlan && (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <Stat label="Total price" value={dm(price)} nowrap />
+                </div>
+              )}
+              {/* What this is held for is read here whether the card is open or not — it was
+                  otherwise a fact nobody saw unless they had already opened the card to change
+                  something else. The picker itself is read-only until its own pencil is
+                  pressed, so showing it here adds nothing to press through by accident. */}
+              {zakatOn && live && asset && (
+                <div style={{ paddingTop: 14, borderTop: '1px solid var(--hairline)' }}>
+                  <IntentionPicker kind={zakatKind}
+                    value={knownIntention ? (asset.intention as Intention) : null}
+                    onChange={(val) => run('asset.update', { assetId: id, intention: val }).then(loadAssets)} />
+                </div>
+              )}
+                {/* Arranging for a plan to post itself is a setting, not an operation, and it
+                    sits with the rest of this asset's settings now — opened the same way they
+                    are, rather than sitting permanently on a card that has not been asked to
+                    show it. */}
+                {onPlan && openThis && (
                   <div style={{
                     padding: '12px 14px', borderRadius: 'var(--r-card)',
                     background: 'var(--raised)', border: '1px solid var(--hairline)',
@@ -405,23 +497,80 @@ function Body() {
                     })()}
                   </div>
                 )}
-                {next && due && (
-                  <div style={{ padding: '12px 14px', borderRadius: 'var(--r-card)',
-                                background: `color-mix(in srgb, ${colour} 8%, transparent)`,
-                                border: `1px solid color-mix(in srgb, ${colour} 24%, transparent)` }}>
-                    <div className="ov" style={{ color: colour }}>Next payment</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4,
-                                  flexWrap: 'wrap' }}>
-                      <span className="mono" style={{ fontSize: 17, fontWeight: 500, color: colour,
-                                                      whiteSpace: 'nowrap' }}>−{dm(next.amountEgp)}</span>
-                      <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                        {due.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        {' · '}
-                        {daysUntil(due, now) < 0 ? 'overdue' : `${daysUntil(due, now)}d`}
-                      </span>
-                    </div>
+                {/* What zakat makes of the intention above — the dates a lunar year is
+                    measured from, and what the assessment makes of them. Gone the moment the
+                    zakat module itself is off, not merely hidden: `zakatOn` is the one check
+                    every intention control in this application answers to. */}
+                {openThis && zakatOn && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14,
+                                paddingTop: 14, borderTop: '1px solid var(--hairline)' }}>
+                    {!live || !asset ? (
+                      <Empty icon="zakat" title="The ledger is not running"
+                             body="Intention and zakat are stored with the asset, so this needs the ledger service rather than the fixtures the screens fall back on." />
+                    ) : (
+                      <>
+                        <div style={{ display: 'grid', gap: 16,
+                                      gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+                          <Field label="Acquired" hint="the day it became yours">
+                            <DateField value={asset.acquiredOn ?? ''} ariaLabel={`${o.name} acquired on`}
+                                       onChange={(val) => run('asset.update', { assetId: id, acquiredOn: val }).then(loadAssets)} />
+                          </Field>
+                          <Field label="Held this way since" hint="a change of mind starts a new lunar year">
+                            <DateField value={asset.intentionSince ?? ''} ariaLabel={`${o.name} intention since`}
+                                       onChange={(val) => run('asset.update', { assetId: id, intentionSince: val }).then(loadAssets)} />
+                          </Field>
+                          <Field label="Passed nisab on" hint="leave empty and the intention's own date is used">
+                            <DateField value={asset.nisabMetOn ?? ''} ariaLabel={`${o.name} passed nisab on`}
+                                       onChange={(val) => run('asset.update', { assetId: id, nisabMetOn: val }).then(loadAssets)} />
+                          </Field>
+                        </div>
+
+                        <div style={{ padding: '14px 16px', borderRadius: 'var(--r-card)',
+                                      background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
+                          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
+                                        marginBottom: zakatLine?.hawl ? 12 : 0 }}>
+                            <Chip tone={zakatLine?.included ? 'good' : undefined}>
+                              {zakatLine?.included ? `counts ${dm(zakatLine.counted)}` : 'counts nothing'}
+                            </Chip>
+                            <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, flex: 1, minWidth: 220 }}>
+                              {zakatLine?.reason ?? 'Working it out needs the zakat assessment, which has not answered yet.'}
+                            </span>
+                          </div>
+                          {zakatLine?.hawl && <HawlBar hawl={zakatLine.hawl} tone={o.colour} />}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
+                {next && due && (() => {
+                  // Neither the box nor its border take the asset's colour any more — an
+                  // asset without one fell back to the same red the amount is always in, so
+                  // a box that meant nothing more than "here is what is due next" read as a
+                  // warning on every card. Only the amount stays red: it is money leaving,
+                  // and that is the one thing here that is always true regardless of whose
+                  // plan it is.
+                  const away = daysUntil(due, now);
+                  return (
+                    <div style={{ padding: '12px 14px', borderRadius: 'var(--r-card)',
+                                  background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
+                      <div className="ov">Next payment</div>
+                      {/* Above the amount, not beside it — a bare "14d" read as part of the
+                          number it sat next to. Said as a sentence and given its own line, it
+                          reads as the countdown it is before the amount is even reached. */}
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                        {away < 0 ? 'overdue' : `${away} day${away === 1 ? '' : 's'} until next installment`}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4,
+                                    flexWrap: 'wrap' }}>
+                        <span className="mono" style={{ fontSize: 17, fontWeight: 500, color: 'var(--negative)',
+                                                        whiteSpace: 'nowrap' }}>−{dm(next.amountEgp)}</span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                          {due.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
             </section>
           );
         })}
@@ -429,9 +578,7 @@ function Body() {
       )}
 
 
-      {tab === 'overview' && planFor && <PlanEditor propertyId={planFor} onClose={() => setPlanFor(null)} />}
-
-      {tab === 'overview' && mode === 'edit' && (
+      {tab === 'overview' && (
         <Panel title="What you own"
                hint="A flat, a car, anything else. What differs between them is the mark and the words, not how they behave — each is either paid for outright or still on a plan.">
           <Manager
@@ -469,6 +616,18 @@ function Body() {
               { key: 'currency', label: 'Currency', kind: 'select', width: '120px',
                 options: currencyOptions,
                 when: (v) => v.ownership !== 'installments' },
+              /**
+               * What paid for it, when bought outright.
+               *
+               * Offered only while adding one: an asset already on the books was already
+               * settled one way or another, and this field's only honest use is to say what
+               * pays for a NEW one. "Initial payment" — a fresh installation's usual answer —
+               * states the worth as given and deducts nothing, exactly as leaving it out
+               * always has.
+               */
+              { key: 'accountId', label: 'Paid from', kind: 'select', width: '190px',
+                options: sourceAccountOptions(data),
+                when: (v) => v.ownership !== 'installments' && !v.existingAsset },
               { key: 'colour', label: 'Colour', kind: 'colour', width: '64px' },
             ]}
             rows={(assets ?? []).map((a) => ({
@@ -480,7 +639,7 @@ function Body() {
               // show: worse than the truth, better than an empty box.
               values: { name: a.name, kind: a.kind, ownership: a.ownership,
                         value: Math.round(a.amount ?? a.value), currency: a.currency ?? 'EGP',
-                        colour: a.color ?? '#8A8578' },
+                        colour: a.color ?? '#8A8578', existingAsset: 1 },
               trailing: (
                 <span style={{ fontSize: 11, color: 'var(--faint)', whiteSpace: 'nowrap' }}>
                   {a.payments ? `${a.payments} payment${a.payments === 1 ? '' : 's'}` : 'no plan'}
@@ -507,6 +666,9 @@ function Body() {
               // the select shows the first currency until one is chosen, so an untouched
               // draft has to send what it showed rather than a guess of its own
               currency: (d.currency as string) || currencyOptions[0]?.value || 'EGP',
+              // left untouched, or explicitly "Initial payment": no account is named, and the
+              // worth is simply stated, the way it always has been
+              accountId: d.accountId && d.accountId !== INITIAL_PAYMENT ? (d.accountId as string) : undefined,
               icon: d.mark as string | undefined,
               color: (d.colour as string) || undefined,
             }).then(loadAssets)}
@@ -515,7 +677,7 @@ function Body() {
         </Panel>
       )}
 
-      {tab === 'plans' && mode === 'edit' && (
+      {tab === 'plans' && (
         <Panel title="Something spent on upkeep"
                hint="Maintenance, a service charge, a fee — money that leaves an account and buys no equity, which is the same distinction the plan already draws.">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 18 }}>
@@ -614,7 +776,7 @@ function Body() {
              * The row above already offered its date for editing, so refusing the amount was
              * not even a consistent refusal.
              */
-            { key: 'amountEgp', label: 'Amount', kind: 'amount', align: 'right',
+            { key: 'amountEgp', label: 'Amount', kind: 'amount',
               value: (r) => r.amountEgp,
               cell: (r) => <span className="mono">{dm(r.amountEgp)}</span>,
               field: (d, set) => (
@@ -734,13 +896,27 @@ function Body() {
               // a paid row with no movement behind it has nothing to undo; the ledger says so
               if (!wantsPaid && r.paidAt) return { movementId: r.movementId ?? '' };
               return r.paidAt
-                ? { installmentId: r.id, accountId: d.payFrom || undefined, date: d.dueOn,
+                ? { installmentId: r.id, accountId: d.payFrom || undefined, dueDate: d.dueOn,
                     amountEgp: Number(d.amountEgp), note: d.note ?? '' }
                 : { propertyId: r.propertyId, installmentId: r.id,
                     dueDate: d.dueOn, amountEgp: Number(d.amountEgp),
                     note: d.note ?? '', payFrom: d.payFrom || undefined };
             },
 
+            onDone: () => { loadSchedule(); loadAssets(); },
+          }}
+          /*
+           * A copy, not a repeat: it goes on the plan the same way any new payment does —
+           * `plan.upsert` with no installmentId — so it lands as a fresh, unpaid row a person
+           * can then move to next month, or change however it differs from the one it came
+           * from. Never copied as paid: a duplicate that arrived already marked paid would
+           * try to move money a second time for a payment that only happened once.
+           */
+          duplicate={{
+            capability: 'plan.upsert',
+            build: (r) => ({ propertyId: r.propertyId, dueDate: r.dueOn,
+                             amountEgp: r.amountEgp, note: r.note,
+                             payFrom: r.payFrom || undefined }),
             onDone: () => { loadSchedule(); loadAssets(); },
           }}
           /*
@@ -762,150 +938,6 @@ function Body() {
       </Panel>
       )}
     </Page>
-  );
-}
-
-/**
- * Editing a payment plan.
- *
- * A plan is a list of dated amounts, and until one is paid it is only an intention — so it
- * can be changed, moved or removed. Once paid it is a movement, and the plan stops being the
- * place to change it: undoing that movement is, which is why a paid row here is read-only and
- * says so rather than silently refusing.
- */
-function PlanEditor({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
-  const { dm, data } = useApp();
-  const { run, live, version } = useLive();
-  const [plan, setPlan] = useState<any | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({
-    dueDate: new Date().toISOString().slice(0, 10), amountEgp: 0,
-    note: '', kind: 'installment', status: 'owed', payFrom: '',
-  });
-  const accounts = data.nodes.filter((n) => n.kind === 'cash')
-    .map((n) => ({ value: n.id, label: n.name,
-                   hint: data.institutions.find((x) => x.id === n.parentId)?.name }));
-
-  const load = useCallback(() => {
-    if (!live) { setPlan(null); return; }
-    (ledger as any)['plan.read']({ propertyId }).then(setPlan).catch(() => setPlan(null));
-  }, [live, propertyId]);
-  useEffect(load, [load, version]);
-
-  if (!live) {
-    return (
-      <Panel title="Payment plan">
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
-          The plan lives in the ledger service, and there is none behind this screen yet.
-        </p>
-      </Panel>
-    );
-  }
-
-  return (
-    <Panel title={plan ? `${plan.property} — payment plan` : 'Payment plan'}
-           hint="Everything still ahead is yours to reshape. A payment already made is a movement, and undoing that is what changes it."
-           action={<button className="btn ghost" onClick={onClose}>Close</button>}>
-      {plan && (
-        <div style={{ display: 'flex', gap: 30, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Stat label="Contract" value={dm(plan.total)} sub={`${plan.installments.length} payment${plan.installments.length === 1 ? '' : 's'}`} />
-          <Stat label="Paid" value={dm(plan.paid)} color="var(--positive)" />
-          <Stat label="Remaining" value={dm(plan.remaining)} color="var(--negative)" />
-          {/* A plan with nothing left to pay is finished, and the thing is yours outright.
-              The ledger settles that itself when the last payment is made; this is it said
-              where the plan is read. */}
-          {plan.installments.length > 0 && plan.installments.every((i: any) => i.paidAt) && (
-            <Chip tone="good">fully paid off</Chip>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {plan?.installments.map((i: any) => (
-          <PlanRow key={i.id} row={i}
-                   onSave={(patch) => run(
-                     // a payment already made is corrected through its movement; one still
-                     // owed is only a line on a plan, and the plan is where it changes
-                     i.paidAt ? 'installment.correct' : 'plan.upsert',
-                     i.paidAt
-                       ? { installmentId: i.id, date: patch.dueDate as string | undefined,
-                           amountEgp: patch.amountEgp as number | undefined,
-                           note: patch.note as string | undefined }
-                       : { propertyId, installmentId: i.id, ...patch }).then(load)}
-                   onRemove={() => run('plan.remove', { installmentId: i.id }).then(load)} />
-        ))}
-      </div>
-
-      {adding ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                      gap: 18, alignItems: 'end', marginTop: 16, padding: '16px 18px',
-                      borderRadius: 'var(--r-card)',
-                      background: 'color-mix(in srgb, var(--positive) 5%, transparent)',
-                      border: '1px dashed color-mix(in srgb, var(--positive) 36%, transparent)' }}>
-          <Field label="Due">
-            <DateField value={draft.dueDate} onChange={(v) => setDraft({ ...draft, dueDate: v })}
-                       ariaLabel="New payment due" />
-          </Field>
-          <Field label="Amount">
-            <Amount value={draft.amountEgp} ariaLabel="New payment amount" onChange={(n) => setDraft({ ...draft, amountEgp: n })} />
-          </Field>
-          <Field label="What it is">
-            <Select ariaLabel="New payment kind" value={draft.kind}
-                    onChange={(v) => setDraft({ ...draft, kind: v })}
-                    options={[
-                      { value: 'installment', label: 'Installment', hint: 'buys equity' },
-                      { value: 'maintenance', label: 'Maintenance', hint: 'buys none' },
-                      { value: 'fee', label: 'Fee', hint: 'buys none' },
-                    ]} />
-          </Field>
-          <Field label="Note">
-            <input aria-label="New payment note" placeholder="quarterly, annual balloon"
-                   value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
-          </Field>
-          {/**
-            * Whether it has been paid already.
-            *
-            * Most plans are written down after part of them has been paid, so a row being
-            * added had to be saved as owed and then edited to say what it already was. Saying
-            * it here writes the movement with the row — which is why the account it came out
-            * of is asked for in the same breath: there is money on the other side of "paid".
-            */}
-          <Field label="Status">
-            <Select ariaLabel="New payment paid or still owed" value={draft.status}
-                    onChange={(v) => setDraft({ ...draft, status: v })}
-                    options={[{ value: 'owed', label: 'Still owed', hint: 'not paid yet' },
-                              { value: 'paid', label: 'Already paid', hint: 'writes the movement' }]} />
-          </Field>
-          <Field label={draft.status === 'paid' ? 'Paid from' : 'To be paid from'}>
-            <Select ariaLabel="Account the payment comes out of" value={draft.payFrom}
-                    onChange={(v) => setDraft({ ...draft, payFrom: v })}
-                    options={[{ value: '', label: 'not set' }, ...accounts]} />
-          </Field>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn add"
-              disabled={!(draft.amountEgp > 0) || (draft.status === 'paid' && !draft.payFrom)}
-              onClick={async () => {
-                const { status, payFrom, ...rest } = draft;
-                await run('plan.upsert', {
-                  propertyId, ...rest,
-                  payFrom: payFrom || undefined,
-                  ...(status === 'paid' ? { paidFrom: payFrom, paidOn: draft.dueDate } : {}),
-                });
-                setDraft({ ...draft, amountEgp: 0, note: '' });
-                setAdding(false);
-                load();
-              }}>Add it</button>
-            <button className="btn ghost" onClick={() => setAdding(false)}>
-              <Icon name="close" size={14} motion="none" /> Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button className="btn ghost" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
-          <Icon name="plus" size={14} /> Add a payment
-        </button>
-      )}
-    </Panel>
   );
 }
 
@@ -933,165 +965,3 @@ function PaymentStatus({ paidAt }: { paidAt: string | null }) {
   );
 }
 
-function PlanRow({ row, onSave, onRemove }: {
-  row: any;
-  onSave: (patch: Record<string, unknown>) => void;
-  onRemove: () => void;
-}) {
-  const [edit, setEdit] = useState<Record<string, any>>({});
-  const dirty = Object.keys(edit).length > 0;
-  const paid = !!row.paidAt;
-
-  return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '150px 140px minmax(0,1fr) 130px auto',
-      gap: 14, alignItems: 'center', padding: '13px 15px', borderRadius: 'var(--r-card)',
-      background: dirty ? 'color-mix(in srgb, var(--gold) 7%, var(--raised))' : 'var(--raised)',
-      border: `1px solid ${dirty ? 'color-mix(in srgb, var(--gold) 32%, transparent)' : 'var(--hairline)'}`,
-      opacity: paid ? 0.8 : 1,
-    }}>
-      {/* A paid row is a record rather than an intention, but it is still a record that can
-          be wrong — so it is written in the same fields as the rest, and saving one corrects
-          the movement behind it instead of the plan in front of it. */}
-      <DateField value={edit.dueDate ?? row.dueDate ?? ''} ariaLabel={`Due date for ${row.monthLabel}`}
-                 onChange={(v) => setEdit({ ...edit, dueDate: v })} />
-      <Amount value={edit.amountEgp ?? row.amountEgp} ariaLabel={`Amount for ${row.monthLabel}`}
-              onChange={(n) => setEdit({ ...edit, amountEgp: n })} />
-      <input aria-label={`Note for ${row.monthLabel}`} placeholder="what this payment is"
-             value={edit.note ?? row.note ?? ''}
-             onChange={(e) => setEdit({ ...edit, note: e.target.value })} />
-      {/* One tag, saying the one thing a row on a plan is: paid, or not yet. Whether a payment
-          buys equity is what the payment is for, and it is written in that column. */}
-      <span><PaymentStatus paidAt={row.paidAt ?? null} /></span>
-      <span style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-        {dirty && (
-          <>
-            <button className="btn go sm" onClick={() => { onSave(edit); setEdit({}); }}>
-              <Icon name="check" size={13} motion="none" /> Save
-            </button>
-            <button className="btn ghost sm" onClick={() => setEdit({})}>
-              <Icon name="close" size={13} motion="none" /> Cancel
-            </button>
-          </>
-        )}
-        {!dirty && (
-          <ConfirmDelete what={`the payment due ${row.dueDate}`} size={14}
-            onConfirm={onRemove} />
-        )}
-      </span>
-    </div>
-  );
-}
-
-/**
- * Why each thing is held, and what follows from it.
- *
- * The four tests zakat applies to a thing — what it is, what it is held for, whether the
- * amount reached nisab, and whether a lunar year has run since it did — are all decided here,
- * so this is where all four are shown. The answer to the second is chosen; the other three are
- * read off the dates, which is why the dates are editable beside it rather than buried.
- */
-function Intentions({ assets, onSaved }: { assets: any[] | null; onSaved: () => void }) {
-  const { run, live, version } = useLive();
-  const { dm } = useApp();
-  const [lines, setLines] = useState<any[] | null>(null);
-
-  useEffect(() => {
-    if (!live) { setLines(null); return; }
-    let off = false;
-    (ledger as any)['zakat.assessment']({})
-      .then((a: any) => { if (!off) setLines(a?.assets ?? []); })
-      .catch(() => { if (!off) setLines(null); });
-    return () => { off = true; };
-  }, [live, version]);
-
-  if (!live) {
-    return (
-      <Panel title="Intention and zakat">
-        <Empty icon="zakat" title="The ledger is not running"
-               body="Intention is stored with the asset, so this needs the ledger service rather than the fixtures the screens fall back on." />
-      </Panel>
-    );
-  }
-
-  const rows = assets ?? [];
-  if (!rows.length) {
-    return (
-      <Panel title="Intention and zakat">
-        <Empty icon="assets" title="Nothing owned yet"
-               body="Add a property or a vehicle under Assets and its intention will be asked for here." />
-      </Panel>
-    );
-  }
-
-  return (
-    <>
-      <Panel title="What zakat reaches, and what it does not"
-             hint="Four things decide it, in this order: what the thing is, what it is held for, whether the amount ever reached nisab, and whether a full lunar year has run since it did. A thing that fails any one of them owes nothing — and says which one.">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {rows.map((a) => {
-            const line = lines?.find((l) => l.id === a.id);
-            const kind = a.kind === 'property' ? 'property' : a.kind === 'vehicle' ? 'vehicle' : 'other';
-            const known = intentionsFor(kind).some((o) => o.id === a.intention);
-            return (
-              <section key={a.id} className="panel" style={{ padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-                  <Mark mark={a.icon ?? (a.kind === 'vehicle' ? 'car' : 'building')}
-                        size={18} color={a.color ?? 'var(--zakat)'}
-                        fallback={a.kind === 'vehicle' ? 'car' : 'building'} />
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{a.name}</h3>
-                  <Chip>{a.kind}</Chip>
-                  <span className="mono" style={{ marginLeft: 'auto', fontSize: 14 }}>{dm(a.value)}</span>
-                </div>
-
-                <IntentionPicker kind={kind} value={known ? (a.intention as Intention) : null}
-                  onChange={(v) => run('asset.update', { assetId: a.id, intention: v }).then(onSaved)} />
-
-                <div style={{ display: 'grid', gap: 16, marginTop: 18,
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
-                  <Field label="Acquired" hint="the day it became yours">
-                    <DateField value={a.acquiredOn ?? ''} ariaLabel={`${a.name} acquired on`}
-                               onChange={(v) => run('asset.update', { assetId: a.id, acquiredOn: v }).then(onSaved)} />
-                  </Field>
-                  <Field label="Held this way since" hint="a change of mind starts a new lunar year">
-                    <DateField value={a.intentionSince ?? ''} ariaLabel={`${a.name} intention since`}
-                               onChange={(v) => run('asset.update', { assetId: a.id, intentionSince: v }).then(onSaved)} />
-                  </Field>
-                  <Field label="Passed nisab on" hint="leave empty and the intention's own date is used">
-                    <DateField value={a.nisabMetOn ?? ''} ariaLabel={`${a.name} passed nisab on`}
-                               onChange={(v) => run('asset.update', { assetId: a.id, nisabMetOn: v }).then(onSaved)} />
-                  </Field>
-                </div>
-
-                <div style={{ marginTop: 18, padding: '14px 16px', borderRadius: 'var(--r-card)',
-                              background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
-                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
-                                marginBottom: line?.hawl ? 12 : 0 }}>
-                    <Chip tone={line?.included ? 'good' : undefined}>
-                      {line?.included ? `counts ${dm(line.counted)}` : 'counts nothing'}
-                    </Chip>
-                    <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, flex: 1, minWidth: 220 }}>
-                      {line?.reason ?? 'Working it out needs the zakat assessment, which has not answered yet.'}
-                    </span>
-                  </div>
-                  {line?.hawl && <HawlBar hawl={line.hawl} tone={a.color ?? 'var(--zakat)'} />}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </Panel>
-
-      <Panel title="Rent, and how it is counted"
-             hint="A let thing is outside zakat itself, so what is owed turns on what it earns. Link the income source to the asset in Income, and every payment recorded against it counts toward that asset's own nisab and its own lunar year.">
-        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6,
-                      display: 'flex', flexDirection: 'column', gap: 9 }}>
-          <div>Rent that has not yet carried a full lunar year is taken back out of the cash figure,
-            so the base cannot charge on it a year early through the account it landed in.</div>
-          <div>Once a lunar year closes on rent that passed nisab, that year's rent is what counts —
-            and the year after starts from the anniversary.</div>
-        </div>
-      </Panel>
-    </>
-  );
-}

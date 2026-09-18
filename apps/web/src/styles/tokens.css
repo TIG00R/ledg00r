@@ -1015,6 +1015,25 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 :root[data-mode='edit'] .rt tbody td { padding-top: 9px; padding-bottom: 9px; }
 
 /*
+ * The hint that a row can be opened, and nothing more.
+ *
+ * A pencil that sits on every row all the time is furniture; one that appears the moment the
+ * row is pointed at, or landed on with the keyboard, is a hint — and hovering or focusing is
+ * the one thing a mouse or a keyboard has already done to say which row is meant. Opacity is
+ * what hides it: a screen reader still hears the button underneath at every moment, since
+ * that has nothing to do with what is painted, only with who is looking.
+ */
+.rt-hint { opacity: 0; transition: opacity 120ms var(--ease); }
+.rt tbody tr[tabindex]:hover .rt-hint,
+.rt tbody tr[tabindex]:focus-visible .rt-hint,
+.mgr-row[tabindex]:hover .rt-hint,
+.mgr-row[tabindex]:focus-visible .rt-hint,
+.row[tabindex]:hover .rt-hint,
+.row[tabindex]:focus-visible .rt-hint {
+  opacity: 1;
+}
+
+/*
  * The buttons that end an edit stay reachable.
  *
  * A row being edited is wider than the row it replaced, and on a narrow window the table

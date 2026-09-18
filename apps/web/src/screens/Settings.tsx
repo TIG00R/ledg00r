@@ -164,7 +164,7 @@ function General() {
 
 
 function Reminders() {
-  const { data, reminders, setReminders, recurring } = useApp();
+  const { data, reminders, setReminders, recurring, autoPay, setAutoPay, settings } = useApp();
   const { run, live, version } = useLive();
 
   /**
@@ -229,8 +229,63 @@ function Reminders() {
     return r.subjectId ?? r.subject;
   };
 
+  /**
+   * Properties on a plan, so this screen can offer the same switch the Assets screen does.
+   *
+   * `autoPay` is read from the ledger once, centrally — see AppState — so a property switched
+   * on here is switched on there too, and a reload changes neither: they read and write the
+   * one stored setting rather than each remembering its own.
+   */
+  const [onPlan, setOnPlan] = useState<Array<{ id: string; name: string }> | null>(null);
+  useEffect(() => {
+    if (!live) { setOnPlan(null); return; }
+    Promise.resolve((ledger as any)['assets.list']?.({}) ?? [])
+      .then((rows: any[]) => setOnPlan((rows ?? [])
+        .filter((r) => r.planTotal > 0)
+        .map((r) => ({ id: r.id, name: r.name }))))
+      .catch(() => setOnPlan(null));
+  }, [live, version]);
+  const cashAccounts = data.nodes.filter((n) => n.kind === 'cash').map((n) => ({
+    value: n.id, label: n.name,
+    hint: data.institutions.find((i) => i.id === n.parentId)?.name,
+  }));
+  const setAuto = (id: string, on: boolean) => {
+    setAutoPay(id, { on });
+    // Same rule as the Assets screen: a blank account is left out rather than sent as one.
+    const from = autoPay[id]?.fromNodeId || settings.burnAccountId || undefined;
+    void run('autopay.configure', { propertyId: id, enabled: on, ...(from ? { fromAccountId: from } : {}) });
+  };
+  const setAutoFrom = (id: string, fromNodeId: string) => {
+    setAutoPay(id, { fromNodeId });
+    if (autoPay[id]?.on && fromNodeId) void run('autopay.configure', { propertyId: id, enabled: true, fromAccountId: fromNodeId });
+  };
+
   return (
     <>
+      {onPlan && onPlan.length > 0 && (
+        <Panel title="Automatic installments"
+               hint="The same switch as the one on each property's plan — logging its installments on their due date, out of a chosen account, rather than by hand. Turning it on or off here is exactly the same choice.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {onPlan.map((p) => (
+              <Row key={p.id} cols="minmax(0,1fr) 220px" style={{
+                padding: '14px 16px', borderRadius: 'var(--r-card)',
+                background: 'var(--raised)', border: '1px solid var(--hairline)',
+                alignItems: 'center',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer' }}>
+                  <Toggle on={autoPay[p.id]?.on ?? false} onChange={(v) => setAuto(p.id, v)}
+                          label={`Log ${p.name} installments automatically`} />
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</span>
+                </label>
+                <Select ariaLabel={`Account paying ${p.name}`}
+                        value={autoPay[p.id]?.fromNodeId ?? settings.burnAccountId}
+                        onChange={(v) => setAutoFrom(p.id, v)} options={cashAccounts} />
+              </Row>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       <Panel title="Reminders"
              hint="A reminder never creates or moves a payment. It decides how far ahead you get told, so switching one off hides the warning and never the obligation — and removing one does the same, permanently.">
         {list.length === 0 && (

@@ -44,17 +44,24 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
 const worth = (kind: 'cash' | 'shares', amount: number, currency: string | null) =>
   (kind === 'shares' ? `${amount} share${amount === 1 ? '' : 's'}` : `${amount} ${currency ?? 'EGP'}`);
 
-/** The company as the notebook knows it, created on first mention. */
-function remember(ctx: AppCtx, ticker: string, name: string | undefined, now: string) {
+/**
+ * The company as the notebook knows it, created on first mention.
+ *
+ * `logo` follows the same rule as `name`: given later it fills a mark the ticker never had,
+ * given again it replaces the one it did, and left out it is never blanked because this
+ * particular call happened not to mention it.
+ */
+function remember(ctx: AppCtx, ticker: string, name: string | undefined, now: string, logo?: string) {
   const row = ctx.db.select().from(t.stocks).where(eq(t.stocks.ticker, ticker)).get();
   if (!row) {
-    ctx.db.insert(t.stocks).values({ ticker, name: name ?? null, createdAt: now }).run();
+    ctx.db.insert(t.stocks).values({ ticker, name: name ?? null, logo: logo ?? null, createdAt: now }).run();
     return;
   }
-  // A name given later fills one that was never given; a name given again replaces it. What is
-  // never done is blanking a known name because this particular call did not mention one.
-  if (name !== undefined && name !== row.name) {
-    ctx.db.update(t.stocks).set({ name }).where(eq(t.stocks.ticker, ticker)).run();
+  const patch: Record<string, string> = {};
+  if (name !== undefined && name !== row.name) patch.name = name;
+  if (logo !== undefined && logo !== row.logo) patch.logo = logo;
+  if (Object.keys(patch).length) {
+    ctx.db.update(t.stocks).set(patch).where(eq(t.stocks.ticker, ticker)).run();
   }
 }
 
@@ -113,7 +120,9 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
     detail: 'The index of the notebook rather than the holdings — a share is here because something was written about it, whether or not it was ever bought. positions.list answers what is held.',
     input: z.object({}),
     output: z.array(z.object({
-      ticker: z.string(), name: z.string().nullable(),
+      ticker: z.string(), name: z.string().nullable(), logo: z.string().nullable(),
+      /** why the share is held, for zakat — null until the owner states one */
+      intention: z.enum(['personal', 'investment']).nullable(),
       notes: z.number(), latestNote: z.string().nullable(), latestOn: z.string().nullable(),
     })),
     handler: async () => {
@@ -124,11 +133,36 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
           const mine = all.filter((n) => n.ticker === s.ticker)
             .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
           return {
-            ticker: s.ticker, name: s.name ?? null, notes: mine.length,
+            ticker: s.ticker, name: s.name ?? null, logo: s.logo ?? null,
+            intention: (s as { intention?: string | null }).intention as 'personal' | 'investment' | null ?? null,
+            notes: mine.length,
             latestNote: mine[0]?.note ?? null, latestOn: mine[0]?.date ?? null,
           };
         })
         .sort((a, b) => a.ticker.localeCompare(b.ticker));
+    },
+  }),
+
+  command({
+    name: 'stock.intention.set',
+    context: 'holdings',
+    summary: 'State why a share is held — personal, or held as a holding — which decides whether zakat reaches it.',
+    detail: 'The answer belongs to the ticker, the same way its name and logo do: every order and every position for it reads the one answer back, rather than each lot arguing about its own. A ticker the notebook has not seen before is added to its index by stating one, the same as writing a note about it would.',
+    input: z.object({
+      ticker: TickerIn,
+      intention: z.enum(['personal', 'investment']),
+    }),
+    output: Outcome,
+    handler: async ({ ticker: raw, intention }) => {
+      const ctx = ctxOf();
+      const ticker = norm(raw);
+      const row = ctx.db.select().from(t.stocks).where(eq(t.stocks.ticker, ticker)).get();
+      if (!row) {
+        ctx.db.insert(t.stocks).values({ ticker, name: null, logo: null, intention, createdAt: new Date().toISOString() }).run();
+      } else {
+        ctx.db.update(t.stocks).set({ intention }).where(eq(t.stocks.ticker, ticker)).run();
+      }
+      return noted(`${ticker} · held ${intention === 'investment' ? 'as a holding' : 'for personal use'}`);
     },
   }),
 
@@ -220,20 +254,27 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'stock.name.set',
     context: 'holdings',
-    summary: 'Name a share, or rename one — the company behind the ticker.',
-    detail: 'The name belongs to the ticker rather than to any one note, so every note about it reads back under the same company. A ticker named here needs no note to exist.',
-    input: z.object({ ticker: TickerIn, name: z.string().max(120) }),
+    summary: 'Name a share, or rename one, and give it its own logo — the company behind the ticker.',
+    detail: 'The name and the logo belong to the ticker rather than to any one note, so every note and every order about it reads back under the same company. A ticker named here needs no note to exist. The logo is a picture reference from mark.upload, or an icon name; leaving it out keeps whatever the ticker already had, and an empty string clears it.',
+    input: z.object({
+      ticker: TickerIn,
+      name: z.string().max(120).optional(),
+      logo: z.string().max(120).optional(),
+    }),
     output: Outcome,
-    handler: async ({ ticker: raw, name }) => {
+    handler: async ({ ticker: raw, name, logo }) => {
       const ctx = ctxOf();
       const ticker = norm(raw);
-      const clean = name.trim();
-      remember(ctx, ticker, clean || undefined, new Date().toISOString());
-      if (!clean) {
+      const clean = name?.trim();
+      remember(ctx, ticker, clean === undefined ? undefined : (clean || undefined), new Date().toISOString(),
+                logo === undefined ? undefined : logo.trim());
+      if (name !== undefined && !clean) {
         ctx.db.update(t.stocks).set({ name: null }).where(eq(t.stocks.ticker, ticker)).run();
-        return noted(`${ticker} · name cleared`);
       }
-      return noted(`${ticker} · ${clean}`);
+      if (logo !== undefined && !logo.trim()) {
+        ctx.db.update(t.stocks).set({ logo: null }).where(eq(t.stocks.ticker, ticker)).run();
+      }
+      return noted(clean ? `${ticker} · ${clean}` : `${ticker} updated`);
     },
   }),
 

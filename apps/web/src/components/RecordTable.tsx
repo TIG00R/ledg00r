@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { Select } from './Select';
 import { DateField } from './DateField';
@@ -6,7 +6,6 @@ import { Empty } from './UI';
 import { ConfirmModal } from './Confirm';
 import { ClearAll } from './ClearAll';
 import { useLive } from '../Live';
-import { useMode } from './ModeBar';
 
 /**
  * Every log in this application, drawn once.
@@ -19,7 +18,46 @@ import { useMode } from './ModeBar';
  *
  * A screen describes its columns and what a record is; nothing else about a table is that
  * screen's business.
+ *
+ * Opening a row used to need a screen-wide switch first: flip to Edit, and every table on the
+ * screen turned into a row of pencils at once, whether or not there was anything on the other
+ * two worth touching. That put a decision about the whole screen in front of a much smaller
+ * one — "I want to fix this row" — and a table with nothing to correct had no way to say so
+ * except by having no pencils either.
+ *
+ * A row opens the way a folder opens: you point at the one you want. Double-clicking it and
+ * pressing Enter with it focused are the two ways that always work. A third — a pencil at the
+ * end of the row — used to stand there permanently, whether or not the row beside it was ever
+ * going to be touched: a page of a hundred rows was a page of a hundred pencils, furniture
+ * nobody asked for on ninety-nine of them. It exists again, the same button, the moment the
+ * row is pointed at or landed on with Tab — hovering or focusing is the one thing a mouse or a
+ * keyboard has already done to say which row is meant, so that is when the hint earns its
+ * place (`.rt-hint`, below). It stays in reach of a screen reader the whole time; only the
+ * paint waits for that moment.
+ *
+ * Duplicating and removing move further still. They used to sit beside the pencil at rest
+ * too, which put a bin within an idle mouse's reach on every row in the table. Now they wait
+ * for the row to actually be open, on the line under it beside Save and Cancel — reaching
+ * either takes the same deliberate step as reaching Save.
+ *
+ * A row that cannot be corrected, duplicated or removed at all (every one of `edit`,
+ * `duplicate` and `remove` either absent or `blocked` for it) answers none of the three
+ * gestures and stays flat text. One that can do at least one of them opens on any of the
+ * three; what it shows once open follows from which of those it can actually do, not from
+ * which the table merely offers — a movement with more than one leg cannot be corrected in
+ * place but can still be undone, so it opens read-only with a working bin rather than not
+ * opening at all. Only one row is ever open, because two half-finished corrections have no
+ * way to say which Save belongs to which.
  */
+/**
+ * A double-click or an Enter meant for the row should not steal a click already meant for
+ * something inside it — a filter's own input, a link, a button on a `detail` line. Without
+ * this, double-clicking to select a word in a note field opened the row out from under the
+ * selection instead of selecting the word.
+ */
+export function isInteractive(el: EventTarget | null): boolean {
+  return !!(el instanceof HTMLElement) && !!el.closest('input, textarea, select, button, a, [contenteditable="true"]');
+}
 /** the two shades a row wears while it is being written: adding is green, correcting is gold */
 const ADDING = 'color-mix(in srgb, var(--positive) 7%, transparent)';
 const EDITING = 'color-mix(in srgb, var(--gold) 7%, transparent)';
@@ -102,6 +140,19 @@ export interface RecordTableProps<T> {
     blocked?: (row: T) => string | undefined;
     onDone?: () => void;
   };
+  /**
+   * Copying a row, values and all, so it is ready to edit rather than typed in again.
+   *
+   * A row's own capability is whatever adds one — the same one `add` uses — so a duplicate is
+   * indistinguishable from a row someone typed in by hand, and the plan cannot tell the
+   * difference between a payment copied and one entered fresh.
+   */
+  duplicate?: {
+    capability: string | ((row: T) => string);
+    build: (row: T) => unknown;
+    blocked?: (row: T) => string | undefined;
+    onDone?: () => void;
+  };
   /** removing one */
   remove?: {
     capability: string | ((row: T) => string);
@@ -133,11 +184,10 @@ export interface RecordTableProps<T> {
 }
 
 export function RecordTable<T>({
-  rows, columns, rowKey, sort: initialSort, empty, add, edit, remove, clear, trailing, detail,
+  rows, columns, rowKey, sort: initialSort, empty, add, edit, duplicate, remove, clear, trailing, detail,
   trailingWidth = '96px',
 }: RecordTableProps<T>) {
   const { run, running } = useLive();
-  const { mode } = useMode();
   const [sort, setSort] = useState<Dir | null>(initialSort ?? null);
   const [filters, setFilters] = useState<Record<string, FilterValue>>({});
   const [adding, setAdding] = useState(false);
@@ -146,32 +196,32 @@ export function RecordTable<T>({
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [problem, setProblem] = useState<string | null>(null);
 
-  const editable = !!edit && mode === 'edit';
-  const removable = !!remove && mode === 'edit';
+  const editable = !!edit;
+  const duplicable = !!duplicate;
+  const removable = !!remove;
   /**
-   * Emptying the log is an edit like any other, and a destructive one, so it lives behind the
-   * same switch the bin does rather than sitting over every table being read.
+   * Emptying the log is offered whenever there is a log to empty — the same as the bin on a
+   * row that is not blocked — and both ask before they take anything, through their own
+   * confirmation. Neither waits on a screen-wide switch any more.
    */
-  const clearable = mode === 'edit';
+  const clearable = !!clear;
   /**
-   * The last column exists for the pencil and the bin, and for nothing else.
+   * The last column exists for one thing now: the hint that a row can be opened at all.
    *
-   * Adding used to keep it alive too, which gave every table a column that was empty on every
-   * row — and once a row opened, wide enough to need pinning, so a shaded seam ran the height
-   * of the table beside eight empty cells. Confirming a row is now a line under it, so the
-   * column comes and goes with the two buttons that actually live in it.
+   * Duplicating and removing used to live here too, as icons standing beside the pencil on
+   * every row whether or not anyone was about to touch it. They moved onto the line under an
+   * open row, next to Save and Cancel, so this column holds nothing but the pencil — and only
+   * while hovering or focus makes it worth showing.
    */
-  const actions = editable || removable;
+  const actions = editable || duplicable || removable;
   /**
    * How much room the last column needs.
    *
-   * Two icons, side by side, and that is all it ever holds: Save and Cancel sit on their own
-   * line under the row being written, so this width no longer changes when one opens. A
-   * column that grew on opening pushed the table past its panel, turned on the pinned edge,
-   * and moved every value in every row sideways to make room for buttons in one of them.
-   * Ninety-six was the old width, sized for those buttons; two icons need eighty.
+   * One icon, and that is all it ever holds now — Save, Cancel, Duplicate and Remove all sit
+   * on their own line under the row being written, so this column's width no longer answers
+   * to how many of those a table offers.
    */
-  const actionsWidth = 80;
+  const actionsWidth = 40;
 
   const kindOf = (c: Column<T>): FilterKind => {
     if (c.kind) return c.kind;
@@ -422,18 +472,49 @@ export function RecordTable<T>({
               const id = rowKey(row);
               const isEditing = editing === id;
               const cannotEdit = edit?.blocked?.(row);
+              const cannotDuplicate = duplicate?.blocked?.(row);
               const cannotRemove = remove?.blocked?.(row);
+              /** whether editing, duplicating or removing this row is actually on offer */
+              const canEditRow = editable && !cannotEdit;
+              const canDuplicateRow = duplicable && !cannotDuplicate;
+              const canRemoveRow = removable && !cannotRemove;
+              /**
+               * Whether this particular row answers to the double-click/Enter/pencil gesture.
+               *
+               * Edit being blocked is not the same as there being nothing to open for — see
+               * the file comment above. A row with nothing unblocked on it has nothing an
+               * open would show, so it stays flat text instead.
+               */
+              const openable = (canEditRow || canDuplicateRow || canRemoveRow) && !isEditing;
+              const what = remove?.what(row) ?? 'this record';
+              const open = () => { setProblem(null); setEditing(id); setEditDraft(edit ? edit.draftOf(row) : {}); };
               return (
                 <Fragment key={id}>
-                <tr style={isEditing ? { background: EDITING } : undefined}>
+                <tr style={isEditing ? { background: EDITING, cursor: undefined }
+                                     : { cursor: openable ? 'pointer' : undefined }}
+                    tabIndex={openable ? 0 : undefined}
+                    aria-label={openable
+                      ? `Double-click, or press Enter, to ${canEditRow ? 'edit' : 'open'} this row`
+                      : undefined}
+                    onDoubleClick={openable ? (e: MouseEvent<HTMLTableRowElement>) => {
+                      if (isInteractive(e.target)) return;
+                      open();
+                    } : undefined}
+                    onKeyDown={openable ? (e: KeyboardEvent<HTMLTableRowElement>) => {
+                      if (e.key !== 'Enter' || isInteractive(e.target)) return;
+                      e.preventDefault();
+                      open();
+                    } : undefined}>
                   {columns.map((c) => (
                     <td key={c.key} className="rt-c" style={{ textAlign: c.align ?? 'left',
                                                               verticalAlign: 'middle',
                                                               borderBottom: isEditing ? 'none' : undefined }}>
                       {/* A column with no field of its own keeps showing its value while the
                           row is edited. Blanking it made half the record vanish exactly when
-                          someone was trying to check it against what they were typing. */}
-                      {isEditing && c.field
+                          someone was trying to check it against what they were typing. A row
+                          open only to duplicate or remove it, not to correct it, shows the
+                          same read-only value throughout — there is nothing to type into. */}
+                      {isEditing && canEditRow && c.field
                         ? <span className="rt-field">{c.field(editDraft, (patch) => setEditDraft({ ...editDraft, ...patch }), row)}</span>
                         : (
                           /* A column of dates wears a calendar, so a date is recognisable as
@@ -455,21 +536,17 @@ export function RecordTable<T>({
                   {actions && (
                     <td className="rt-c"
                         style={{ borderBottom: isEditing ? 'none' : undefined }}>
-                      {isEditing ? null : (
-                        <RowActions
-                          onEdit={editable && !cannotEdit
-                            ? () => { setEditing(id); setEditDraft(edit!.draftOf(row)); } : undefined}
-                          editBlocked={editable ? cannotEdit : undefined}
-                          onRemove={removable && !cannotRemove
-                            ? async () => {
-                                const capability = typeof remove!.capability === 'function'
-                                  ? remove!.capability(row) : remove!.capability;
-                                const res = await run(capability, remove!.build(row));
-                                if (!res.ok) setProblem(res.message ?? 'That was not removed.');
-                                else remove!.onDone?.();
-                              } : undefined}
-                          removeBlocked={removable ? cannotRemove : undefined}
-                          what={remove?.what(row) ?? 'this record'} />
+                      {/* At rest this cell paints nothing. `.rt-hint` (in tokens.css) is what
+                          keeps the button invisible until the row is hovered or landed on
+                          with Tab — a screen reader hears it regardless, since opacity says
+                          nothing to the accessibility tree, only to the eye. */}
+                      {!isEditing && openable && (
+                        <button className="btn quiet rt-hint" onClick={open} tabIndex={-1}
+                                aria-label={`${canEditRow ? 'Edit' : 'Open'} ${what}`}
+                                title={canEditRow ? 'Edit' : 'Open'}
+                                style={{ padding: 7, border: 'none' }}>
+                          <Icon name="edit" size={14} />
+                        </button>
                       )}
                     </td>
                   )}
@@ -484,8 +561,8 @@ export function RecordTable<T>({
                 {isEditing && (
                   <tr style={{ background: EDITING }}>
                     <td className="rt-c" colSpan={span}>
-                      <Buttons busy={!!running}
-                        confirm={{ label: 'Save', tone: 'go', icon: 'check', disabled: false,
+                      <Buttons busy={!!running} what={what}
+                        confirm={canEditRow ? { label: 'Save', tone: 'go', icon: 'check', disabled: false,
                           onClick: async () => {
                             setProblem(null);
                             const capability = typeof edit!.capability === 'function'
@@ -493,8 +570,30 @@ export function RecordTable<T>({
                             const res = await run(capability, edit!.build(editDraft, row));
                             if (res.ok) { closeEdit(); edit!.onDone?.(); }
                             else setProblem(res.message ?? 'That was not saved.');
-                          } }}
-                        cancel={closeEdit} />
+                          } } : undefined}
+                        note={!canEditRow ? cannotEdit : undefined}
+                        cancel={closeEdit}
+                        duplicate={duplicable ? {
+                          onClick: canDuplicateRow ? async () => {
+                            setProblem(null);
+                            const capability = typeof duplicate!.capability === 'function'
+                              ? duplicate!.capability(row) : duplicate!.capability;
+                            const res = await run(capability, duplicate!.build(row));
+                            if (!res.ok) setProblem(res.message ?? 'That was not duplicated.');
+                            else { closeEdit(); duplicate!.onDone?.(); }
+                          } : undefined,
+                          blocked: cannotDuplicate,
+                        } : undefined}
+                        remove={removable ? {
+                          onClick: canRemoveRow ? async () => {
+                            const capability = typeof remove!.capability === 'function'
+                              ? remove!.capability(row) : remove!.capability;
+                            const res = await run(capability, remove!.build(row));
+                            if (!res.ok) setProblem(res.message ?? 'That was not removed.');
+                            else { closeEdit(); remove!.onDone?.(); }
+                          } : undefined,
+                          blocked: cannotRemove,
+                        } : undefined} />
                     </td>
                   </tr>
                 )}
@@ -509,78 +608,80 @@ export function RecordTable<T>({
 }
 
 /**
- * The two buttons that end an edit.
+ * The line under a row being added, corrected, duplicated or removed.
  *
- * On their own line under the row being written, rather than in a column of their own. Inside
- * a column they had to be either stacked, which made a pair of buttons unlike every other pair
- * in the application, or wide — and wide meant a column that grew the moment a row opened,
- * pushed the table past its panel, and left an empty pinned column beside every other row.
+ * Save (or Add) and Cancel come first, in that order, the same pair everywhere in the
+ * application. Duplicate and Remove — where the row is open enough to offer them — sit apart
+ * from that pair rather than beside it, pushed to the far end of the same line: a bin never
+ * shares a corner with Save, and a stray click aimed at finishing an edit does not land on
+ * the one action that cannot be undone.
+ *
+ * `confirm` is absent for a row that is open only for its bin or its duplicate, not for
+ * correction — a movement with more than one leg, say — and `note` says why in its place.
  */
-function Buttons({ confirm, cancel, busy }: {
+function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
   /** `add` takes the theme's contrast, `go` is green: adding and saving are different acts */
-  confirm: { label: string; tone: 'add' | 'go'; icon: IconName; disabled: boolean; onClick: () => void };
+  confirm?: { label: string; tone: 'add' | 'go'; icon: IconName; disabled: boolean; onClick: () => void };
   cancel: () => void;
   busy: boolean;
+  /** why this row has no Save to press, shown in its place */
+  note?: string;
+  /** offered once the row is open, subordinate to Save and Cancel */
+  duplicate?: { onClick?: () => void; blocked?: string };
+  remove?: { onClick?: () => void; blocked?: string };
+  /** what the row is — for Duplicate and Remove's own labels, and the question Remove asks */
+  what?: string;
 }) {
+  const [asking, setAsking] = useState(false);
+  const named = what ?? 'this record';
   return (
     <span className="btn-pair" style={{ justifyContent: 'flex-start' }}>
-      <button className={`btn ${confirm.tone} sm`} disabled={confirm.disabled || busy}
-              onClick={confirm.onClick}>
-        <Icon name={confirm.icon} size={13} motion="none" />
-        {busy ? 'Saving…' : confirm.label}
-      </button>
+      {confirm ? (
+        <button className={`btn ${confirm.tone} sm`} disabled={confirm.disabled || busy}
+                onClick={confirm.onClick}>
+          <Icon name={confirm.icon} size={13} motion="none" />
+          {busy ? 'Saving…' : confirm.label}
+        </button>
+      ) : note && <span style={{ fontSize: 12, color: 'var(--faint)' }}>{note}</span>}
       <button className="btn ghost sm" onClick={cancel}>
         <Icon name="close" size={13} motion="none" /> Cancel
       </button>
-    </span>
-  );
-}
 
-/** Edit and remove, stacked in the same column width so nothing shifts between rows. */
-function RowActions({ onEdit, onRemove, what, editBlocked, removeBlocked }: {
-  onEdit?: () => void;
-  onRemove?: () => void;
-  what: string;
-  editBlocked?: string;
-  removeBlocked?: string;
-}) {
-  const [asking, setAsking] = useState(false);
-  if (!onEdit && !onRemove && !editBlocked && !removeBlocked) return null;
-
-  return (
-    // the column reserves this width; asking for more than it reserved gave the whole table a
-    // horizontal scrollbar and cut the last icon in half
-    <span style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'flex-end' }}>
-      {onEdit && (
-        <button className="btn quiet" onClick={onEdit} aria-label={`Edit ${what}`} title="Edit"
-                style={{ padding: 7, border: 'none' }}>
-          <Icon name="edit" size={14} />
-        </button>
-      )}
-      {editBlocked && !onEdit && (
-        <span title={editBlocked} style={{ display: 'flex', padding: 7, color: 'var(--disabled)' }}>
-          <Icon name="edit" size={14} motion="none" />
-        </span>
-      )}
-      {onRemove && (
-        <button className="btn quiet" onClick={() => setAsking(true)}
-                aria-label={`Remove ${what}`} title="Remove"
-                style={{ padding: 7, border: 'none', color: 'var(--negative)' }}>
-          <Icon name="trash" size={14} />
-        </button>
-      )}
-      {removeBlocked && !onRemove && (
-        <span title={removeBlocked} style={{ display: 'flex', padding: 7, color: 'var(--disabled)' }}>
-          <Icon name="trash" size={14} motion="none" />
+      {(duplicate || remove) && (
+        <span style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+          {duplicate && (duplicate.onClick ? (
+            <button className="btn quiet sm" onClick={duplicate.onClick}
+                    aria-label={`Duplicate ${named}`} title="Duplicate">
+              <Icon name="duplicate" size={13} motion="none" /> Duplicate
+            </button>
+          ) : (
+            <span title={duplicate.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                                       padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
+              <Icon name="duplicate" size={13} motion="none" /> Duplicate
+            </span>
+          ))}
+          {remove && (remove.onClick ? (
+            <button className="btn quiet sm" onClick={() => setAsking(true)}
+                    aria-label={`Remove ${named}`} title="Remove" style={{ color: 'var(--negative)' }}>
+              <Icon name="trash" size={13} motion="none" /> Remove
+            </button>
+          ) : (
+            <span title={remove.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                                    padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
+              <Icon name="trash" size={13} motion="none" /> Remove
+            </span>
+          ))}
         </span>
       )}
 
-      {/* the question is asked over the page, not in the cell: two small buttons in a
-          96-pixel column are answered by aim rather than by reading */}
-      <ConfirmModal open={asking} onClose={() => setAsking(false)}
-        title={`Remove ${what}?`}
-        body="This cannot be undone from here."
-        onConfirm={onRemove} />
+      {/* the question is asked over the page, not on this line: a bin beside Save and Cancel
+          is answered by aim rather than by reading */}
+      {remove && (
+        <ConfirmModal open={asking} onClose={() => setAsking(false)}
+          title={`Remove ${named}?`}
+          body="This cannot be undone from here."
+          onConfirm={remove.onClick} />
+      )}
     </span>
   );
 }

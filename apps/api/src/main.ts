@@ -99,13 +99,14 @@ async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): Promise
  */
 startMarketRefresh(ctx);
 
-startScheduler(ctx, ({ posted, skipped }) => {
+startScheduler(ctx, ({ posted, skipped, closed }) => {
   // What was paid and how much is the ledger's business, not the terminal's. Development
   // says it plainly because the money there is invented; production counts and stays quiet.
   if (ENV === 'dev') {
     for (const p of posted) console.log(`[scheduler] posted ${p.what}: ${p.amount}`);
     for (const s of skipped) console.warn(`[scheduler] skipped ${s.what} — ${s.because}`);
-  } else console.log(`[scheduler] posted ${posted.length}, skipped ${skipped.length}`);
+    for (const c of closed) console.log(`[scheduler] wealth statement ${c.date}: ${c.netWorth} ${c.currency}`);
+  } else console.log(`[scheduler] posted ${posted.length}, skipped ${skipped.length}, closed ${closed.length}`);
 });
 
 server.listen(PORT, () => {

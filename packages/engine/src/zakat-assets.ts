@@ -20,7 +20,7 @@
 
 import { toHijri, fromHijri, addHijriYears, formatHijri, type HijriDate } from './hijri.js';
 
-export type AssetClass = 'property' | 'vehicle' | 'metal' | 'other';
+export type AssetClass = 'property' | 'vehicle' | 'metal' | 'stock' | 'other';
 
 /** Why a thing is held. The answer decides whether zakat reaches it at all. */
 export type Intention =
@@ -66,6 +66,12 @@ export const INTENTIONS: Record<AssetClass, IntentionOption[]> = {
     { id: 'investment', label: 'Held as a holding',
       blurb: 'Kept as a store of value, so it is zakatable at its weight in the market — once it has passed nisab and a full lunar year has run over it.' },
   ],
+  stock: [
+    { id: 'personal', label: 'Not a holding',
+      blurb: 'A share bought and set aside rather than held to grow is not wealth being grown, so no zakat is owed on it.' },
+    { id: 'investment', label: 'Held as a holding',
+      blurb: 'Kept as trade stock or a store of value, so it is zakatable at its market value — once it has passed nisab and a full lunar year has run over it.' },
+  ],
   other: [
     { id: 'personal', label: 'Personal use',
       blurb: 'Something you use rather than hold to grow. No zakat is owed on it.' },
@@ -81,7 +87,7 @@ export function intentionsFor(kind: string): IntentionOption[] {
 }
 
 export function defaultIntention(kind: string): Intention {
-  return kind === 'property' ? 'live_in' : kind === 'metal' ? 'investment' : 'personal';
+  return kind === 'property' ? 'live_in' : (kind === 'metal' || kind === 'stock') ? 'investment' : 'personal';
 }
 
 export function intentionLabel(kind: string, intention: Intention | null | undefined): string {

@@ -3,7 +3,6 @@ import { useApp, market } from '../AppState';
 import { toEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats } from '../components/UI';
 import { GivingRecords, type GivingRow } from '../components/GivingRecords';
-import { ModeBar, ModeProvider } from '../components/ModeBar';
 import { useLive } from '../Live';
 import { ledger } from '../api';
 
@@ -12,12 +11,15 @@ type Kind = 'zakat' | 'sadaqat';
 type Row = GivingRow;
 
 /**
- * Correcting a record is not recording one, so this screen carries the same switch as every
- * other that shows a log — without it the table had nowhere to put its pencil, and reached
- * for a mode that was not there.
+ * Every gift, zakat and sadaqat together — read here, corrected on the table itself.
+ *
+ * This screen used to carry the Operate/Edit switch every log-bearing screen carried, purely
+ * so the table underneath had a mode to check before it would show its pencil. The table
+ * checks nothing now: double-click a row, press Enter with it focused, or press its pencil,
+ * and it opens for correction whichever way you got here.
  */
 export function GivingLog() {
-  return <ModeProvider><Body /></ModeProvider>;
+  return <Body />;
 }
 
 function Body() {
@@ -85,11 +87,8 @@ function Body() {
         </Stats>
       </Panel>
 
-      <ModeBar operateHint="Record what was given. Every payment leaves an account on the day it happened."
-               editHint="Correct a record — the amount, the account it left, the cause, whether it counted as zakat — or reverse one that never happened." />
-
       <Panel title="Everything given"
-             hint="Both kinds in one list. The type column is the only thing that separates them, and it is the thing that decides whether a payment reduces what you still owe.">
+             hint="Both kinds in one list. The type column is the only thing that separates them, and it is the thing that decides whether a payment reduces what you still owe. Double-click a row to correct it, or to reverse one that never happened.">
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {(['all', 'zakat', 'sadaqat'] as const).map((k) => (
             <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}

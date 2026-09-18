@@ -10,6 +10,7 @@ import { Amount } from '../components/Amount';
 import { ConfirmDelete } from '../components/Confirm';
 import { ClearAll } from '../components/ClearAll';
 import { useViewport } from '../components/Shell';
+import { isInteractive } from '../components/RecordTable';
 
 /**
  * The calendar.
@@ -404,12 +405,19 @@ export function Calendar() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(entries ?? []).map((x) => (
-                <div key={x.id} style={{
+                <div key={x.id} className="mgr-row" style={{
                   display: 'grid', gap: 12, alignItems: 'center',
                   gridTemplateColumns: '150px 26px minmax(0,1fr) 150px 96px',
                   padding: '10px 12px', borderRadius: 8, background: 'var(--surface)',
                   border: '1px solid var(--hairline)', opacity: x.doneAt ? 0.55 : 1,
-                }}>
+                }}
+                  tabIndex={0} aria-label={`Double-click, or press Enter, to edit ${x.title}`}
+                  onDoubleClick={(e) => { if (!isInteractive(e.target)) startEdit(x.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || isInteractive(e.target)) return;
+                    e.preventDefault();
+                    startEdit(x.id);
+                  }}>
                   <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
                     <span className="mono" style={{ fontSize: 12 }}>
                       {new Date(`${x.date}T12:00:00`).toLocaleDateString('en-GB',
@@ -434,7 +442,7 @@ export function Calendar() {
                     {x.remindDays > 0 && <Chip tone="info">{x.remindDays}d before</Chip>}
                   </div>
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                    <button className="btn quiet" aria-label={`Edit ${x.title}`} style={{ padding: 6 }}
+                    <button className="btn quiet rt-hint" aria-label={`Edit ${x.title}`} style={{ padding: 6 }}
                             onClick={() => startEdit(x.id)}>
                       <Icon name="edit" size={14} />
                     </button>
@@ -443,7 +451,7 @@ export function Calendar() {
                               { entryId: x.id, done: !x.doneAt }).then(load)}>
                       <Icon name="check" size={14} color={x.doneAt ? 'var(--positive)' : undefined} />
                     </button>
-                    <ConfirmDelete what={x.title}
+                    <ConfirmDelete what={x.title} className="rt-hint"
                                    onConfirm={() => void run('calendar.remove', { entryId: x.id }).then(load)} />
                   </div>
                 </div>
@@ -473,12 +481,21 @@ function EventRow({ e, dm, showDate, onEdit, onDone, onRemove }: {
   onEdit?: () => void; onDone?: (v: boolean) => void; onRemove?: () => void;
 }) {
   return (
-    <div style={{
+    <div className={onEdit ? 'mgr-row' : undefined} style={{
       display: 'grid',
       gridTemplateColumns: `${showDate ? '150px ' : ''}28px minmax(0,1fr) 130px${onEdit ? ' 104px' : ''}`,
       gap: 12, alignItems: 'center', padding: '9px 10px', borderRadius: 8,
       background: 'var(--surface)', border: '1px solid var(--hairline)',
-    }}>
+      cursor: onEdit ? 'pointer' : undefined,
+    }}
+      tabIndex={onEdit ? 0 : undefined}
+      aria-label={onEdit ? `Double-click, or press Enter, to edit ${e.title}` : undefined}
+      onDoubleClick={onEdit ? (ev) => { if (!isInteractive(ev.target)) onEdit(); } : undefined}
+      onKeyDown={onEdit ? (ev) => {
+        if (ev.key !== 'Enter' || isInteractive(ev.target)) return;
+        ev.preventDefault();
+        onEdit();
+      } : undefined}>
       {showDate && (
         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
           <span className="mono" style={{ fontSize: 12 }}>
@@ -503,7 +520,7 @@ function EventRow({ e, dm, showDate, onEdit, onDone, onRemove }: {
           </div>
         )}
       </div>
-      <span style={{ textAlign: 'right' }}>
+      <span>
         {e.amount != null && (
           <span className="mono" style={{ fontSize: 13 }}>{dm(e.amount)}</span>
         )}
@@ -518,7 +535,7 @@ function EventRow({ e, dm, showDate, onEdit, onDone, onRemove }: {
       </span>
       {onEdit && (
         <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-          <button className="btn quiet" aria-label={`Edit ${e.title}`} style={{ padding: 6 }}
+          <button className="btn quiet rt-hint" aria-label={`Edit ${e.title}`} style={{ padding: 6 }}
                   onClick={onEdit}>
             <Icon name="edit" size={14} />
           </button>
@@ -528,7 +545,7 @@ function EventRow({ e, dm, showDate, onEdit, onDone, onRemove }: {
               <Icon name="check" size={14} color={e.done ? 'var(--positive)' : undefined} />
             </button>
           )}
-          {onRemove && <ConfirmDelete what={e.title} onConfirm={onRemove} />}
+          {onRemove && <ConfirmDelete what={e.title} className="rt-hint" onConfirm={onRemove} />}
         </span>
       )}
     </div>

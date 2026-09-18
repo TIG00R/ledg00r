@@ -23,8 +23,7 @@ export const NAV: NavItem[] = [
   { id: 'realestate', label: 'Assets', icon: 'assets' },
   { id: 'gold', label: 'Gold and silver', icon: 'gold' },
   { id: 'stocks', label: 'Stocks', icon: 'stocks' },
-  { id: 'expenses', label: 'Expenses', icon: 'expenses' },
-  { id: 'budgets', label: 'Budgets', icon: 'budgets' },
+  { id: 'expenses', label: 'Expenses and budgets', icon: 'expenses' },
   { id: 'debts', label: 'Debts', icon: 'debts' },
   { id: 'giving', label: 'Zakat and Sadaqat', icon: 'zakat' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
@@ -175,17 +174,21 @@ export function TopBar({ title, screen, onRefresh, onNavigate, onMenu }: {
       )}
       <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</h1>
             {asOf && <button className="btn ghost" onClick={() => setAsOf(null)}>Back to today</button>}
-      {/* Reading works from the fixtures with no service behind the screen, but nothing can be
-          written — and a write button that quietly does nothing reads as a broken button. */}
+      {/* With no ledger answering, every figure on screen is a fixture rather than this
+          person's own — and a figure that looks exactly like a real one is the more
+          dangerous kind of wrong for saying nothing about where it came from. This has to
+          stand in the chrome itself rather than in a toast that comes and goes, because
+          Live.tsx keeps asking on a backoff and can go either way at any moment: it clears
+          the instant the ledger answers, and returns the instant it stops. */}
       {!live && (
-        <span title="Start it with: npm run dev:api" style={{
+        <span title="It may still be starting up, or it may not be running at all." style={{
           display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 10px',
           borderRadius: 999, fontSize: 11, color: 'var(--gold)',
           background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
           border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
         }}>
           <Icon name="warn" size={12} color="var(--gold)" />
-          Sample data — nothing can be saved
+          Demonstration data — the ledger is not answering
         </span>
       )}
 
@@ -394,7 +397,7 @@ export function MarketPanel() {
             <tr key={label}>
               <td style={{ padding: '7px 0', border: 'none', fontSize: 12, color: 'var(--muted)' }}>{label}</td>
               <td className="mono" style={{ padding: '7px 0', border: 'none', fontSize: 13, fontWeight: 500 }}>{value}</td>
-              <td style={{ padding: '7px 0 7px 10px', border: 'none', fontSize: 10, color: 'var(--faint)', textAlign: 'right' }}>{src}</td>
+              <td style={{ padding: '7px 0 7px 10px', border: 'none', fontSize: 10, color: 'var(--faint)' }}>{src}</td>
             </tr>
           ))}
         </tbody>

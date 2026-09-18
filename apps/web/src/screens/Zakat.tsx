@@ -8,8 +8,67 @@ import { describeLead, zakatDebts, zakatDates, nisabEgp, formatHijri, groupOf,
 import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field } from '../components/UI';
 import { Segmented } from '../components/Segmented';
 import { Icon } from '../components/Icon';
+import { Mark } from '../components/Mark';
+import { useAppearance, type AssetKey } from '../Appearance';
 import { useLive, ActionButton } from '../Live';
 import { ledger } from '../api';
+
+/** the icon and colour behind one line of the list — an asset's own mark where it has one,
+    the pile's own where it does not, and nothing at all for what you owe */
+interface EntryMark {
+  icon: string; color: string;
+  fallback: 'gold' | 'stocks' | 'car' | 'building' | 'banknote' | 'debts';
+}
+
+/**
+ * Which mark a line wears, if it wears one at all.
+ *
+ * A property or a car is its own record, so it wears exactly the mark chosen for it under
+ * Assets — the same lookup that screen uses, keyed by the same id the entry already carries.
+ * Gold, shares and cash are not single records but a whole pile counted together, so they wear
+ * the pile's own mark instead: the same one Portfolio draws, and the one the owner can
+ * recolour from Appearance. Money lent out reads the same way, off the pile Portfolio calls
+ * "Debt" — wealth you happen not to be holding, not wealth you owe — because it is exactly the
+ * loan that pile draws.
+ *
+ * What you owe is the one thing left bare on purpose. A debt is an obligation, not a holding,
+ * and every line under "Debts that come off" is unmarked alike — a missing tile there reads as
+ * the section's own shape rather than as one line the app forgot.
+ */
+function markFor(
+  id: string,
+  assets: Record<string, { icon: string | null; color: string | null; kind: string }>,
+  pile: (k: AssetKey) => { icon: string; color: string },
+): EntryMark | null {
+  const baseId = id.replace(/^excluded-/, '');
+  if (/^silver-(investment|personal)$/.test(baseId)) {
+    return { icon: 'coins', color: 'var(--muted)', fallback: 'gold' };
+  }
+  if (baseId === 'gold' || /^gold-(investment|personal)$/.test(baseId)) {
+    return { icon: pile('gold').icon, color: pile('gold').color, fallback: 'gold' };
+  }
+  // `shares` is the estate's own book; `stocks` is the same figure typed by hand when there
+  // is no ledger to read it off — the same holding either way, so it wears the same mark.
+  if (baseId === 'shares' || baseId === 'stocks') {
+    return { icon: pile('stocks').icon, color: pile('stocks').color, fallback: 'stocks' };
+  }
+  if (baseId === 'cash') {
+    return { icon: pile('cash').icon, color: pile('cash').color, fallback: 'banknote' };
+  }
+  // A receivable — money lent out and expected back — is the same wealth Portfolio's "Debt"
+  // pile draws, and wears its mark for the same reason: it is owned, just not held.
+  if (/^owed-/.test(baseId)) {
+    return { icon: pile('debt').icon, color: pile('debt').color, fallback: 'debts' };
+  }
+  const asset = assets[baseId];
+  if (asset) {
+    const fallback = asset.kind === 'vehicle' ? 'car' : 'building';
+    // The same default AssetsView reaches for when nothing was ever chosen — a mark and its
+    // colour are the same thing wherever this asset is drawn.
+    return { icon: asset.icon ?? fallback, color: asset.color ?? 'var(--negative)', fallback };
+  }
+  return null;
+}
 
 /** one line of the arithmetic, with the sign that says which way it goes */
 type Entry = ZakatEntry;
@@ -137,6 +196,28 @@ export function Zakat() {
     return () => { off = true; };
   }, [live, version]);
 
+  /**
+   * The mark and colour behind every property, car and other asset — the same record Assets
+   * itself reads, kept beside the list rather than folded into it, since the estate's own
+   * entries know nothing of icons and were not about to be taught for this alone.
+   */
+  const [assetMarks, setAssetMarks] = useState<Record<string, { icon: string | null; color: string | null; kind: string }>>({});
+  useEffect(() => {
+    if (!live) { setAssetMarks({}); return; }
+    let off = false;
+    (ledger as any)['assets.list']({})
+      .then((rows: Array<{ id: string; icon: string | null; color: string | null; kind: string }>) => {
+        if (off) return;
+        const map: Record<string, { icon: string | null; color: string | null; kind: string }> = {};
+        for (const a of rows ?? []) map[a.id] = { icon: a.icon, color: a.color, kind: a.kind };
+        setAssetMarks(map);
+      })
+      .catch(() => { if (!off) setAssetMarks({}); });
+    return () => { off = true; };
+  }, [live, version]);
+  const { appearance } = useAppearance();
+  const pile = (k: AssetKey) => appearance.assets[k];
+
   // The ledger holds this setting; the local copy is only what the screen last sent it.
   const deductDebts = assessment?.deductDebts ?? z.deductDebts;
   const setDeductDebts = (on: boolean) => setZakatSettings({ ...z, deductDebts: on });
@@ -226,8 +307,30 @@ export function Zakat() {
   const payAccount = payment.accountId || payFrom[0]?.id || '';
 
   const rem = reminders.find((r) => r.subject === 'zakat');
-  const update = (patch: Partial<(typeof reminders)[number]>) =>
-    setReminders(reminders.map((r) => (r.subject === 'zakat' ? { ...r, ...patch } : r)));
+  /**
+   * The screen answers at once; the ledger keeps the answer.
+   *
+   * Setting the local copy alone meant the switch moved and nothing was written, so the next
+   * read put it back where it was — and a ledger with no zakat reminder at all had nothing
+   * for `map` to touch, so switching it on did nothing whatsoever. Both are the same fix:
+   * the row is created when it is missing, and the choice goes to the ledger either way.
+   */
+  const update = (patch: Partial<(typeof reminders)[number]>) => {
+    const fresh: (typeof reminders)[number] = {
+      id: 'rem-zakat', subject: 'zakat', enabled: false,
+      offsetValue: 1, offsetUnit: 'months',
+    };
+    const next = { ...(rem ?? fresh), ...patch };
+    setReminders(rem
+      ? reminders.map((r) => (r.subject === 'zakat' ? next : r))
+      : [...reminders, next]);
+    void run('reminder.set', {
+      subject: 'zakat',
+      enabled: next.enabled,
+      offsetValue: next.offsetValue,
+      offsetUnit: next.offsetUnit,
+    });
+  };
 
   const dates = zakatDates(now, z);
   const away = dates.daysAway;
@@ -394,16 +497,19 @@ export function Zakat() {
             <tr>
               <th style={{ width: 30 }}><span className="sr-only">Sign</span></th>
               <th>{estate?.state === 'confirmed' ? 'The year now running' : 'What it is'}</th>
-              <th style={{ textAlign: 'right' }}>Amount</th>
+              <th>Amount</th>
             </tr>
           </thead>
           <tbody>
             {SECTIONS.map((s) => {
               const rows = sectionOf(s.group);
               if (rows.length === 0) return null;
-              const sum = s.group === 'debt'
-                ? rows.reduce((t, e) => t + e.amount, 0)
-                : rows.reduce((t, e) => t + e.sign * e.amount, 0);
+              // A line counted for nothing still has a value, and that value is the whole
+              // point of showing it. Only the counted section sums what it contributes;
+              // the other two sum what they are worth.
+              const sum = s.group === 'counted'
+                ? rows.reduce((t, e) => t + e.sign * e.amount, 0)
+                : rows.reduce((t, e) => t + e.amount, 0);
               return (
                 <Fragment key={s.group}>
                   <tr>
@@ -424,7 +530,7 @@ export function Zakat() {
                     </td>
                   </tr>
                   {rows.map((e) => (
-                    <EntryRow key={e.id} entry={e} dm={dm}
+                    <EntryRow key={e.id} entry={e} dm={dm} mark={markFor(e.id, assetMarks, pile)}
                       edit={editable && e.group === 'counted'
                         ? (n) => setManualValues({ ...manualValues, [e.id]: n })
                         : undefined} />
@@ -441,7 +547,7 @@ export function Zakat() {
                   before anything owed comes off it
                 </div>
               </td>
-              <td className="mono" style={{ fontWeight: 600, textAlign: 'right', paddingTop: 16 }}>{dm(assets)}</td>
+              <td className="mono" style={{ fontWeight: 600, paddingTop: 16 }}>{dm(assets)}</td>
             </tr>
             {debts > 0 && (
               <tr>
@@ -455,7 +561,7 @@ export function Zakat() {
                     {deductDebts ? 'subtracted, as you have asked' : 'listed above, and not subtracted'}
                   </div>
                 </td>
-                <td className="mono" style={{ textAlign: 'right', fontWeight: 600,
+                <td className="mono" style={{ fontWeight: 600,
                                               color: deductDebts ? 'var(--negative)' : 'var(--faint)' }}>
                   {deductDebts ? `−${dm(debts)}` : `(${dm(debts)})`}
                 </td>
@@ -471,13 +577,13 @@ export function Zakat() {
                   </div>
                 )}
               </td>
-              <td className="mono" style={{ fontWeight: 600, textAlign: 'right' }}>{dm(finalBase)}</td>
+              <td className="mono" style={{ fontWeight: 600 }}>{dm(finalBase)}</td>
             </tr>
             <tr>
               <td />
               <td style={{ fontWeight: 600 }}>Zakat owed
                 <span style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}> · 2.5%</span></td>
-              <td className="mono" style={{ fontWeight: 600, textAlign: 'right', fontSize: 18,
+              <td className="mono" style={{ fontWeight: 600, fontSize: 18,
                                             color: due > 0 ? 'var(--positive)' : 'var(--faint)' }}>{dm(due)}</td>
             </tr>
           </tbody>
@@ -497,7 +603,7 @@ export function Zakat() {
             </div>
             <Field label="Base to confirm">
               <Amount value={correction ?? Math.round(estate.base)} ariaLabel="Base to confirm"
-                      onChange={setCorrection} style={{ width: 170, textAlign: 'right' }} />
+                      onChange={setCorrection} style={{ width: 170 }} />
             </Field>
             <ActionButton capability="zakat.confirm"
               input={() => ({ bucketId: estate.id, base: correction ?? Math.round(estate.base) })}>
@@ -513,9 +619,9 @@ export function Zakat() {
         <table>
           <thead>
             <tr><th style={{ width: 28 }}><span className="sr-only">Open</span></th>
-                <th>Pot</th><th>Year to</th><th style={{ textAlign: 'right' }}>Owed</th>
-                <th style={{ textAlign: 'right' }}>Paid</th>
-                <th style={{ textAlign: 'right' }}>Still to pay</th><th /></tr>
+                <th>Pot</th><th>Year to</th><th>Owed</th>
+                <th>Paid</th>
+                <th>Still to pay</th><th /></tr>
           </thead>
           <tbody>
             {years.map((year) => {
@@ -536,9 +642,9 @@ export function Zakat() {
                       {year.dueOn}
                       <div style={{ fontSize: 11, color: 'var(--faint)' }}>{year.dueHijri}</div>
                     </td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{dm(year.due)}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{dm(year.paid)}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 600,
+                    <td className="mono">{dm(year.due)}</td>
+                    <td className="mono">{dm(year.paid)}</td>
+                    <td className="mono" style={{ fontWeight: 600,
                                                   color: year.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
                       {dm(year.remaining)}
                     </td>
@@ -551,7 +657,8 @@ export function Zakat() {
                   {open && (
                     <tr>
                       <td colSpan={7} style={{ padding: 0 }}>
-                        <YearDetail year={year} dm={dm} causeName={causeName} />
+                        <YearDetail year={year} dm={dm} causeName={causeName}
+                          markOf={(id) => markFor(id, assetMarks, pile)} />
                       </td>
                     </tr>
                   )}
@@ -561,13 +668,13 @@ export function Zakat() {
             <tr>
               <td />
               <td colSpan={2} style={{ fontWeight: 600 }}>Across every year</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+              <td className="mono" style={{ fontWeight: 600 }}>
                 {dm(years.reduce((t2, y) => t2 + y.due, 0))}
               </td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+              <td className="mono" style={{ fontWeight: 600 }}>
                 {dm(years.reduce((t2, y) => t2 + y.paid, 0))}
               </td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 600,
+              <td className="mono" style={{ fontWeight: 600,
                                             color: years.some((y) => y.remaining > 0) ? 'var(--negative)' : 'var(--positive)' }}>
                 {dm(years.reduce((t2, y) => t2 + y.remaining, 0))}
               </td>
@@ -663,10 +770,11 @@ export function Zakat() {
  * was struck at are shown beside it, because a figure nobody can check is a figure nobody
  * should be asked to trust three years later.
  */
-function YearDetail({ year, dm, causeName }: {
+function YearDetail({ year, dm, causeName, markOf }: {
   year: LoggedYear;
   dm: (n: number) => string;
   causeName: (id: string) => string;
+  markOf: (id: string) => EntryMark | null;
 }) {
   return (
     <div style={{ padding: '16px 18px', background: 'var(--raised)' }}>
@@ -702,24 +810,24 @@ function YearDetail({ year, dm, causeName }: {
           <tr>
             <th style={{ width: 30 }}><span className="sr-only">Sign</span></th>
             <th>How it was worked out</th>
-            <th style={{ textAlign: 'right' }}>Amount</th>
+            <th>Amount</th>
           </tr>
         </thead>
         <tbody>
           {year.entries.length === 0
             ? <tr><td /><td colSpan={2} style={{ fontSize: 12, color: 'var(--faint)' }}>
                 No lines were kept for this year.</td></tr>
-            : year.entries.map((e) => <EntryRow key={e.id} entry={e} dm={dm} />)}
+            : year.entries.map((e) => <EntryRow key={e.id} entry={e} dm={dm} mark={markOf(e.id)} />)}
           <tr>
             <td />
             <td style={{ fontWeight: 600 }}>Zakatable, as confirmed</td>
-            <td className="mono" style={{ fontWeight: 600, textAlign: 'right' }}>{dm(year.base)}</td>
+            <td className="mono" style={{ fontWeight: 600 }}>{dm(year.base)}</td>
           </tr>
           <tr>
             <td />
             <td style={{ fontWeight: 600 }}>Zakat owed
               <span style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}> · 2.5%</span></td>
-            <td className="mono" style={{ fontWeight: 600, textAlign: 'right', fontSize: 16,
+            <td className="mono" style={{ fontWeight: 600, fontSize: 16,
                                           color: 'var(--positive)' }}>{dm(year.due)}</td>
           </tr>
         </tbody>
@@ -733,7 +841,7 @@ function YearDetail({ year, dm, causeName }: {
           </p>
         ) : (
           <table>
-            <thead><tr><th>Date</th><th>Went to</th><th style={{ textAlign: 'right' }}>Amount</th></tr></thead>
+            <thead><tr><th>Date</th><th>Went to</th><th>Amount</th></tr></thead>
             <tbody>
               {year.payments.map((p) => (
                 <tr key={p.id}>
@@ -742,14 +850,14 @@ function YearDetail({ year, dm, causeName }: {
                     <div style={{ fontSize: 13 }}>{causeName(p.causeId)}</div>
                     {p.note && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{p.note}</div>}
                   </td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{dm(p.egp)}</td>
+                  <td className="mono">{dm(p.egp)}</td>
                 </tr>
               ))}
               <tr>
                 <td colSpan={2} style={{ fontWeight: 600 }}>
                   {year.remaining > 0 ? 'Still to pay' : 'Discharged in full'}
                 </td>
-                <td className="mono" style={{ fontWeight: 600, textAlign: 'right',
+                <td className="mono" style={{ fontWeight: 600,
                                               color: year.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
                   {dm(year.remaining)}
                 </td>
@@ -772,11 +880,13 @@ function YearDetail({ year, dm, causeName }: {
  * The detail sits under the label rather than in columns of its own because there is no fixed
  * set of it: a flat has three dates behind it, a card balance has one, and cash has none.
  */
-function EntryRow({ entry: e, dm, edit }: {
+function EntryRow({ entry: e, dm, edit, mark }: {
   entry: Entry;
   dm: (n: number) => string;
   /** typed figures are the owner's own, so the amount is theirs to change */
   edit?: (n: number) => void;
+  /** the icon behind a line that stands for a thing owned — absent for cash, debt and the like */
+  mark?: EntryMark | null;
 }) {
   return (
     <tr>
@@ -785,7 +895,18 @@ function EntryRow({ entry: e, dm, edit }: {
         color: e.sign === -1 ? 'var(--negative)' : e.sign === 1 ? 'var(--positive)' : 'var(--faint)',
       }}>{e.sign === 1 ? '+' : e.sign === -1 ? '−' : '·'}</td>
       <td>
-        <div style={{ fontWeight: 500, color: e.sign === 0 ? 'var(--muted)' : undefined }}>{e.label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {mark && (
+            <span aria-hidden="true" style={{
+              width: 24, height: 24, borderRadius: 7, flex: '0 0 24px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: `color-mix(in srgb, ${mark.color} 15%, transparent)`,
+            }}>
+              <Mark mark={mark.icon} size={13} color={mark.color} fallback={mark.fallback} />
+            </span>
+          )}
+          <div style={{ fontWeight: 500, color: e.sign === 0 ? 'var(--muted)' : undefined }}>{e.label}</div>
+        </div>
         {e.detail && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{e.detail}</div>}
         {e.facts && e.facts.length > 0 && (
           <div className="mono" style={{ fontSize: 11, color: 'var(--faint)', marginTop: 3 }}>
@@ -801,12 +922,12 @@ function EntryRow({ entry: e, dm, edit }: {
       {/* A line counting nothing is bracketed rather than hidden: its value is worth seeing,
           and the brackets say it was left out on purpose. */}
       <td className="mono" style={{
-        textAlign: 'right', verticalAlign: 'top',
+        verticalAlign: 'top',
         color: e.sign === -1 ? 'var(--negative)' : e.sign === 0 ? 'var(--faint)' : undefined,
       }}>
         {edit
           ? <Amount value={e.amount} ariaLabel={`${e.label} value`} onChange={edit}
-                    style={{ width: 150, textAlign: 'right' }} />
+                    style={{ width: 150 }} />
           : e.sign === 0 ? `(${dm(e.amount)})` : `${e.sign === -1 ? '−' : ''}${dm(e.amount)}`}
       </td>
     </tr>

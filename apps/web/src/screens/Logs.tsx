@@ -4,7 +4,6 @@ import { useLive } from '../Live';
 import { useApp } from '../AppState';
 import { Page, Panel, Stat, Stats, Chip } from '../components/UI';
 import { RecordTable } from '../components/RecordTable';
-import { ModeProvider } from '../components/ModeBar';
 import { SectionProvider, Sections } from '../components/Sections';
 
 /**
@@ -18,9 +17,7 @@ import { SectionProvider, Sections } from '../components/Sections';
  */
 export function Logs() {
   return (
-    <ModeProvider>
-      <SectionProvider first="actions"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="actions"><Body /></SectionProvider>
   );
 }
 
@@ -77,10 +74,7 @@ function Body() {
     <Page>
       <Sections sections={[
         { id: 'actions', label: 'What was done', icon: 'ledger',
-          hint: 'Every write the ledger was asked for, newest first — including the ones it refused, and the ones that moved no money.',
-          /* There is nothing here to correct — the log is the record of the corrections. The
-             one thing editing offers is emptying it, which is why the switch exists at all. */
-          editHint: 'The log cannot be corrected. It can be emptied, and the act of emptying it is the first thing the new log will say.' },
+          hint: 'Every write the ledger was asked for, newest first — including the ones it refused, and the ones that moved no money. It cannot be corrected, only emptied — and emptying it is itself an act the new log will say you did.' },
       ]} />
 
       {!live ? (

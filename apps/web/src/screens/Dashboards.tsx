@@ -7,7 +7,6 @@ import { Segmented } from '../components/Segmented';
 import { Donut } from '../components/Donut';
 import { Icon } from '../components/Icon';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
-import { ModeProvider } from '../components/ModeBar';
 
 /** How tall the tallest bar is drawn, in pixels. */
 const PLOT = 150;
@@ -40,9 +39,7 @@ interface Report {
  */
 export function Dashboards() {
   return (
-    <ModeProvider>
-      <SectionProvider first="expenses"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="expenses"><Body /></SectionProvider>
   );
 }
 
@@ -158,7 +155,7 @@ function Body() {
                     <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>
                       {(g.share * 100).toFixed(1)}%
                     </span>
-                    <span className="mono" style={{ fontSize: 12, minWidth: 74, textAlign: 'right' }}>
+                    <span className="mono" style={{ fontSize: 12, minWidth: 74 }}>
                       {dm(g.amount)}
                     </span>
                   </div>

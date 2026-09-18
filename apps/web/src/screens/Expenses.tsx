@@ -1,23 +1,72 @@
+import { useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
 import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
 import { Select } from '../components/Select';
+import { Segmented } from '../components/Segmented';
 import { useApp, market } from '../AppState';
-import { splitByCurrency } from '@ledger/engine';
+import { useModules } from '../Modules';
+import { splitByCurrency, toEgp } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
-import { ModeProvider, useMode } from '../components/ModeBar';
+import { Pie } from '../components/Pie';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useLive } from '../Live';
 import { Manager } from '../components/Manager';
 import { RecordTable } from '../components/RecordTable';
 import { Mark } from '../components/Mark';
+import { Budgets } from './Budgets';
 
 export function Expenses() {
   return (
-    <ModeProvider>
-      <SectionProvider first="records"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="records"><Body /></SectionProvider>
+  );
+}
+
+/**
+ * Expenses and budgets, as one entry in the sidebar.
+ *
+ * They were two screens because they were built one after the other, not because they are
+ * two different things to somebody balancing a ledger — a destination and the ceiling over
+ * it are read together far more often than either is read alone. Each screen keeps every
+ * field, every table and its own Edit exactly as it was; a segmented switch at the top just
+ * decides which one is in front of you, and choosing one writes it into the address so
+ * #/expenses and #/budgets go on meaning what they always meant — including to whatever
+ * already links to them, like the calendar.
+ *
+ * Turning a module off does not hide a tab, it removes the choice: with only one half left
+ * standing, that half is the whole screen and there is nothing to switch between.
+ */
+export function ExpensesAndBudgets() {
+  const { enabled } = useModules();
+  const expensesOn = enabled.expenses !== false;
+  const budgetsOn = enabled.budgets !== false;
+
+  const readHalf = (): 'expenses' | 'budgets' =>
+    window.location.hash.replace(/^#\/?/, '').split('/')[0] === 'budgets' ? 'budgets' : 'expenses';
+  const [half, setHalf] = useState<'expenses' | 'budgets'>(readHalf);
+  useEffect(() => {
+    const onHash = () => setHalf(readHalf());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  if (!expensesOn && !budgetsOn) return null;
+  if (!budgetsOn) return <Expenses />;
+  if (!expensesOn) return <Budgets />;
+
+  return (
+    <>
+      <div style={{ maxWidth: 1440, margin: '0 auto', width: '100%', padding: '20px 24px 0' }}>
+        <Segmented value={half} ariaLabel="Expenses or budgets"
+          onChange={(v) => { window.location.hash = `/${v}`; }}
+          options={[
+            { id: 'expenses', label: 'Expenses', icon: 'expenses' },
+            { id: 'budgets', label: 'Budgets', icon: 'budgets' },
+          ]} />
+      </div>
+      {half === 'expenses' ? <Expenses /> : <Budgets />}
+    </>
   );
 }
 
@@ -38,7 +87,6 @@ function Body() {
    */
   const records = data.expenses;
 
-  const { mode } = useMode();
   const { tab } = useSection();
   const cats = data.categories.filter((c) => c.domain === 'expense');
   const cInfo = (id: string) => cats.find((c) => c.id === id);
@@ -60,6 +108,25 @@ function Body() {
   };
 
   const split = splitByCurrency(records, (e) => ({ amount: e.amount, currency: e.currency }), market);
+
+  /**
+   * What was spent on each destination, largest first.
+   *
+   * Read from the same records the table below draws, in the ledger's own currency, so the
+   * circle and the log can never disagree. A record pointing at a destination that has since
+   * been removed keeps its own name rather than being dropped — it was still spent.
+   */
+  const byDestination = [...records.reduce((acc, e) => {
+    const c = cInfo(e.categoryId);
+    const key = e.categoryId;
+    const prev = acc.get(key) ?? { id: key, name: c?.name ?? 'No destination',
+                                   color: c?.color ?? 'var(--muted)', total: 0 };
+    prev.total += toEgp(e.amount, e.currency, market);
+    acc.set(key, prev);
+    return acc;
+  }, new Map<string, { id: string; name: string; color: string; total: number }>()).values()]
+    .filter((d) => d.total > 0)
+    .sort((a2, b2) => b2.total - a2.total);
   const a = values.accrual;
 
   return (
@@ -68,13 +135,12 @@ function Body() {
         * One section, not two.
         *
         * Destinations were never a place to visit — they are what the records point at, and
-        * naming or recolouring one is a correction like any other. So they appear under the
-        * log while it is being edited, and stay out of the way while it is being read.
+        * naming or recolouring one is a correction like any other, so they sit under the log
+        * rather than off in a section of their own.
         */}
       <Sections sections={[
         { id: 'records', label: 'Records', icon: 'ledger',
-          hint: 'Everything spent, newest first. Every column filters itself.',
-          editHint: 'Correct a record, or rename, recolour and add the destinations they point at.' },
+          hint: 'Everything spent, newest first. Every column filters itself. Double-click a record, or a destination below, to correct it.' },
       ]} />
 
       {tab === 'records' && (
@@ -85,8 +151,47 @@ function Body() {
           <Stat label="Filled in from the baseline" value={dm(a.burnBaseline)} sub="months with nothing recorded" color="var(--gold)" />
           <Stat label="Budget baseline" value={dm(data.settings.budgetEgp)} sub="per month" />
         </Stats>
-        <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--hairline)' }}>
-          <CurrencySplits label="What you actually spent, by currency" splits={split.splits} totalEgp={split.totalEgp} />
+        <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--hairline)',
+                      display: 'flex', gap: 34, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Where it went, as a circle: one wedge per destination, each in the colour it
+              wears in the log below and in the pickers. Every figure on this screen was a
+              total or a row until now — the one question a log cannot answer at a glance is
+              what the shape of the spending is, and that is exactly what a circle says. */}
+          <div style={{ minWidth: 250 }}>
+            <div className="ov" style={{ marginBottom: 6 }}>Where it went</div>
+            {byDestination.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--faint)' }}>
+                Nothing has been logged yet, so there is nothing to draw.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Pie size={196}
+                     slices={byDestination.map((d) => ({ label: d.name, value: d.total, color: d.color }))}
+                     format={(n) => dm(n)}
+                     caption={
+                       <span style={{ fontSize: 11, color: 'var(--faint)' }}>
+                         {byDestination.length} destination{byDestination.length === 1 ? '' : 's'}
+                       </span>
+                     } />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 190 }}>
+                  {byDestination.map((d) => (
+                    <span key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 3, background: d.color, flex: '0 0 auto' }} />
+                      <span style={{ flex: 1 }}>{d.name}</span>
+                      <span className="mono" style={{ color: 'var(--muted)' }}>{dm(d.total)}</span>
+                      <span className="mono" style={{ color: 'var(--faint)', fontSize: 11 }}>
+                        {split.totalEgp > 0 ? `${((d.total / split.totalEgp) * 100).toFixed(1)}%` : '—'}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ minWidth: 250, flex: 1 }}>
+            <CurrencySplits label="What you actually spent, by currency" splits={split.splits} totalEgp={split.totalEgp} />
+          </div>
         </div>
       </Panel>
 
@@ -214,7 +319,7 @@ function Body() {
       </Panel>
       )}
 
-      {tab === 'records' && mode === 'edit' && (
+      {tab === 'records' && (
         <Panel title="Destinations"
                hint="Where money goes when it leaves. Yours to name, mark and colour — change one here and every record that uses it follows.">
           <Manager

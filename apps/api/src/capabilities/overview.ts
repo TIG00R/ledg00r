@@ -16,6 +16,63 @@ import { assetKindOf, isDebtNode } from '../zakat-assets.js';
  * stand, so it answers in the ledger's own currency and says which currency that is — a
  * number without its unit is the fastest way to be wrong with confidence.
  */
+/**
+ * The one reading of "where things stand", shared by `portfolio.overview` and by anything
+ * that has to freeze the same figure — a monthly statement, chiefly.
+ *
+ * Kept separate from the capability so the two can never drift: a statement's netWorth is
+ * this function's answer at the moment it was called, not a second arithmetic that happens to
+ * agree with it today.
+ */
+export function wealthSnapshot(ctx: AppCtx, currency?: string) {
+  const market = readMarket(ctx.db);
+  const display = currency ?? (readPref<any>(ctx.db, 'settings')?.displayCurrency ?? 'EGP');
+  const d = (egp: number) => fromEgp(egp, display, market);
+
+  /**
+   * What is held, not what was forecast.
+   *
+   * This used to walk forward from the opening snapshot, which is the right answer to a
+   * different question and produced a net worth the zakat assessment — reading the same
+   * ledger's balances — openly contradicted.
+   */
+  const h = ledgerHoldings(ctx.db, market);
+
+  /**
+   * The share book is the positions and the wallet behind them.
+   *
+   * Money sitting uninvested at the broker is cash — that is what the holdings say and
+   * what the zakat base counts — but it is not cash at a bank, and every screen that
+   * draws the book draws it as one thing. Reported here the same way, so an agent asking
+   * where things stand and a person looking at the portfolio see the same split.
+   *
+   * Money lent out is its own line for the same reason. It counts towards what you are
+   * worth — a debt owed to you is wealth you happen not to be holding — but it is not a
+   * chattel, and inside "Other" it was reported as one.
+   */
+  const parts: Array<[string, number]> = [
+    ['Cash', h.cash - h.brokerageCash], ['Real estate', h.realEstate],
+    ['Gold and silver', h.metals], ['Vehicles', h.vehicles],
+    ['Shares', h.shares + h.brokerageCash], ['Lent out', h.lent], ['Other', h.other],
+  ];
+  const owned = parts.reduce((s, [, v]) => s + v, 0);
+  return {
+    currency: display,
+    netWorth: d(h.total),
+    owedOnPlans: d(h.contracts),
+    allocation: [
+      ...parts.filter(([, v]) => v !== 0).map(([label, egp]) => ({
+        label, amount: d(egp), share: owned ? egp / owned : 0,
+      })),
+      ...(h.liabilities > 0
+        ? [{ label: 'Owed', amount: d(-h.liabilities), share: owned ? -h.liabilities / owned : 0 }]
+        : []),
+    ],
+    rates: market.fxRates,
+    asOf: ctx.now.toISOString().slice(0, 10),
+  };
+}
+
 export const overviewCaps = (ctxOf: () => AppCtx) => [
   query({
     name: 'portfolio.overview',
@@ -32,55 +89,7 @@ export const overviewCaps = (ctxOf: () => AppCtx) => [
       rates: z.record(z.string(), z.number()),
       asOf: z.string(),
     }),
-    handler: async ({ currency }) => {
-      const ctx = ctxOf();
-      const market = readMarket(ctx.db);
-      const display = currency ?? (readPref<any>(ctx.db, 'settings')?.displayCurrency ?? 'EGP');
-      const d = (egp: number) => fromEgp(egp, display, market);
-
-      /**
-       * What is held, not what was forecast.
-       *
-       * This used to walk forward from the opening snapshot, which is the right answer to a
-       * different question and produced a net worth the zakat assessment — reading the same
-       * ledger's balances — openly contradicted.
-       */
-      const h = ledgerHoldings(ctx.db, market);
-
-      /**
-       * The share book is the positions and the wallet behind them.
-       *
-       * Money sitting uninvested at the broker is cash — that is what the holdings say and
-       * what the zakat base counts — but it is not cash at a bank, and every screen that
-       * draws the book draws it as one thing. Reported here the same way, so an agent asking
-       * where things stand and a person looking at the portfolio see the same split.
-       *
-       * Money lent out is its own line for the same reason. It counts towards what you are
-       * worth — a debt owed to you is wealth you happen not to be holding — but it is not a
-       * chattel, and inside "Other" it was reported as one.
-       */
-      const parts: Array<[string, number]> = [
-        ['Cash', h.cash - h.brokerageCash], ['Real estate', h.realEstate],
-        ['Gold and silver', h.metals], ['Vehicles', h.vehicles],
-        ['Shares', h.shares + h.brokerageCash], ['Lent out', h.lent], ['Other', h.other],
-      ];
-      const owned = parts.reduce((s, [, v]) => s + v, 0);
-      return {
-        currency: display,
-        netWorth: d(h.total),
-        owedOnPlans: d(h.contracts),
-        allocation: [
-          ...parts.filter(([, v]) => v !== 0).map(([label, egp]) => ({
-            label, amount: d(egp), share: owned ? egp / owned : 0,
-          })),
-          ...(h.liabilities > 0
-            ? [{ label: 'Owed', amount: d(-h.liabilities), share: owned ? -h.liabilities / owned : 0 }]
-            : []),
-        ],
-        rates: market.fxRates,
-        asOf: ctx.now.toISOString().slice(0, 10),
-      };
-    },
+    handler: async ({ currency }) => wealthSnapshot(ctxOf(), currency),
   }),
 
   query({

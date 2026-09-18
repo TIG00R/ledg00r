@@ -113,7 +113,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
                   options={[{ value: 'zakat', label: 'Zakat', hint: 'counts against the obligation' },
                           { value: 'sadaqat', label: 'Sadaqat', hint: 'given freely' }]} />
             ) },
-          { key: 'amount', label: 'Amount', kind: 'money', align: 'right',
+          { key: 'amount', label: 'Amount', kind: 'money',
             value: (r) => toEgp(r.amount, r.currency, market),
             // Given in the currency the account is held in is not an exchange, and was being
             // restated in the reader's currency as though it were.

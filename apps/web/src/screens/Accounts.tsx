@@ -1,43 +1,47 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Amount } from '../components/Amount';
+import { Donut } from '../components/Donut';
 import { useApp, market } from '../AppState';
-import { money, toEgp, fromEgp } from '@ledger/engine';
+import { money, toEgp, fromEgp, type Currency } from '@ledger/engine';
 import { Page, Panel, Chip, Row, Field, AccountName } from '../components/UI';
 import { Icon } from '../components/Icon';
 import { OperationPanel, MoveMoney } from '../components/Operations';
-import { ModeProvider, useMode } from '../components/ModeBar';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useAppearance } from '../Appearance';
 import { ConfirmDelete } from '../components/Confirm';
 import { Mark, MarkPicker } from '../components/Mark';
 import { Select } from '../components/Select';
-import { RecordTable } from '../components/RecordTable';
+import { RecordTable, isInteractive } from '../components/RecordTable';
 import { DateField } from '../components/DateField';
 import { ledger } from '../api';
 import { ActionButton, useLive } from '../Live';
 import { movementCount } from '@ledger/engine';
 
-const COLS = '54px minmax(220px,1fr) 150px 76px';
+// the last column now holds a pencil beside the bin, rather than the bin alone
+const COLS = '54px minmax(220px,1fr) 150px 108px';
 
 export function Accounts() {
   return (
-    <ModeProvider>
-      <SectionProvider first="accounts"><Body /></SectionProvider>
-    </ModeProvider>
+    <SectionProvider first="accounts"><Body /></SectionProvider>
   );
 }
 
 function Body() {
   const { data, dm, display, values, balances, currencies } = useApp();
-  const { mode } = useMode();
   const { tab } = useSection();
   const { appearance } = useAppearance();
   const { run } = useLive();
-  /** balances being corrected in Edit mode, before they are recorded */
+  /** balances being corrected before they are recorded */
   const [drafts] = useState<Record<string, number>>({});
-  /** edits are held until they are saved, so switching modes does not silently drop them */
+  /** name edits are held until they are saved, so closing the row by mistake does not lose them */
   const [names, setNames] = useState<Record<string, string>>({});
   const [pickingInst, setPickingInst] = useState<string | null>(null);
+  /**
+   * The one row open for correction — a bank, or an account under one — named
+   * `inst:<id>` or `acct:<id>` so the two kinds never collide. Double-click a row, press
+   * Enter with it focused, or press its pencil; only one is ever open at a time.
+   */
+  const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: '', currency: 'EGP', opening: 0, kind: 'cash' as 'cash' | 'liability' });
   /** a new institution, held until it is added — accounts can only hang off one that exists */
@@ -49,14 +53,25 @@ function Body() {
   /**
    * Accounts held at an institution.
    *
-   * The brokerage wallet is cash you hold, but it belongs to the share book rather than to a
-   * bank — which is exactly what having no institution says — so it is shown there and not
-   * here.
+   * These are the ones a bank stands behind, and they are grouped under the bank that holds
+   * them. Cash held anywhere else is just as real and is drawn underneath them — see `loose`.
    */
-  const cash = data.nodes.filter((n) => n.kind === 'cash' && n.parentId);
+  const cash = data.nodes.filter((n) => n.kind === 'cash' && n.parentId && atBankOf(data).has(n.parentId));
+  /**
+   * Cash you hold that no bank holds for you.
+   *
+   * A broker's wallet, its savings cloud, and the same two for every other exchange opened
+   * beside it. This money was shown nowhere on this screen: it left a bank account, which the
+   * log recorded, and then arrived somewhere the accounts screen did not admit existed — so
+   * "where did that go" had no answer here. It is money you hold, so it is drawn with the
+   * accounts and counted in the total, under its own heading rather than under a bank that
+   * does not hold it.
+   */
+  const loose = data.nodes.filter((n) => n.kind === 'cash'
+                                      && !(n.parentId && atBankOf(data).has(n.parentId)));
   // A card is a liability held at an institution; a contract balance is a liability held
   // against the asset it bought. Only the first belongs among the accounts.
-  const atBank = new Set(data.institutions.map((i) => i.id));
+  const atBank = atBankOf(data);
   const credit = data.nodes.filter((n) => n.kind === 'liability' && n.parentId && atBank.has(n.parentId));
   // what the account holds: the correction in progress, then the ledger, then the opening
   const qty = (id: string, fallback: number) => drafts[id] ?? balances[id] ?? fallback;
@@ -65,26 +80,26 @@ function Body() {
   const unitRate = (cur: string) => fromEgp(toEgp(1, cur, market), display, market);
   const inDisplay = (n: (typeof cash)[number]) => toEgp(qty(n.id, n.openingQty), n.currency ?? 'EGP', market);
 
-  const totalCash = cash.reduce((s, n) => s + inDisplay(n), 0);
+  // Every account's cash, the broker's wallets included — they were left out, which is why
+  // this figure and the one the movements work out to could never be made to agree.
+  const totalCash = [...cash, ...loose].reduce((s, n) => s + inDisplay(n), 0);
   const totalCredit = credit.reduce((s, n) => s + qty(n.id, n.openingQty), 0);
 
   const byCurrency = new Map<string, number>();
-  for (const n of cash) byCurrency.set(n.currency!, (byCurrency.get(n.currency!) ?? 0) + qty(n.id, n.openingQty));
+  for (const n of [...cash, ...loose]) byCurrency.set(n.currency!, (byCurrency.get(n.currency!) ?? 0) + qty(n.id, n.openingQty));
 
   return (
-    <Page aside={mode === 'operate' ? (
+    <Page aside={(
       <OperationPanel title="Move money"
         hint="Between two of your own accounts. Where the currencies differ this is an exchange, so the rate the bank actually gave you and its fee belong to the record.">
         <MoveMoney />
       </OperationPanel>
-    ) : undefined}>
+    )}>
       <Sections sections={[
         { id: 'accounts', label: 'Accounts', icon: 'accounts',
-          hint: 'What you hold, and where. Moving money is on the right.',
-          editHint: 'Rename an account, change what it holds or what it is held in, add one, archive one.' },
+          hint: 'What you hold, and where. Double-click a bank or an account to rename it, correct it, add one, or archive one.' },
         { id: 'records', label: 'Records', icon: 'ledger',
-          hint: 'Every movement that touched an account, newest first.',
-          editHint: 'Undo a movement. It writes the opposite rather than erasing it, so the log keeps both.' },
+          hint: 'Every movement that touched an account, newest first. Double-click one to undo it — it writes the opposite rather than erasing it, so the log keeps both.' },
       ]} />
 
       {tab === 'accounts' && (
@@ -99,14 +114,17 @@ function Body() {
               less {dm(totalCredit)} owed on credit · net {dm(totalCash - totalCredit)}
             </div>
           </div>
-          <div style={{ flex: 1, minWidth: 280, alignSelf: 'center' }}>
-            <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', gap: 2 }}>
-              {[...byCurrency].map(([cur, amt]) => (
-                <div key={cur} style={{ width: `${(toEgp(amt, cur, market) / totalCash) * 100}%`,
-                                        background: appearance.currencies[cur]?.color ?? 'var(--muted)' }} />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 18, marginTop: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', flex: 1, minWidth: 280 }}>
+            <Donut
+              slices={[...byCurrency].map(([cur, amt]) => ({
+                label: cur,
+                value: toEgp(amt, cur, market),
+                color: appearance.currencies[cur]?.color ?? 'var(--muted)',
+              }))}
+              size={140} thickness={18} format={(n) => dm(n)}
+              centre={<span style={{ fontSize: 11, color: 'var(--faint)' }}>by currency</span>}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[...byCurrency].map(([cur, amt]) => (
                 <span key={cur} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--muted)' }}>
                   <span style={{ width: 9, height: 9, borderRadius: 3,
@@ -137,7 +155,7 @@ function Body() {
       <Row cols={COLS} style={{ padding: '0 18px' }}>
         <span className="ov">Currency</span>
         <span className="ov">Account</span>
-        <span className="ov" style={{ textAlign: 'right' }}>1 unit in {display}</span>
+        <span className="ov">1 unit in {display}</span>
         <span />
       </Row>
       )}
@@ -149,12 +167,29 @@ function Body() {
         const cards = credit.filter((n) => n.parentId === inst.id);
         const subtotal = accounts.reduce((s, n) => s + inDisplay(n), 0);
         const instColour = appearance.institutions[inst.id] ?? inst.color;
+        const openThis = openId === `inst:${inst.id}`;
+        const startEditing = () => setOpenId(`inst:${inst.id}`);
+        const stopEditing = () => {
+          setOpenId(null);
+          setNames(({ [inst.id]: _drop, ...rest }) => rest);
+          setPickingInst(null);
+        };
         return (
           <div key={inst.id} style={{ borderRadius: 14, border: '1px solid var(--hairline)',
                                       background: 'var(--surface)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 18px',
-                          background: 'var(--raised)', borderBottom: '1px solid var(--hairline)' }}>
-              {mode === 'edit' ? (
+            <div className="mgr-row"
+                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 18px',
+                          background: 'var(--raised)', borderBottom: '1px solid var(--hairline)',
+                          cursor: openThis ? undefined : 'pointer' }}
+                 tabIndex={openThis ? undefined : 0}
+                 aria-label={openThis ? undefined : `Double-click, or press Enter, to edit ${inst.name}`}
+                 onDoubleClick={openThis ? undefined : (e) => { if (!isInteractive(e.target)) startEditing(); }}
+                 onKeyDown={openThis ? undefined : (e) => {
+                   if (e.key !== 'Enter' || isInteractive(e.target)) return;
+                   e.preventDefault();
+                   startEditing();
+                 }}>
+              {openThis ? (
                 <button onClick={() => setPickingInst(pickingInst === inst.id ? null : inst.id)}
                         aria-label={`Change the mark for ${inst.name}`}
                         style={{ width: 38, height: 30, borderRadius: 8, cursor: 'pointer', padding: 0,
@@ -179,7 +214,7 @@ function Body() {
                 </span>
               )}
               <div>
-                {mode === 'edit' ? (
+                {openThis ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <input value={nameOf(inst.id, inst.name)} aria-label={`${inst.name} name`}
                            onChange={(e) => setNames({ ...names, [inst.id]: e.target.value })}
@@ -187,9 +222,13 @@ function Body() {
                     {names[inst.id] != null && names[inst.id] !== inst.name && (
                       <ActionButton capability="institution.update" className="btn go sm"
                         style={undefined}
-                        onDone={(o) => { if (o.ok) setNames(({ [inst.id]: _, ...r }) => r); }}
+                        onDone={(o) => { if (o.ok) stopEditing(); }}
                         input={{ institutionId: inst.id, name: names[inst.id] }}>Save</ActionButton>
                     )}
+                    <button className="btn ghost sm" onClick={stopEditing}>
+                      <Icon name="close" size={13} motion="none" /> Close
+                    </button>
+                    <Chip tone="warn">no movement is recorded</Chip>
                   </span>
                 ) : <div style={{ fontSize: 15, fontWeight: 600 }}>{nameOf(inst.id, inst.name)}</div>}
                 <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>
@@ -202,24 +241,26 @@ function Body() {
                   <div className="ov">Here</div>
                   <div className="mono" style={{ fontSize: 16, fontWeight: 500 }}>{dm(subtotal)}</div>
                 </div>
-                {mode === 'edit' && (
-                  <>
-                    <button className="btn add" style={{ padding: '7px 12px', fontSize: 12 }}
-                            onClick={() => setAdding(adding === inst.id ? null : inst.id)}>
-                      <Icon name="plus" size={13} /> Account
-                    </button>
-                    <ConfirmDelete what={inst.name}
-                      blocked={accounts.length + cards.length > 0
-                        ? `${inst.name} still holds ${accounts.length + cards.length} account${accounts.length + cards.length === 1 ? '' : 's'}. Archive it instead — every balance and every movement stays readable.`
-                        : undefined}
-                      onArchive={() => { void run('institution.update', { institutionId: inst.id, archived: true }); }}
-                      onConfirm={() => { void run('institution.remove', { institutionId: inst.id }); }} />
-                  </>
+                {!openThis && (
+                  <button className="btn quiet rt-hint" onClick={startEditing} aria-label={`Edit ${inst.name}`}
+                          title="Edit" style={{ padding: 7, border: 'none' }}>
+                    <Icon name="edit" size={14} />
+                  </button>
                 )}
+                <button className="btn add" style={{ padding: '7px 12px', fontSize: 12 }}
+                        onClick={() => setAdding(adding === inst.id ? null : inst.id)}>
+                  <Icon name="plus" size={13} /> Account
+                </button>
+                <ConfirmDelete what={inst.name} className="rt-hint"
+                  blocked={accounts.length + cards.length > 0
+                    ? `${inst.name} still holds ${accounts.length + cards.length} account${accounts.length + cards.length === 1 ? '' : 's'}. Archive it instead — every balance and every movement stays readable.`
+                    : undefined}
+                  onArchive={() => { void run('institution.update', { institutionId: inst.id, archived: true }); }}
+                  onConfirm={() => { void run('institution.remove', { institutionId: inst.id }); }} />
               </div>
             </div>
 
-            {adding === inst.id && mode === 'edit' && (
+            {adding === inst.id && (
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end',
                             padding: '14px 18px', borderBottom: '1px solid var(--hairline)',
                             background: 'color-mix(in srgb, var(--positive) 5%, transparent)' }}>
@@ -254,7 +295,7 @@ function Body() {
               </div>
             )}
 
-            {pickingInst === inst.id && mode === 'edit' && (
+            {pickingInst === inst.id && openThis && (
               <div style={{ padding: '0 18px 14px' }}>
                 <MarkPicker value={inst.logo ?? undefined} family="cash" tone={instColour}
                   label={`Mark for ${inst.name} — an icon, or the bank's own logo`}
@@ -269,11 +310,22 @@ function Body() {
               const dp = cur === 'EGP' ? 0 : 2;
               const style = appearance.currencies[cur];
               const native = qty(n.id, n.openingQty);
+              const openAcct = openId === `acct:${n.id}`;
+              const openAccount = () => setOpenId(`acct:${n.id}`);
               return (
                 <Row key={n.id} cols={COLS} style={{
                   padding: '13px 18px',
                   borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--hairline)',
                   background: isCredit ? 'color-mix(in srgb, var(--negative) 5%, transparent)' : undefined,
+                  cursor: openAcct ? undefined : 'pointer',
+                }}
+                tabIndex={openAcct ? undefined : 0}
+                aria-label={openAcct ? undefined : `Double-click, or press Enter, to edit ${n.name}`}
+                onDoubleClick={openAcct ? undefined : (e: MouseEvent<HTMLDivElement>) => { if (!isInteractive(e.target)) openAccount(); }}
+                onKeyDown={openAcct ? undefined : (e: KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key !== 'Enter' || isInteractive(e.target)) return;
+                  e.preventDefault();
+                  openAccount();
                 }}>
                   {/* The mark is what the currency looks like everywhere, so it is set once
                       in the Currency Zone rather than cycled from here. */}
@@ -287,10 +339,10 @@ function Body() {
                   </span>
 
                   <div style={{ minWidth: 0 }}>
-                    {mode === 'edit' ? (
+                    {openAcct ? (
                       <AccountEditor node={n} currency={cur} isCredit={isCredit}
                         held={balances[n.id] ?? n.openingQty}
-                        currencies={currencies} run={run} />
+                        currencies={currencies} run={run} onClose={() => setOpenId(null)} />
                     ) : (
                       <>
                         <div style={{ fontSize: 14 }}>{n.name}</div>
@@ -310,17 +362,23 @@ function Body() {
                     </div>
                   </div>
 
-                  <span className="mono" style={{ textAlign: 'right', fontSize: 13, color: 'var(--muted)' }}>
+                  <span className="mono" style={{ fontSize: 13, color: 'var(--muted)' }}>
                     {cur === display ? '1' : unitRate(cur).toFixed(cur === 'EGP' ? 5 : 4)}
                   </span>
 
-                  <span style={{ textAlign: 'right' }}>
-                    {mode === 'edit' && (() => {
+                  <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                    {!openAcct && (
+                      <button className="btn quiet rt-hint" onClick={openAccount} aria-label={`Edit ${n.name}`}
+                              title="Edit" style={{ padding: 7, border: 'none' }}>
+                        <Icon name="edit" size={14} />
+                      </button>
+                    )}
+                    {(() => {
                       // an account with movements against it cannot go: deleting it would
                       // rewrite what already happened
                       const used = movementCount(data, n.id);
                       return (
-                        <ConfirmDelete what={n.name}
+                        <ConfirmDelete what={n.name} className="rt-hint"
                           blocked={used > 0
                             ? `${used} movement${used === 1 ? '' : 's'} name this account. Archiving freezes the balance and keeps every row in the log.`
                             : undefined}
@@ -339,7 +397,7 @@ function Body() {
 
       {/* An account has to hang off an institution, so the bank is added first and the
           accounts after. Without this the only way in was a seeded database. */}
-      {tab === 'accounts' && mode === 'edit' && !addingBank && (
+      {tab === 'accounts' && !addingBank && (
         <div>
           <button className="btn" onClick={() => setAddingBank(true)}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
@@ -348,7 +406,7 @@ function Body() {
         </div>
       )}
 
-      {tab === 'accounts' && mode === 'edit' && addingBank && (
+      {tab === 'accounts' && addingBank && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end',
                       padding: '14px 18px', borderRadius: 14, border: '1px solid var(--hairline)',
                       background: 'color-mix(in srgb, var(--positive) 5%, transparent)' }}>
@@ -383,10 +441,49 @@ function Body() {
         </div>
       )}
 
-      {/* What the last write did, or why it was refused. Without it a button that the ledger
-          turned down — no service behind the screen, most often — looks broken. */}
+      {/*
+        * Cash no bank holds: a broker's wallet, its savings cloud, and the same pair for every
+        * other exchange. Money moved into one of these left a bank account and arrived here,
+        * and until this block existed it arrived somewhere this screen did not draw — so the
+        * movement was recorded and the destination was invisible. It is read here rather than
+        * edited: the book that owns it is where it is renamed and where money is put into it.
+        */}
+      {tab === 'accounts' && loose.length > 0 && (
+        <div style={{ borderRadius: 14, border: '1px solid var(--hairline)',
+                      background: 'var(--surface)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 18px',
+                        background: 'var(--raised)', borderBottom: '1px solid var(--hairline)' }}>
+            <span style={{ width: 38, height: 30, borderRadius: 8, background: 'var(--control)',
+                           display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="stocks" size={17} color="var(--muted)" />
+            </span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Held outside a bank</div>
+              <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>
+                a broker's wallet and its cloud · {loose.length} account{loose.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <div className="ov">Here</div>
+              <div className="mono" style={{ fontSize: 16, fontWeight: 500 }}>
+                {dm(loose.reduce((sum, n) => sum + inDisplay(n), 0))}
+              </div>
+            </div>
+          </div>
+          {loose.map((n) => (
+            <Row key={n.id} cols={COLS} style={{ padding: '12px 18px', borderTop: '1px solid var(--hairline)' }}>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--faint)' }}>{n.currency}</span>
+              <span style={{ fontSize: 13 }}>{n.name}</span>
+              <span className="mono" style={{ fontSize: 13 }}>
+                {money(qty(n.id, n.openingQty), n.currency as Currency, n.currency === 'EGP' ? 0 : 2)}
+              </span>
+              <span />
+            </Row>
+          ))}
+        </div>
+      )}
 
-      {tab === 'accounts' && mode === 'edit' && (
+      {tab === 'accounts' && (
         <p style={{ margin: 0, fontSize: 12, color: 'var(--faint)', lineHeight: 1.55, maxWidth: 780 }}>
           An account with movements against it cannot be deleted — that would rewrite what already
           happened. Archiving freezes the balance, drops it out of the pickers and keeps every row
@@ -412,13 +509,15 @@ function Body() {
  * money flow read that account as a source and reported income nobody had earned. The act
  * itself is kept under Logs.
  */
-function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
+function AccountEditor({ node, currency, held, currencies, run, isCredit, onClose }: {
   node: { id: string; name: string };
   currency: string;
   held: number;
   isCredit: boolean;
   currencies: ReturnType<typeof useApp>['currencies'];
   run: ReturnType<typeof useLive>['run'];
+  /** the row this editor lives in has closed — either the correction was saved, or given up on */
+  onClose: () => void;
 }) {
   const [draft, setDraft] = useState({ name: node.name, currency, balance: held });
   const [busy, setBusy] = useState(false);
@@ -449,6 +548,7 @@ function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
     }
     setSaid(said.join(' · '));
     setBusy(false);
+    onClose();
   };
 
   return (
@@ -481,15 +581,13 @@ function AccountEditor({ node, currency, held, currencies, run, isCredit }: {
       )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn go sm" disabled={!dirty || busy} onClick={save}>
+        <button className="btn go sm" disabled={busy} onClick={save}>
           <Icon name="check" size={13} motion="none" /> {busy ? 'Saving…' : 'Save'}
         </button>
-        {dirty && (
-          <button className="btn ghost sm"
-                  onClick={() => { setDraft({ name: node.name, currency, balance: held }); setSaid(null); }}>
-            <Icon name="close" size={13} motion="none" /> Cancel
-          </button>
-        )}
+        <button className="btn ghost sm" onClick={onClose}>
+          <Icon name="close" size={13} motion="none" /> {dirty ? 'Cancel' : 'Close'}
+        </button>
+        <Chip tone="warn">no movement is recorded</Chip>
         {said && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{said}</span>}
       </div>
     </div>
@@ -508,12 +606,24 @@ interface Movement {
   automatic: boolean; reversedBy?: string | null; reverses?: string | null;
   legs: Array<{ fromNodeId?: string | null; fromName?: string | null;
                 toNodeId?: string | null; toName?: string | null;
-                qtyFrom?: number | null; rateApplied?: number | null }>;
+                qtyFrom?: number | null; rateApplied?: number | null;
+                /** what a bank kept on the way — out of the same account the movement left */
+                feeQty?: number | null }>;
 }
 
 /** What a movement may be called. The ledger accepts these and nothing else. */
 const MOVEMENT_KINDS = ['income', 'expense', 'transfer', 'exchange', 'installment',
                         'purchase', 'sale', 'giving', 'correction'] as const;
+
+/**
+ * Which institutions actually stand behind an account.
+ *
+ * A node's parent is an institution only when the ledger has one by that id — a property's
+ * outstanding balance hangs off the asset that bought it, which is a parent but not a bank.
+ */
+function atBankOf(data: ReturnType<typeof useApp>['data']): Set<string> {
+  return new Set(data.institutions.map((i) => i.id));
+}
 
 function MovementRecords() {
   const { data } = useApp();
@@ -529,9 +639,16 @@ function MovementRecords() {
    * an account at a bank — listing it here put "Riverside Residences owed" among the current accounts
    * and made the picker read as a list of everything the ledger knows.
    */
-  const institutions = new Set(data.institutions.map((i) => i.id));
-  const accounts = data.nodes.filter((n) => (n.kind === 'cash' || n.kind === 'liability')
-                                            && n.parentId && institutions.has(n.parentId));
+  const institutions = atBankOf(data);
+  /**
+   * Every account a movement can be read by — the ones a bank holds, and the cash held
+   * outside one: a broker's wallet and its cloud. Leaving those out meant money moved into
+   * the book could not be read back from the book's own side, which is half of what a
+   * transfer is. A property's outstanding balance is still not an account, and is still not
+   * here: it is a liability hanging off the asset that bought it.
+   */
+  const accounts = data.nodes.filter((n) => (n.kind === 'cash' && (!n.parentId || institutions.has(n.parentId)))
+                                            || (n.kind === 'liability' && n.parentId && institutions.has(n.parentId)));
 
   /**
    * Where money comes from and goes to, which is wider than the accounts.
@@ -574,6 +691,19 @@ function MovementRecords() {
     return to ? 'in' : 'out';
   };
 
+  /**
+   * What the movement took out of the account it came from.
+   *
+   * A leg's own amount is what reached the other end; a charge taken on the way is recorded
+   * beside it and comes out of the same account. The account lost both, so both are what the
+   * log has to say it lost.
+   */
+  const leftSource = (m: Movement): number => {
+    const leg = m.legs[0];
+    if (!leg || leg.qtyFrom == null) return 0;
+    return leg.qtyFrom + (leg.feeQty ?? 0);
+  };
+
   const load = useCallback(() => {
     if (!live) { setRows(null); return; }
     (ledger as any)['movements.list']({ accountId: account || undefined, limit: 300 })
@@ -604,7 +734,7 @@ function MovementRecords() {
       </div>
 
       {/* The movement log is a log like any other, so it is drawn by the same table: every
-          heading filters its own column, and every column can be corrected in Edit mode.
+          heading filters its own column, and double-clicking a row corrects it.
           Correcting reverses the movement and posts the corrected one in its place, so the
           balances follow and the log still says both things happened. */}
       <RecordTable<Movement>
@@ -674,18 +804,31 @@ function MovementRecords() {
             * every figure looks the same makes you read two more columns to learn the one
             * thing you wanted from this one.
             */
-          { key: 'amount', label: 'Amount', kind: 'amount', align: 'right',
-            value: (m) => m.legs[0]?.qtyFrom ?? 0,
+          { key: 'amount', label: 'Amount', kind: 'amount',
+            /* What actually left the source: the sum that moved plus the charge taken on the
+               way, because both came out of the same account. Sorting and filtering read the
+               same figure the eye does. */
+            value: (m) => leftSource(m),
             cell: (m) => {
               const leg = m.legs[0] ?? {};
               const way = flowOf(m);
               const colour = way === 'in' ? 'var(--positive)'
                            : way === 'out' ? 'var(--negative)' : undefined;
+              const fee = leg.feeQty ?? 0;
               return (
                 <span className="mono" style={{ color: colour, fontWeight: way ? 500 : undefined }}>
                   {leg.qtyFrom != null
-                    ? `${way === 'in' ? '+' : way === 'out' ? '−' : ''}${Math.round(leg.qtyFrom).toLocaleString()}`
+                    ? `${way === 'in' ? '+' : way === 'out' ? '−' : ''}${Math.round(leftSource(m)).toLocaleString()}`
                     : '—'}
+                  {/* A movement with a charge on it moved two figures, not one: what the
+                      account lost, and what the other end received. Showing only the second
+                      made a thousand pounds sent read as nine hundred and eighty — the fee
+                      was recorded and nothing on screen said so. */}
+                  {fee > 0 && leg.qtyFrom != null && (
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                      {Math.round(leg.qtyFrom).toLocaleString()} arrived · {Math.round(fee).toLocaleString()} fee
+                    </span>
+                  )}
                   {/* a rate is read, not calculated with, so it is shown to four places
                       rather than to the fifteen the arithmetic produced */}
                   {leg.rateApplied ? (
@@ -700,6 +843,16 @@ function MovementRecords() {
               <Amount value={Number(d.amount ?? 0)} ariaLabel="Amount"
                       onChange={(n) => set({ amount: n })} />
             ) },
+          /* What the bank kept. Its own column so a year of charges can be sorted to the top
+             and totalled by eye, rather than hiding under the amount it came out of. */
+          { key: 'fee', label: 'Fee', kind: 'amount',
+            value: (m) => m.legs[0]?.feeQty ?? 0,
+            cell: (m) => {
+              const fee = m.legs[0]?.feeQty ?? 0;
+              return fee > 0
+                ? <span className="mono" style={{ color: 'var(--negative)' }}>{Math.round(fee).toLocaleString()}</span>
+                : <span style={{ color: 'var(--faint)' }}>—</span>;
+            } },
           { key: 'note', label: 'Note', kind: 'text',
             value: (m) => m.note ?? '',
             cell: (m) => (

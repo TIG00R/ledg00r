@@ -47,6 +47,15 @@ const Ctx = createContext<LiveCtx | null>(null);
 /** which screen is in front of the person right now */
 const screenNow = () => window.location.hash.replace(/^#\/?/, '').split('/')[0] || 'portfolio';
 
+/**
+ * How long to wait before asking again. A failed check backs off — one second, two, four,
+ * doubling — rather than hammering a service that is mid-restart, but it stops doubling at a
+ * ceiling short enough that coming back is still noticed promptly. A check that succeeds asks
+ * again too, on a calmer, steady pace, because a live ledger can stop answering as easily as a
+ * missing one can start.
+ */
+const WATCH_MS = { retryStart: 1000, retryMax: 15_000, steady: 5_000 } as const;
+
 export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [live, setLive] = useState(false);
   const [version, setVersion] = useState(0);
@@ -54,7 +63,38 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [last, setLast] = useState<(Outcome & { capability: string; screen: string }) | null>(null);
   const inflight = useRef(new Set<string>());
 
-  useEffect(() => { apiAvailable().then(setLive); }, []);
+  /**
+   * Whether there is a ledger behind this screen, kept current rather than settled once.
+   *
+   * The first check can land at exactly the moment the service is restarting under it —
+   * that is what happened here — and believing that single failure forever is how a screen
+   * goes on reading fixtures beside a ledger that has been up and answering for an hour,
+   * with nothing on screen to say the two have drifted apart. So a failure is retried on a
+   * backoff instead of accepted as the last word, and going live does not stop the watching:
+   * the same check keeps running, more calmly, so a ledger that stops answering later is
+   * noticed instead of leaving stale numbers standing in as if they were current.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let backoff: number = WATCH_MS.retryStart;
+
+    const tick = async () => {
+      const ok = await apiAvailable();
+      if (cancelled) return;
+      setLive(ok);
+      if (ok) {
+        backoff = WATCH_MS.retryStart; // a later drop starts backing off from the beginning again
+        timer = setTimeout(tick, WATCH_MS.steady);
+      } else {
+        timer = setTimeout(tick, backoff);
+        backoff = Math.min(backoff * 2, WATCH_MS.retryMax);
+      }
+    };
+    tick();
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, []);
 
   /**
    * A receipt belongs to the screen that earned it.
@@ -160,31 +200,54 @@ export function ActionButton({ capability, input, children, className = 'btn', s
   );
 }
 
+/** How long a receipt stays up before it dismisses itself: long enough to read a failure's
+ *  remedy, short enough that a success does not linger over the next thing you do. */
+const TOAST_MS = { ok: 2000, fail: 5000 } as const;
+
 /**
- * What the last write did, or why it was refused. Shown where the action was taken.
+ * What the last write did, or why it was refused. A toast, floating over whichever screen
+ * earned it, that shows itself and then goes away on its own.
  *
- * Only there: the receipt carries the screen it was earned on, so a screen that happens to
- * draw one of these never inherits another screen's news.
+ * Only on the screen that earned it: the receipt carries that screen, so one that happens to
+ * mount this never inherits another screen's news.
+ *
+ * It clears the stored outcome when its own timer runs out, rather than merely unmounting —
+ * an outcome left standing in `last` would draw itself again the moment this remounts (a
+ * screen switch and back, a hot reload), which is a toast that looks like it never left.
  */
 export function LastOutcome() {
   const { last, clear } = useLive();
-  if (!last || last.screen !== screenNow()) return null;
-  const good = last.ok;
+  const onScreen = !!last && last.screen === screenNow();
+
+  // A fresh receipt — even for the same capability — is a new object, so this effect tears
+  // down the previous timer and starts a new one: that is the reset a new arrival needs.
+  useEffect(() => {
+    if (!onScreen) return;
+    const ms = last!.ok ? TOAST_MS.ok : TOAST_MS.fail;
+    const id = window.setTimeout(clear, ms);
+    return () => window.clearTimeout(id);
+  }, [last, onScreen, clear]);
+
+  if (!onScreen) return null;
+  const good = last!.ok;
   return (
-    <div role="status" style={{
+    <div role={good ? 'status' : 'alert'} style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 300,
+      width: 360, maxWidth: 'calc(100vw - 32px)',
       display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 13px',
       borderRadius: 'var(--r-card)', fontSize: 12, lineHeight: 1.45,
-      background: `color-mix(in srgb, var(--${good ? 'positive' : 'negative'}) 9%, transparent)`,
+      boxShadow: 'var(--shadow-lg)',
+      background: `color-mix(in srgb, var(--${good ? 'positive' : 'negative'}) 9%, var(--surface))`,
       border: `1px solid color-mix(in srgb, var(--${good ? 'positive' : 'negative'}) 26%, transparent)`,
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ color: `var(--${good ? 'positive' : 'negative'})`, fontWeight: 500 }}>
-          {good ? (last.summary ?? 'Recorded') : last.message}
+          {good ? (last!.summary ?? 'Recorded') : last!.message}
         </div>
-        {!good && last.remedy && <div style={{ color: 'var(--muted)', marginTop: 3 }}>{last.remedy}</div>}
-        {good && last.changes?.length ? (
+        {!good && last!.remedy && <div style={{ color: 'var(--muted)', marginTop: 3 }}>{last!.remedy}</div>}
+        {good && last!.changes?.length ? (
           <div style={{ color: 'var(--muted)', marginTop: 4 }}>
-            {last.changes.map((c) => `${c.name}: ${Math.round(c.before).toLocaleString()} → ${Math.round(c.after).toLocaleString()}`).join(' · ')}
+            {last!.changes.map((c) => `${c.name}: ${Math.round(c.before).toLocaleString()} → ${Math.round(c.after).toLocaleString()}`).join(' · ')}
           </div>
         ) : null}
       </div>

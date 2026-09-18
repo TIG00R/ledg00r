@@ -656,6 +656,281 @@ const STEPS: Step[] = [
       catch { /* already there */ }
     },
   },
+  {
+    version: 26,
+    name: 'a debt remembers the rate it was lent at',
+    /**
+     * Money lent or borrowed in a foreign currency has to be worth something in the
+     * ledger's own, and that has always been worked out at whatever rate happened to be
+     * current when someone asked — so a dollar loan quietly grew or shrank in the totals
+     * every time the dollar moved, with nothing recorded ever having actually changed. An
+     * expense freezes its rate the day it is spent; a debt now does the same the day it is
+     * lent or borrowed. Existing debts get no rate here — there is no honest way to know
+     * what it was — and fall back to today's, visibly, until they are.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE debts ADD COLUMN rate REAL'); }
+      catch { /* already there */ }
+    },
+  },
+  {
+    version: 27,
+    name: 'clouds — a second wallet, for now',
+    /**
+     * A place to save that will one day compound.
+     *
+     * Until the interest itself is built, a cloud is indistinguishable from the brokerage
+     * wallet next to it: cash, held at the broker, read back the same way. It gets its own
+     * node rather than a flag on the existing one, on exactly the terms `ensureStructuralNodes`
+     * already gives the wallet — because the day compounding is built, this is the row it
+     * has to grow out of, and a wallet wearing two hats would have made that harder, not
+     * easier.
+     */
+    up: (db) => {
+      ensureStructuralNodes(db);
+    },
+  },
+  {
+    version: 28,
+    name: 'a ticker carries its own logo',
+    /**
+     * A company has a mark the icon set does not draw, the same way a bank does — so the
+     * notebook's index of tickers gets the same column marks.ts already gave institutions:
+     * an icon name, or `img:<id>` into the pictures table.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE stocks ADD COLUMN logo TEXT'); }
+      catch { /* already there */ }
+    },
+  },
+  {
+    version: 29,
+    name: 'a sale remembers what it made, once',
+    /**
+     * What a sale earned against the average cost of every share behind it, at the moment it
+     * was sold — the Stocks screen already works this average out to show a position, and a
+     * sale now has it written to its own row rather than left to be re-derived from orders
+     * that keep changing underneath it. Existing sales get no figure: there is no honest way
+     * to know what the owner saw at the time, and backfilling one would show a number that
+     * was never actually reported.
+     */
+    up: (db) => {
+      for (const sql of [
+        'ALTER TABLE orders ADD COLUMN realized_pnl REAL',
+        'ALTER TABLE orders ADD COLUMN realized_pnl_pct REAL',
+      ]) {
+        try { db.$raw.exec(sql); } catch { /* already there */ }
+      }
+    },
+  },
+  {
+    version: 30,
+    name: 'a holding remembers the money it was bought with',
+    /**
+     * Most of what comes in here arrives in dollars, and buying gold or a share means turning
+     * some of it into pounds first. The gold can go up in pounds while the dollar that bought
+     * it went up more — a loss dressed as a gain, and nothing could tell the two apart because
+     * every holding was only ever compared against its own currency. So a purchase now keeps
+     * the account it came out of, that account's own currency, what actually left it, and the
+     * rate applied that day — the same freezing a debt already does, for the same reason — so
+     * the ledger can ask, alongside what a holding is worth today, what the money would be
+     * worth now had it simply stayed where it was.
+     *
+     * Nothing is backfilled. A lot, a buy or an asset recorded before this column existed has
+     * no honest rate to give it, and none is invented — it reads back as no source at all.
+     */
+    up: (db) => {
+      for (const sql of [
+        'ALTER TABLE gold_lots ADD COLUMN source_currency TEXT',
+        'ALTER TABLE gold_lots ADD COLUMN source_amount REAL',
+        'ALTER TABLE gold_lots ADD COLUMN source_rate REAL',
+        'ALTER TABLE orders ADD COLUMN account_id TEXT',
+        'ALTER TABLE orders ADD COLUMN source_currency TEXT',
+        'ALTER TABLE orders ADD COLUMN source_amount REAL',
+        'ALTER TABLE orders ADD COLUMN source_rate REAL',
+        'ALTER TABLE nodes ADD COLUMN source_account_id TEXT',
+        'ALTER TABLE nodes ADD COLUMN source_currency TEXT',
+        'ALTER TABLE nodes ADD COLUMN source_amount REAL',
+        'ALTER TABLE nodes ADD COLUMN source_rate REAL',
+      ]) {
+        try { db.$raw.exec(sql); } catch { /* already there */ }
+      }
+    },
+  },
+  {
+    version: 31,
+    name: 'an exchange above the book',
+    /**
+     * There was exactly one share book: one wallet, one set of orders, one set of positions,
+     * all reached by an id nothing ever had to think about. An owner with money at more than
+     * one broker needs more than one of each, so the book itself becomes a row that a wallet
+     * and an order belong to, rather than the one thing there has only ever been one of.
+     *
+     * What already exists becomes the first exchange, called 'main' rather than something
+     * generated, because every capability that touches the share book has to default to it —
+     * and a default has to be a fixed id, not one looked up. It keeps the wallet and the
+     * clouds wallet it always had, under the ids they always had, so nothing that already
+     * pointed at `brokerage-cash` or `clouds-cash` moves. Every order already logged is given
+     * to it too: the column's own DEFAULT does that for the rows already in the table, the
+     * same way SQLite fills in any other NOT NULL column added with one.
+     */
+    up: (db) => {
+      db.$raw.exec(`
+        CREATE TABLE IF NOT EXISTS exchanges (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          wallet_node_id TEXT NOT NULL,
+          clouds_node_id TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL);
+      `);
+      try { db.$raw.exec("ALTER TABLE orders ADD COLUMN exchange_id TEXT NOT NULL DEFAULT 'main'"); }
+      catch { /* already there */ }
+      db.$raw.exec('CREATE INDEX IF NOT EXISTS ord_exchange ON orders (exchange_id, date)');
+      ensureStructuralNodes(db);
+    },
+  },
+  {
+    version: 32,
+    name: 'why a share is held',
+    /**
+     * Zakat is worked out from what a thing is held for, not from what it is — a gold lot
+     * already carries this, a property already carries this, and a share held nothing at all.
+     * The answer belongs to the ticker rather than to any one order, the same way a name or a
+     * logo does: every order for it, and every position built from them, means the same
+     * company. Left unset it reads back null, which the interface reads as "not stated" rather
+     * than guessing at a default that was never actually chosen.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE stocks ADD COLUMN intention TEXT'); }
+      catch { /* already there */ }
+    },
+  },
+  {
+    version: 33,
+    name: 'what a sale of metal cost to make',
+    /**
+     * A flat charge on a sale — the dealer's cut, the transfer — comes off what arrives, and
+     * until now it was applied to the movement and then forgotten. The lot recorded the gross,
+     * so correcting that sale afterwards reversed a smaller payment than it wrote back and
+     * quietly handed the fee to the account, again on every correction. Kept on the lot, in
+     * the account's own currency the way it was given, the correction can put back exactly
+     * what the sale took.
+     *
+     * Existing rows read zero, which is what they were: no sale before this could carry one.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE gold_lots ADD COLUMN fee REAL NOT NULL DEFAULT 0'); }
+      catch { /* already there */ }
+    },
+  },
+  {
+    version: 34,
+    name: 'what a lot cost, making included',
+    /**
+     * `total_egp` used to be the metal alone, and every reader added the making charge back on
+     * top. Now the total is what the lot actually cost — the gram price and the making charge
+     * summed before the weight multiplies them, which is how a dealer quotes it — and the
+     * readers add nothing. Rows written under the old reading would be understated by exactly
+     * the making charge, so they are brought up to the new one here.
+     *
+     * Which reading a row was written under is not recorded anywhere, so it is inferred from
+     * the arithmetic rather than assumed: a row whose total is still the bare metal is an old
+     * one, and a row whose total already carries the making charge is left alone. A row with
+     * no making charge reads the same either way and is not touched at all.
+     */
+    up: (db) => {
+      const lots = db.$raw.prepare(
+        `SELECT id, direction, grams, price_per_gram AS price, total_egp AS total, making_egp AS making
+           FROM gold_lots WHERE making_egp IS NOT NULL AND making_egp > 0`,
+      ).all() as Array<{ id: string; direction: string; grams: number; price: number; total: number; making: number }>;
+      const set = db.$raw.prepare('UPDATE gold_lots SET total_egp = ? WHERE id = ?');
+      // A hundredth of a pound: enough to survive the rounding of a rate, far below the
+      // making charge on any real lot.
+      const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
+      for (const lot of lots) {
+        const metalOnly = lot.grams * lot.price;
+        if (!near(lot.total, metalOnly)) continue;
+        // Buying, the making charge was paid on top; selling, it came out of what arrived.
+        set.run(lot.direction === 'sell' ? metalOnly - lot.making : metalOnly + lot.making, lot.id);
+      }
+    },
+  },
+  {
+    version: 35,
+    name: 'a wealth statement, frozen at the month it closed',
+    /**
+     * Net worth read live moves every time a price does, so asking again tomorrow answers a
+     * different figure for today. A timeline needs the opposite: what the answer was, written
+     * once and left alone until someone deliberately corrects it — the same reading a
+     * confirmed zakat year already gets.
+     */
+    up: (db) => db.$raw.exec(`
+      CREATE TABLE IF NOT EXISTS wealth_statements (
+        id         TEXT PRIMARY KEY,
+        month      TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        currency   TEXT NOT NULL,
+        net_worth  REAL NOT NULL,
+        allocation TEXT NOT NULL,
+        source     TEXT NOT NULL DEFAULT 'auto',
+        note       TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT);
+      CREATE UNIQUE INDEX IF NOT EXISTS wealth_stmt_month ON wealth_statements (month);
+    `),
+  },
+  {
+    version: 36,
+    name: 'a wealth statement every day, not once a month',
+    /**
+     * A month was too coarse to say "at the end of each day" — the scheduler now writes one
+     * row per day, so `date` is what a row is uniquely for, and `month` becomes a plain,
+     * non-unique column kept only so a month or a year can be read by index rather than by
+     * scanning `date` with `substr`.
+     */
+    up: (db) => db.$raw.exec(`
+      DROP INDEX IF EXISTS wealth_stmt_month;
+      CREATE UNIQUE INDEX IF NOT EXISTS wealth_stmt_date ON wealth_statements (date);
+      CREATE INDEX IF NOT EXISTS wealth_stmt_month ON wealth_statements (month);
+    `),
+  },
+  {
+    version: 37,
+    name: 'an order carries its own fee, and what it was bought for',
+    /**
+     * A broker charges for the order, not for each share in it, and that charge is real money
+     * leaving the wallet — so it is kept on the order and read into the cost of a buy and out
+     * of the proceeds of a sale. Intention moves here for the same reason it lives on a gold
+     * lot rather than on "gold": shares of one ticker bought to keep and bought to trade are
+     * two different answers, and the ticker cannot hold both.
+     *
+     * Nothing is backfilled. An order logged before this has no fee to find — zero is the
+     * honest reading, since none was ever recorded — and no intention, which reads as not
+     * stated rather than as either answer.
+     */
+    up: (db) => {
+      for (const sql of [
+        'ALTER TABLE orders ADD COLUMN fee REAL NOT NULL DEFAULT 0',
+        'ALTER TABLE orders ADD COLUMN intention TEXT',
+      ]) {
+        try { db.$raw.exec(sql); } catch { /* already there */ }
+      }
+    },
+  },
+  {
+    version: 38,
+    name: 'an exchange wears its broker\'s mark',
+    /**
+     * A second book is a second broker, and a broker has a logo the same way a bank does.
+     * The switch between books is read at a glance, and a picture is what makes that glance
+     * work — so the mark is kept beside the name, in the same shape every other mark in this
+     * ledger takes: an icon name, or `img:<id>`.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE exchanges ADD COLUMN logo TEXT'); } catch { /* already there */ }
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {
