@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { schema as t } from '@ledger/db';
 import { validate } from '@ledger/domain';
-import { writeMovement, ledgerView } from '@ledger/db';
+import { writeMovement, writeMovementDetailed, ledgerView } from '@ledger/db';
 import { installmentDueDate } from '@ledger/engine';
 import { nextOccurrence, readTemplates } from './capabilities/planning.js';
 import { wealthSnapshot } from './capabilities/overview.js';
@@ -95,6 +95,18 @@ export function tick(ctx: AppCtx): TickResult {
       const dueIso = due.toISOString().slice(0, 10);
       if (dueIso > todayIso) continue;
 
+      /**
+       * The backlog is not paid by switching autopay on.
+       *
+       * Arranging for a plan to pay itself says what happens from here: a plan written down
+       * with a year of payments behind it had every one of them posted on the next tick, out
+       * of an account that never sent the money, and the log then said they had been paid.
+       * The standing charges have refused to reach backwards since they were written, and
+       * this is the same refusal — everything older than the arrangement is still owed, and
+       * is still marked paid by hand on the plan.
+       */
+      if (auto.since && dueIso < auto.since) continue;
+
       const property = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, inst.propertyId)).get();
 
       try {
@@ -108,7 +120,23 @@ export function tick(ctx: AppCtx): TickResult {
             : { fromNodeId: auto.fromNodeId, qtyFrom: inst.amountEgp }],
         }, ledgerView(ctx.db));
 
-        const movementId = writeMovement(ctx.db, mv, { idempotencyKey: `inst:${inst.id}` });
+        /**
+         * A payment this tick has already made once is not made again — and, more to the
+         * point, is not marked paid again.
+         *
+         * The guard against double-posting is the idempotency key, and a key that has been
+         * seen hands back the movement it wrote rather than writing a second one. Taking that
+         * answer as a fresh payment is what undid an undo: marking one paid, undoing it —
+         * which reverses the movement and returns the money — and then letting the next tick
+         * re-attach the plan to the very movement that had just been reversed. Un-paying has
+         * to stick, so a replay is reported and the row is left exactly as the owner left it.
+         */
+        const { movementId, replayed } = writeMovementDetailed(ctx.db, mv, { idempotencyKey: `inst:${inst.id}` });
+        if (replayed) {
+          skipped.push({ what: `${property?.name ?? inst.propertyId} installment due ${dueIso}`,
+                         because: 'it was posted once already, and undone since' });
+          continue;
+        }
         ctx.db.update(t.installments).set({ paidAt: dueIso, movementId })
           .where(eq(t.installments.id, inst.id)).run();
         posted.push({ what: `${property?.name ?? inst.propertyId} installment`, movementId, amount: inst.amountEgp });

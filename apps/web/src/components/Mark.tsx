@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, ICON_FAMILY, hasIcon, type IconName } from './Icon';
 import { Dismissable } from './Confirm';
 import { useLive } from '../Live';
@@ -19,12 +19,25 @@ export const markSrc = (mark: string): string => `/marks/${mark.slice(4)}`;
 export function Mark({ mark, size = 18, color = 'var(--muted)', fallback = 'assets' }: {
   mark?: string; size?: number; color?: string; fallback?: IconName;
 }) {
-  if (isPicture(mark)) {
+  /**
+   * A picture that is not there any more.
+   *
+   * A mark points at a row in `images`, and the two can come apart — the pictures were
+   * emptied, the database was replaced, the reference outlived what it named. The browser's
+   * answer to that is a broken image, which is how every mark in the ledger read as simply
+   * gone. The set's own icon is a worse answer than the photograph and a far better one than
+   * nothing, so a picture that fails to load falls back to it exactly as an unknown name does.
+   */
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [mark]);
+
+  if (isPicture(mark) && !broken) {
     return (
-      <img src={markSrc(mark!)} alt="" width={size} height={size}
+      <img src={markSrc(mark!)} alt="" width={size} height={size} onError={() => setBroken(true)}
            style={{ width: size, height: size, objectFit: 'contain', borderRadius: 4, display: 'block' }} />
     );
   }
+  if (isPicture(mark)) return <Icon name={fallback} size={size} color={color} />;
   // A mark this set has no icon for is not a mark. Drawing the nearest thing to hand is how
   // three different banks ended up wearing the same picture as the assets screen.
   return <Icon name={hasIcon(mark) ? mark : fallback} size={size} color={color} />;

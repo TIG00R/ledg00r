@@ -1623,26 +1623,39 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
     name: 'autopay.configure',
     context: 'holdings',
     summary: 'Have a property\'s installments post themselves on their due date, out of a chosen account.',
-    detail: 'The scheduler posts them and flags the payment if the account is short. Turning this off leaves every installment already recorded exactly as it is.',
+    detail: 'It covers the payments still to come. Anything that fell due before it was switched on stays owed and is still paid by hand — switching this on is a promise about what happens next, not a claim that the backlog was paid. The scheduler flags a payment whose account is short, and turning it off leaves every installment already recorded exactly as it is.',
     input: z.object({
       propertyId: z.string(), enabled: z.boolean(), fromAccountId: NodeId.optional(),
     }),
     output: Outcome,
     handler: async (input) => {
       const ctx = ctxOf();
-      const from = input.fromAccountId
-        ?? ctx.db.select().from(t.autopay).where(eq(t.autopay.propertyId, input.propertyId)).get()?.fromNodeId;
+      const held = ctx.db.select().from(t.autopay).where(eq(t.autopay.propertyId, input.propertyId)).get();
+      const from = input.fromAccountId ?? held?.fromNodeId;
       if (input.enabled && !from) {
         return refusal('not_found', 'Autopay needs an account to draw from.', 'Pass fromAccountId.');
       }
+      /*
+       * Switching it on starts the clock today, and switching it on again after it was off
+       * starts it again: the gap in between is time the owner was paying by hand, and posting
+       * that stretch on the morning it is turned back on is the backlog problem in another
+       * shape. An arrangement that is merely being pointed at a different account keeps the
+       * date it already had.
+       */
+      const since = input.enabled && held?.enabled ? held.since ?? today(ctx)
+        : input.enabled ? today(ctx)
+        : held?.since ?? null;
       ctx.db.insert(t.autopay)
-        .values({ propertyId: input.propertyId, enabled: input.enabled, fromNodeId: from! })
+        .values({ propertyId: input.propertyId, enabled: input.enabled, fromNodeId: from!, since })
         .onConflictDoUpdate({ target: t.autopay.propertyId,
-                              set: { enabled: input.enabled, fromNodeId: from! } }).run();
+                              set: { enabled: input.enabled, fromNodeId: from!, since } }).run();
       const name = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, input.propertyId)).get()?.name;
       return noted(input.enabled
         ? `${name ?? input.propertyId} will post its installments out of ${nameOf(ctx.db, from)}`
-        : `${name ?? input.propertyId} is back to being recorded by hand`);
+        : `${name ?? input.propertyId} is back to being recorded by hand`,
+        input.enabled
+          ? ['Payments that fell due before today stay owed — pay those on the plan yourself.']
+          : []);
     },
   }),
 

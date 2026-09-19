@@ -3,13 +3,13 @@ import { Amount } from '../components/Amount';
 import { Select } from '../components/Select';
 import { DateField } from '../components/DateField';
 import { ledger } from '../api';
-import { Manager } from '../components/Manager';
+import { ConfirmDelete } from '../components/Confirm';
 import { installmentDueDate, daysUntil, nextInstallment, isPrincipal,
          toEgp } from '@ledger/engine';
 import { useCallback, useEffect, useState } from 'react';
 import { Page, Panel, Chip, Stat, Empty, Toggle, Field, AccountName } from '../components/UI';
 import { Icon } from '../components/Icon';
-import { Mark } from '../components/Mark';
+import { Mark, MarkPicker } from '../components/Mark';
 import { ActionButton, useLive } from '../Live';
 import { RecordTable, isInteractive } from '../components/RecordTable';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
@@ -18,6 +18,12 @@ import { intentionsFor, type Intention } from '@ledger/engine';
 import { sourceAccountOptions, INITIAL_PAYMENT } from '../components/Operations';
 import { useModules } from '../Modules';
 import { accountOption } from '../accounts';
+
+/** What a card that is not a thing yet starts out saying. */
+const NEW_ASSET: Record<string, string | number> = {
+  name: '', kind: 'other', ownership: 'owned', value: 0,
+  colour: '#8A8578', accountId: INITIAL_PAYMENT,
+};
 
 /** A payment on a plan, as the ledger reports it. */
 interface Installment {
@@ -40,7 +46,7 @@ export function Assets() {
 function Body() {
   const { data, values: v, now, dm, autoPay, setAutoPay, balances, currencies, market } = useApp();
   const { tab } = useSection();
-  const { run, live, version } = useLive();
+  const { run, live, version, running } = useLive();
   const { enabled } = useModules();
   /** whether the zakat module is on — the one check every intention control on this screen answers to */
   const zakatOn = enabled.giving !== false;
@@ -148,15 +154,72 @@ function Body() {
   });
 
   /**
-   * Which asset's own settings are open — its intention, its zakat dates, whether it logs its
-   * own installments. Only one at a time, the same rule every per-row editor in this
-   * application keeps: two half-finished corrections have no way to say which Save belongs to
-   * which.
+   * Which asset is open for editing — all of it, on the card itself.
+   *
+   * Everything a thing is was split in two: the card showed it and a table underneath held
+   * the fields that changed it, so correcting a name meant finding the same thing a second
+   * time, in a different shape, further down the page. There is one of it now. The card is
+   * the thing, and opening it turns what it says into what you type.
+   *
+   * Only one at a time, the same rule every editor in this application keeps: two
+   * half-finished corrections have no way to say which Save belongs to which.
    */
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
+  /** what the open card currently reads, before Save — the ledger still holds the old answer */
+  const [draft, setDraft] = useState<Record<string, string | number>>({});
   /** which card the pointer is over, so its edit pencil is offered without crowding every
    *  card at once — a keyboard reaches the same editor without ever touching this. */
   const [hoverAssetId, setHoverAssetId] = useState<string | null>(null);
+  /** whose mark is being chosen: an asset's id, or `__new` for the one being added */
+  const [picking, setPicking] = useState<string | null>(null);
+  /** the card that is not a thing yet */
+  const [adding, setAdding] = useState(false);
+  const [addDraft, setAddDraft] = useState<Record<string, string | number>>({});
+
+  const openCard = (o: { id: string; name: string; icon: string; colour: string },
+                    a: any | null) => {
+    setOpenAssetId(o.id);
+    setDraft({
+      name: o.name,
+      kind: a?.kind ?? 'other',
+      ownership: a?.ownership ?? 'owned',
+      value: Math.round(a?.amount ?? a?.value ?? 0),
+      currency: a?.currency ?? currencyOptions[0]?.value ?? 'EGP',
+      mark: a?.icon ?? '',
+      colour: a?.color ?? '#8A8578',
+    });
+    setPicking(null);
+  };
+  const closeCard = () => { setOpenAssetId(null); setDraft({}); setPicking(null); };
+
+  /**
+   * Saving what was typed, and only what was typed.
+   *
+   * The patch carries the fields that actually changed. Sending the whole card every time is
+   * what made choosing a picture fail on anything bought on a plan: the worth went with it,
+   * and a worth stated against a plan is refused — correctly, since it is worked out from the
+   * payments — so uploading a photograph came back as an error about installments.
+   */
+  const saveCard = async (id: string, over: Record<string, string | number> = {}) => {
+    const a = assets?.find((x) => x.id === id) ?? null;
+    const d = { ...draft, ...over };
+    const patch: Record<string, unknown> = { assetId: id };
+    const held = String(d.ownership ?? a?.ownership ?? 'owned');
+    if (d.name !== undefined && d.name !== a?.name) patch.name = d.name;
+    if (d.kind !== undefined && d.kind !== a?.kind) patch.kind = d.kind;
+    if (d.ownership !== undefined && d.ownership !== a?.ownership) patch.ownership = d.ownership;
+    if (d.currency !== undefined && d.currency !== (a?.currency ?? null)) patch.currency = d.currency;
+    if (d.mark !== undefined && (d.mark || null) !== (a?.icon ?? null)) patch.icon = d.mark || undefined;
+    if (d.colour !== undefined && d.colour !== (a?.color ?? null)) patch.color = d.colour;
+    // What it is worth belongs to a thing bought outright. On a plan it is the payments, and
+    // the ledger says so rather than letting a figure be typed over them.
+    if (held !== 'installments' && d.value !== undefined
+        && Number(d.value) !== Math.round(a?.amount ?? a?.value ?? 0)) {
+      patch.value = Number(d.value);
+    }
+    if (Object.keys(patch).length > 1) await run('asset.update', patch);
+    await loadAssets();
+  };
 
   /**
    * The four tests zakat applies to each thing — what it is, what it is held for, whether the
@@ -307,8 +370,8 @@ function Body() {
           const zakatKind = asset?.kind === 'property' ? 'property' : asset?.kind === 'vehicle' ? 'vehicle' : 'other';
           const knownIntention = intentionsFor(zakatKind).some((opt) => opt.id === asset?.intention);
           const zakatLine = zakatLines?.find((l) => l.id === id) ?? null;
-          const startEditing = () => setOpenAssetId(id);
-          const stopEditing = () => setOpenAssetId(null);
+          const startEditing = () => openCard(o, asset);
+          const stopEditing = () => closeCard();
           return (
             <section key={id} className="panel"
                      style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18, position: 'relative' }}
@@ -327,10 +390,24 @@ function Body() {
                   Enter, which is how a keyboard reaches the same editor without ever hovering
                   anything. */}
               {openThis ? (
-                <button className="btn ghost sm" onClick={stopEditing}
-                        style={{ position: 'absolute', top: 18, right: 18 }}>
-                  <Icon name="close" size={13} motion="none" /> Close
-                </button>
+                <span style={{ position: 'absolute', top: 18, right: 18, display: 'flex',
+                               gap: 6, alignItems: 'center' }}>
+                  <span className="btn-pair">
+                    <button className="btn go sm" disabled={!!running}
+                            onClick={() => { void saveCard(id).then(stopEditing); }}>
+                      <Icon name="check" size={13} motion="none" /> Save
+                    </button>
+                    <button className="btn ghost sm" onClick={stopEditing}>
+                      <Icon name="close" size={13} motion="none" /> Cancel
+                    </button>
+                  </span>
+                  {/* Subordinate to Save and Cancel, and only once the card is open: a bin
+                      should take the same deliberate step as the button that finishes an
+                      edit, not an idle one aimed at nothing in particular. */}
+                  <ConfirmDelete what={o.name} size={13}
+                                 onConfirm={() => { void run('asset.remove', { assetId: id, restore: false })
+                                   .then(() => { stopEditing(); return loadAssets(); }); }} />
+                </span>
               ) : (
                 <button className="btn quiet" onClick={startEditing} aria-label={`Edit ${o.name}'s settings`}
                         title="Edit" style={{
@@ -405,18 +482,47 @@ function Body() {
                 </div>
               </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                    <Mark mark={o.icon} size={18} color={colour}
-                          fallback={o.icon === 'car' ? 'car' : 'building'} />
-                    <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{o.name}</h2>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>
-                    {onPlan
-                      ? `${o.payments} installments`
-                      : 'Owned outright · no plan against it'}
-                  </div>
+                  {openThis ? (
+                    /* What the thing is, where the thing is. The mark opens the picker, and
+                       everything else waits for Save — the same division the rest of the
+                       application draws between choosing a picture and typing a word. */
+                    <AssetFields draft={draft} set={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+                                 currencies={currencyOptions}
+                                 accounts={undefined}
+                                 onPickMark={() => setPicking(picking === id ? null : id)} />
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                        <Mark mark={o.icon} size={18} color={colour}
+                              fallback={o.icon === 'car' ? 'car' : 'building'} />
+                        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{o.name}</h2>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>
+                        {onPlan
+                          ? `${o.payments} installments`
+                          : 'Owned outright · no plan against it'}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
+
+              {openThis && picking === id && (
+                /* A mark is saved the moment it is chosen — choosing an icon, or uploading a
+                   picture, is a finished act, and leaving it pending read as the upload having
+                   silently failed. Only the mark goes: the rest of the card is still being
+                   typed, and a worth sent alongside it is what made this fail on anything
+                   bought on a plan. */
+                <MarkPicker value={(draft.mark as string) || undefined} family="assets"
+                            tone={String(draft.colour ?? colour)}
+                            label={`Mark for ${o.name} — an icon, or a picture of your own`}
+                            onClose={() => setPicking(null)}
+                            onChange={(m) => {
+                              setDraft((d) => ({ ...d, mark: m }));
+                              void run('asset.update', { assetId: id, icon: m }).then(loadAssets);
+                            }} />
+              )}
+
               {/* Only the contract total stays beneath the ring — it is the reference figure
                   the ring's own paid-and-remaining add up to, not a third reading of the same
                   progress. */}
@@ -572,108 +678,75 @@ function Body() {
             </section>
           );
         })}
+
+        {/**
+          * Adding one is adding a card.
+          *
+          * It used to be a row in a table under the cards, which meant a new thing was typed
+          * into one shape and then appeared in another — and the table existed for nothing
+          * else, since every card now edits itself. The dashed card is the thing before it is
+          * a thing: it stands in the grid where it will stand once it is saved.
+          */}
+        {adding ? (
+          <section className="panel" style={{
+            padding: 24, display: 'flex', flexDirection: 'column', gap: 16,
+            background: 'color-mix(in srgb, var(--positive) 5%, var(--surface))',
+            border: '1px dashed color-mix(in srgb, var(--positive) 40%, transparent)',
+          }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Something new you own</h2>
+            <AssetFields draft={addDraft} set={(patch) => setAddDraft((d) => ({ ...d, ...patch }))}
+                         currencies={currencyOptions}
+                         accounts={sourceAccountOptions(data)}
+                         onPickMark={() => setPicking(picking === '__new' ? null : '__new')} />
+            {picking === '__new' && (
+              <MarkPicker value={(addDraft.mark as string) || undefined} family="assets"
+                          tone={String(addDraft.colour ?? '#8A8578')}
+                          label="Mark for the new one — an icon, or a picture of your own"
+                          onClose={() => setPicking(null)}
+                          onChange={(m) => setAddDraft((d) => ({ ...d, mark: m }))} />
+            )}
+            <span className="btn-pair">
+              <button className="btn add sm" disabled={!addDraft.name || !!running}
+                onClick={() => {
+                  const d = addDraft;
+                  const paidFrom = d.accountId && d.accountId !== INITIAL_PAYMENT
+                    ? String(d.accountId) : undefined;
+                  void run('asset.add', {
+                    name: String(d.name),
+                    kind: String(d.kind || 'other'),
+                    ownership: String(d.ownership || 'owned'),
+                    value: Number(d.value ?? 0),
+                    // the select shows the first currency until one is chosen, so an untouched
+                    // draft has to send what it showed rather than a guess of its own
+                    currency: String(d.currency || currencyOptions[0]?.value || 'EGP'),
+                    // left untouched, or explicitly "Initial payment": no account is named,
+                    // and the worth is simply stated, the way an opening balance is
+                    ...(d.ownership !== 'installments' && paidFrom ? { accountId: paidFrom } : {}),
+                    ...(d.mark ? { icon: String(d.mark) } : {}),
+                    ...(d.colour ? { color: String(d.colour) } : {}),
+                  }).then(() => { setAddDraft({}); setAdding(false); setPicking(null); return loadAssets(); });
+                }}>
+                <Icon name="plus" size={13} motion="none" /> Add it
+              </button>
+              <button className="btn ghost sm"
+                      onClick={() => { setAddDraft({}); setAdding(false); setPicking(null); }}>
+                <Icon name="close" size={13} motion="none" /> Cancel
+              </button>
+            </span>
+          </section>
+        ) : (
+          <button className="panel" onClick={() => { closeCard(); setAdding(true); setAddDraft(NEW_ASSET); }}
+            style={{ padding: 24, minHeight: 180, cursor: 'pointer', display: 'flex',
+                     flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
+                     border: '1px dashed var(--hairline-strong)', background: 'transparent',
+                     color: 'var(--muted)', fontSize: 14 }}>
+            <Icon name="plus" size={22} color="var(--positive)" />
+            Add an asset
+          </button>
+        )}
       </div>
       )}
 
-
-      {tab === 'overview' && (
-        <Panel title="What you own"
-               hint="A flat, a car, anything else. What differs between them is the mark and the words, not how they behave — each is either paid for outright or still on a plan.">
-          <Manager
-            markFamily="assets"
-            addLabel="Add an asset"
-            fields={[
-              { key: 'name', label: 'Name', placeholder: 'Riverside Residences · unit 4' },
-              { key: 'kind', label: 'What it is', kind: 'select', width: '150px',
-                options: [
-                  { value: 'property', label: 'Property' },
-                  { value: 'vehicle', label: 'Vehicle' },
-                  { value: 'equipment', label: 'Equipment' },
-                  { value: 'other', label: 'Something else' },
-                ] },
-              { key: 'ownership', label: 'Paid for', kind: 'select', width: '170px',
-                options: [
-                  { value: 'owned', label: 'Outright', hint: 'worth what you paid' },
-                  { value: 'installments', label: 'On a plan', hint: 'grows as you pay' },
-                ] },
-              { key: 'value', label: 'Worth', kind: 'number', width: '140px',
-                hint: 'in the currency beside it',
-                when: (v) => v.ownership !== 'installments' },
-              /**
-               * What the worth is stated in.
-               *
-               * A car bought in dollars is worth dollars, and typing the number without
-               * saying so made it a pound figure — the ledger read twenty thousand dollars
-               * as twenty thousand pounds. It sits beside the amount, and only where there
-               * is an amount to state: a plan is paid in the ledger's own currency.
-               *
-               * Choosing it converts nothing. It says what the number already was, and the
-               * number and the currency are both kept as they were entered — the conversion
-               * happens when a total has to be drawn, and nowhere else.
-               */
-              { key: 'currency', label: 'Currency', kind: 'select', width: '120px',
-                options: currencyOptions,
-                when: (v) => v.ownership !== 'installments' },
-              /**
-               * What paid for it, when bought outright.
-               *
-               * Offered only while adding one: an asset already on the books was already
-               * settled one way or another, and this field's only honest use is to say what
-               * pays for a NEW one. "Initial payment" — a fresh installation's usual answer —
-               * states the worth as given and deducts nothing, exactly as leaving it out
-               * always has.
-               */
-              { key: 'accountId', label: 'Paid from', kind: 'select', width: '190px',
-                options: sourceAccountOptions(data),
-                when: (v) => v.ownership !== 'installments' && !v.existingAsset },
-              { key: 'colour', label: 'Colour', kind: 'colour', width: '64px' },
-            ]}
-            rows={(assets ?? []).map((a) => ({
-              id: a.id, mark: a.icon ?? undefined, colour: a.color ?? '#8A8578',
-              // The worth as it was entered, in its own currency — `value` is that same worth
-              // converted for the totals, and showing it here read as a dollar car restated
-              // in pounds the moment its currency was chosen. A service too old to say what
-              // was entered falls back to the converted figure, which is what it used to
-              // show: worse than the truth, better than an empty box.
-              values: { name: a.name, kind: a.kind, ownership: a.ownership,
-                        value: Math.round(a.amount ?? a.value), currency: a.currency ?? 'EGP',
-                        colour: a.color ?? '#8A8578', existingAsset: 1 },
-              trailing: (
-                <span style={{ fontSize: 11, color: 'var(--faint)', whiteSpace: 'nowrap' }}>
-                  {a.payments ? `${a.payments} payment${a.payments === 1 ? '' : 's'}` : 'no plan'}
-                </span>
-              ),
-            }))}
-            onSave={(id, patch) => run('asset.update', {
-              assetId: id,
-              name: patch.name as string | undefined,
-              kind: patch.kind as string | undefined,
-              ownership: patch.ownership as string | undefined,
-              // what it is worth, in its own currency — the field was drawn and read and
-              // then dropped on the way out, so correcting a worth changed nothing at all
-              value: patch.value === undefined ? undefined : Number(patch.value),
-              currency: patch.currency as string | undefined,
-              icon: patch.mark as string | undefined,
-              color: patch.colour as string | undefined,
-            }).then(loadAssets)}
-            onAdd={(d) => run('asset.add', {
-              name: d.name as string,
-              kind: (d.kind as string) || 'other',
-              ownership: (d.ownership as string) || 'owned',
-              value: Number(d.value ?? 0),
-              // the select shows the first currency until one is chosen, so an untouched
-              // draft has to send what it showed rather than a guess of its own
-              currency: (d.currency as string) || currencyOptions[0]?.value || 'EGP',
-              // left untouched, or explicitly "Initial payment": no account is named, and the
-              // worth is simply stated, the way it always has been
-              accountId: d.accountId && d.accountId !== INITIAL_PAYMENT ? (d.accountId as string) : undefined,
-              icon: d.mark as string | undefined,
-              color: (d.colour as string) || undefined,
-            }).then(loadAssets)}
-            onDelete={(id) => run('asset.remove', { assetId: id }).then(loadAssets)}
-          />
-        </Panel>
-      )}
 
       {tab === 'plans' && (
         <Panel title="Something spent on upkeep"
@@ -959,3 +1032,95 @@ function PaymentStatus({ paidAt }: { paidAt: string | null }) {
   );
 }
 
+
+/**
+ * Everything a thing is, as fields.
+ *
+ * The same set whether the card is one being corrected or one being added, because they are
+ * the same questions — a card that asked them in a different order, or under different words,
+ * depending on which it was would be two forms for one thing. Only "paid from" differs, and
+ * only because it has one honest use: saying what pays for a NEW one. An asset already on the
+ * books was settled one way or another long before this form was opened.
+ */
+function AssetFields({ draft, set, currencies, accounts, onPickMark }: {
+  draft: Record<string, string | number>;
+  set: (patch: Record<string, string | number>) => void;
+  currencies: Array<{ value: string; label: string; hint?: string }>;
+  /** offered only while adding: what the money came out of */
+  accounts?: Array<{ value: string; label: string; hint?: string }>;
+  onPickMark: () => void;
+}) {
+  const colour = String(draft.colour || '#8A8578');
+  const onPlan = draft.ownership === 'installments';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button onClick={onPickMark} aria-label="Change the mark"
+          style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
+                   position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                   background: `color-mix(in srgb, ${colour} 15%, transparent)`,
+                   border: '1px solid var(--hairline)' }}>
+          <Mark mark={(draft.mark as string) || undefined} size={18} color={colour} fallback="building" />
+          <span style={{ position: 'absolute', right: -4, bottom: -4, width: 14, height: 14,
+                         borderRadius: 999, background: 'var(--gold)', display: 'flex',
+                         alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="edit" size={8} color="#fff" strokeWidth={2.4} motion="none" />
+          </span>
+        </button>
+        <input aria-label="Name" placeholder="Riverside Residences · unit 4"
+               value={String(draft.name ?? '')} onChange={(e) => set({ name: e.target.value })}
+               style={{ flex: 1, minWidth: 0, fontSize: 14, padding: '8px 10px' }} />
+        <input type="color" aria-label="Colour" value={colour}
+               onChange={(e) => set({ colour: e.target.value })}
+               style={{ flex: '0 0 44px', width: 44, height: 34, padding: 2, cursor: 'pointer' }} />
+      </div>
+
+      <div style={{ display: 'grid', gap: 12,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <Field label="What it is">
+          <Select ariaLabel="What it is" value={String(draft.kind ?? 'other')}
+                  onChange={(val) => set({ kind: val })}
+                  options={[{ value: 'property', label: 'Property' },
+                            { value: 'vehicle', label: 'Vehicle' },
+                            { value: 'equipment', label: 'Equipment' },
+                            { value: 'other', label: 'Something else' }]} />
+        </Field>
+        <Field label="Paid for">
+          <Select ariaLabel="Paid for" value={String(draft.ownership ?? 'owned')}
+                  onChange={(val) => set({ ownership: val })}
+                  options={[{ value: 'owned', label: 'Outright', hint: 'worth what you paid' },
+                            { value: 'installments', label: 'On a plan', hint: 'grows as you pay' }]} />
+        </Field>
+        {/* A worth belongs to a thing bought outright. On a plan it is what the payments add
+            up to, and a figure typed over them would be overwritten by the next one. */}
+        {!onPlan && (
+          <Field label="Worth" hint="in the currency beside it">
+            <input aria-label="Worth" type="number" className="mono"
+                   value={String(draft.value ?? 0)}
+                   onChange={(e) => set({ value: Number(e.target.value) })}
+                   style={{ width: '100%', fontSize: 13, padding: '7px 9px' }} />
+          </Field>
+        )}
+        {/**
+          * What the worth is stated in.
+          *
+          * A car bought in dollars is worth dollars, and typing the number without saying so
+          * made it a pound figure. Choosing it converts nothing: it says what the number
+          * already was, and the conversion happens when a total has to be drawn.
+          */}
+        {!onPlan && (
+          <Field label="Currency">
+            <Select ariaLabel="Currency" value={String(draft.currency ?? currencies[0]?.value ?? 'EGP')}
+                    onChange={(val) => set({ currency: val })} options={currencies} />
+          </Field>
+        )}
+        {accounts && !onPlan && (
+          <Field label="Paid from" hint="left as an initial payment, nothing is deducted">
+            <Select ariaLabel="Paid from" value={String(draft.accountId ?? INITIAL_PAYMENT)}
+                    onChange={(val) => set({ accountId: val })} options={accounts} />
+          </Field>
+        )}
+      </div>
+    </div>
+  );
+}

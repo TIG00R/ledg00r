@@ -969,6 +969,28 @@ const STEPS: Step[] = [
               AND NOT EXISTS (SELECT 1 FROM transactions r WHERE r.corrects_id = tx.id))
     `),
   },
+  {
+    version: 40,
+    name: 'autopay remembers the day it was switched on',
+    /**
+     * Arranging for a plan to pay itself is a promise about what happens next, not a claim
+     * about what already happened. Without a date to start from, switching it on posted every
+     * payment that had ever fallen due — a plan typed in with a year of history behind it
+     * emptied the account in one tick and filled the log with payments nobody had made.
+     *
+     * The standing charges have answered this since they were written: a template added today
+     * does not reach back and post last month. This is the same date, kept for the same
+     * reason.
+     *
+     * An arrangement already switched on starts from today. Reading it as "always" is what
+     * would make the upgrade itself post the backlog.
+     */
+    up: (db) => {
+      try { db.$raw.exec('ALTER TABLE autopay ADD COLUMN since TEXT'); } catch { /* already there */ }
+      db.$raw.prepare('UPDATE autopay SET since = ? WHERE since IS NULL')
+        .run(new Date().toISOString().slice(0, 10));
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

@@ -559,6 +559,14 @@ export const autopay = sqliteTable('autopay', {
   propertyId: text('property_id').primaryKey(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
   fromNodeId: text('from_node_id').notNull(),
+  /**
+   * The day the arrangement was made.
+   *
+   * Nothing that fell due before it is posted: switching autopay on is a promise about the
+   * payments still to come, not a claim that the ones already behind were made. A payment
+   * older than this date is still owed and is still paid by hand.
+   */
+  since: text('since'),
 });
 
 export const scenarios = sqliteTable('scenarios', {
