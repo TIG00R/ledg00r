@@ -36,6 +36,8 @@ export interface LedgerNode {
   assetKind?: string;
   openingQty: number;
   color?: string;
+  /** the node's own mark, where it has one: an asset's, a broker's wallet's */
+  icon?: string;
   archived?: boolean;
 }
 

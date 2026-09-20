@@ -663,11 +663,44 @@ function MovementRecords() {
     ...[...endpoints].sort((a, b) => a.name.localeCompare(b.name))
       .map((n) => accountOption(data, n, { fallback: n.kind })),
   ];
-  /** every place a movement could name, for the column filters */
-  const endpointNames = [...new Set(endpoints.map((n) => n.name))].sort();
+  /**
+   * Every place a movement could name, for the column filters.
+   *
+   * A filter over a column of accounts used to offer the bare names the log prints, so a
+   * picker that everywhere else in the application reads "Nile Bank / Current · EGP" with the
+   * bank's mark beside it read "Current" here, and two accounts called Current at two banks
+   * were one indistinguishable line. The filter matches the text the column holds — that is
+   * what a filter can match — but it is drawn as the account it names, which is what a reader
+   * is looking for. Names are unique here because a name is all the column has to go on: two
+   * accounts sharing one make one entry that finds the movements of both, and saying so twice
+   * would only promise a distinction the log cannot make.
+   */
+  const endpointChoices = [...new Map([...endpoints]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((n) => [n.name, accountOption(data, n, { fallback: n.kind, value: n.name })]))
+    .values()];
   /** which institution a node sits at, for the second line under an account's name */
   const bankOf = (id?: string | null) =>
     data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
+
+  /**
+   * Which currency a figure in this log is counted in.
+   *
+   * A movement's amount is in the unit of the account it left, or of the one it reached where
+   * it left nothing of yours. Printed bare, a column mixing pounds and dollars reads as one
+   * currency and the wrong one: 20 out of a dollar account looked smaller than 300 out of a
+   * pound account. The letters are the account's own, so what the column says is what the
+   * account actually lost.
+   */
+  const currencyOf = (m: Movement): string | null => {
+    const leg = m.legs[0];
+    if (!leg) return null;
+    // An employer and a landlord are nodes with no currency of their own, and a salary names
+    // one on the side the money came from — so the side that answers is whichever of the two
+    // is actually held in something.
+    const side = (id?: string | null) => (id ? data.nodes.find((n) => n.id === id)?.currency ?? null : null);
+    return side(leg.fromNodeId) ?? side(leg.toNodeId);
+  };
 
   /**
    * Which way the money went, from where this screen is standing.
@@ -771,7 +804,7 @@ function MovementRecords() {
                       options={MOVEMENT_KINDS.map((k) => ({ value: k, label: k }))} />
             ) },
           { key: 'from', label: 'Source', kind: 'pick',
-            choices: endpointNames,
+            choices: endpointChoices,
             value: (m) => m.legs[0]?.fromName ?? '—',
             cell: (m) => (m.legs[0]?.fromName
               ? <span style={{ fontSize: 12, color: 'var(--muted)' }}>
@@ -783,7 +816,7 @@ function MovementRecords() {
                       onChange={(v) => set({ fromAccountId: v })} options={endpointOptions} />
             ) },
           { key: 'to', label: 'Destination', kind: 'pick',
-            choices: endpointNames,
+            choices: endpointChoices,
             value: (m) => m.legs[0]?.toName ?? '—',
             cell: (m) => (m.legs[0]?.toName
               ? <span style={{ fontSize: 12, color: 'var(--muted)' }}>
@@ -813,10 +846,11 @@ function MovementRecords() {
               const colour = way === 'in' ? 'var(--positive)'
                            : way === 'out' ? 'var(--negative)' : undefined;
               const fee = leg.feeQty ?? 0;
+              const code = currencyOf(m);
               return (
                 <span className="mono" style={{ color: colour, fontWeight: way ? 500 : undefined }}>
                   {leg.qtyFrom != null
-                    ? `${way === 'in' ? '+' : way === 'out' ? '−' : ''}${Math.round(leftSource(m)).toLocaleString()}`
+                    ? `${way === 'in' ? '+' : way === 'out' ? '−' : ''}${Math.round(leftSource(m)).toLocaleString()}${code ? ` ${code}` : ''}`
                     : '—'}
                   {/* A movement with a charge on it moved two figures, not one: what the
                       account lost, and what the other end received. Showing only the second
@@ -825,6 +859,7 @@ function MovementRecords() {
                   {fee > 0 && leg.qtyFrom != null && (
                     <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
                       {Math.round(leg.qtyFrom).toLocaleString()} arrived · {Math.round(fee).toLocaleString()} fee
+                      {code ? ` ${code}` : ''}
                     </span>
                   )}
                   {/* a rate is read, not calculated with, so it is shown to four places
@@ -847,8 +882,11 @@ function MovementRecords() {
             value: (m) => m.legs[0]?.feeQty ?? 0,
             cell: (m) => {
               const fee = m.legs[0]?.feeQty ?? 0;
+              const code = currencyOf(m);
               return fee > 0
-                ? <span className="mono" style={{ color: 'var(--negative)' }}>{Math.round(fee).toLocaleString()}</span>
+                ? <span className="mono" style={{ color: 'var(--negative)' }}>
+                    {Math.round(fee).toLocaleString()}{code ? ` ${code}` : ''}
+                  </span>
                 : <span style={{ color: 'var(--faint)' }}>—</span>;
             } },
           { key: 'note', label: 'Note', kind: 'text',

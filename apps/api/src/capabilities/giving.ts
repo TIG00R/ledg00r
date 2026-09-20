@@ -636,6 +636,15 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       payments: z.array(z.object({
         id: z.string(), date: z.string(), egp: z.number(), causeId: z.string(),
         note: z.string().nullable(),
+        /**
+         * What was actually handed over, and out of what.
+         *
+         * `egp` is the figure the year is discharged by, which is the payment converted. A
+         * screen correcting one has to show what was recorded — 200 dollars, out of the
+         * dollar account — because sending the converted figure back would rewrite a dollar
+         * payment as a pound one at today's rate.
+         */
+        amount: z.number(), currency: z.string(), accountId: z.string().nullable(),
       })),
     })),
     handler: async ({ bucket, outstanding, limit }) => {
@@ -645,8 +654,13 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         .map((y) => {
           const payments = given
             .filter((c) => (c as { zakatYearId?: string | null }).zakatYearId === y.id)
-            .map((c) => ({ id: c.id, date: c.date, egp: c.egp, causeId: c.categoryId, note: c.note }))
-            .sort((a, b) => a.date.localeCompare(b.date));
+            .map((c) => ({
+              id: c.id, date: c.date, egp: c.egp, causeId: c.categoryId, note: c.note,
+              amount: c.currency === 'EGP' ? c.egp : (c.usd ?? c.egp),
+              currency: c.currency ?? 'EGP', accountId: c.accountId ?? null,
+            }))
+            // newest first, as every other log in the ledger reads
+            .sort((a, b) => b.date.localeCompare(a.date));
           const paid = payments.reduce((s2, c) => s2 + c.egp, 0);
           return {
             id: y.id, bucket: y.bucket, label: y.label,

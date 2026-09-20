@@ -991,6 +991,42 @@ const STEPS: Step[] = [
         .run(new Date().toISOString().slice(0, 10));
     },
   },
+  {
+    version: 41,
+    name: 'an asset remembers what it cost and what it sold for',
+    /**
+     * Selling something is the other half of owning it, and the ledger could not say it.
+     *
+     * What a thing is worth is a figure that moves — a flat is repriced, a car loses value —
+     * so the asset's own quantity cannot answer "what did you pay for it" once anybody has
+     * corrected it. `bought_for` is that first figure, frozen the day the thing was added, in
+     * the currency it is held in; every asset already here is backfilled with what it opened
+     * at, which is exactly what was typed when it was added.
+     *
+     * The rest is the sale: the day, the price and the currency it fetched, the account the
+     * money landed in, and the figure the profit was measured against — what had been paid
+     * towards it on a plan, or what it cost outright. Kept rather than recomputed, because a
+     * profit worked out from today's prices two years after the sale is not the profit that
+     * was made.
+     */
+    up: (db) => {
+      for (const col of ['bought_for REAL', 'bought_currency TEXT', 'sold_on TEXT',
+                         'sold_price REAL', 'sold_currency TEXT', 'sold_account_id TEXT',
+                         'sold_basis REAL', 'sold_movement_id TEXT']) {
+        try { db.$raw.exec(`ALTER TABLE nodes ADD COLUMN ${col}`); } catch { /* already there */ }
+      }
+      // An asset on a plan opens at nothing and grows with its payments, so there is no price
+      // to remember; what it cost is the sum of what has been paid, which the plan already says.
+      db.$raw.exec(`
+        UPDATE nodes
+           SET bought_for = opening_qty, bought_currency = currency
+         WHERE kind = 'asset'
+           AND bought_for IS NULL
+           AND opening_qty > 0
+           AND COALESCE(ownership, 'owned') <> 'installments'
+      `);
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

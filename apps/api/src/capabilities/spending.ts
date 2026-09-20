@@ -3,7 +3,7 @@ import { command, query, DateOnly, NodeId, CategoryId, Outcome } from '@ledger/c
 import { schema as t, periodTotals } from '@ledger/db';
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
-import { post, noted, refusal, today, newId, DryRun, undoMovement } from './shared.js';
+import { atomically, post, noted, refusal, today, newId, DryRun, undoMovement } from './shared.js';
 
 /**
  * Spending.
@@ -167,26 +167,37 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       };
       if (!next.accountId) return refusal('unknown_node', 'That expense names no account to come out of.');
 
-      // Reverse what was recorded, then record what was meant. Both stay in the log.
-      undoMovement(ctx, row.movementId);
-      ctx.db.delete(t.expenses).where(eq(t.expenses.id, input.expenseId)).run();
-
+      /**
+       * Reverse what was recorded, then record what was meant — or neither.
+       *
+       * The second half can be refused: the account the expense should have come out of may
+       * not hold enough to cover it. Left to run in the open, a refusal there stopped after
+       * the reversal had been written and the log row deleted, so the money went back to the
+       * account it left, nothing came out of the account chosen, and the expense itself was
+       * gone from the log — the mistake was not fixed, it was multiplied. Inside one
+       * transaction the whole correction stands or the record is exactly as it was.
+       */
       const rate = next.currency === 'EGP' ? 1 : rateFor(ctx.db, next.currency);
-      return post(ctx, {
-        date: next.date, kind: 'expense', note: next.note ?? undefined,
-        legs: [{ fromNodeId: next.accountId, qtyFrom: next.amount, categoryId: next.categoryId }],
-      }, `corrected to ${next.amount} ${next.currency}`,
-      {
-        index: [{ kind: 'expense', recordId: input.expenseId,
-                  title: next.place ?? '', body: next.note ?? '' }],
-        after: (db, movementId) => {
-          db.insert(t.expenses).values({
-            id: input.expenseId, seq: row.seq, date: next.date, amount: next.amount,
-            currency: next.currency, egpAmount: next.amount * rate, rate,
-            accountId: next.accountId, categoryId: next.categoryId,
-            place: next.place, note: next.note, movementId,
-          }).run();
-        },
+      return atomically(ctx, () => {
+        undoMovement(ctx, row.movementId);
+        ctx.db.delete(t.expenses).where(eq(t.expenses.id, input.expenseId)).run();
+
+        return post(ctx, {
+          date: next.date, kind: 'expense', note: next.note ?? undefined,
+          legs: [{ fromNodeId: next.accountId!, qtyFrom: next.amount, categoryId: next.categoryId }],
+        }, `corrected to ${next.amount} ${next.currency}`,
+        {
+          index: [{ kind: 'expense', recordId: input.expenseId,
+                    title: next.place ?? '', body: next.note ?? '' }],
+          after: (db, movementId) => {
+            db.insert(t.expenses).values({
+              id: input.expenseId, seq: row.seq, date: next.date, amount: next.amount,
+              currency: next.currency, egpAmount: next.amount * rate, rate,
+              accountId: next.accountId, categoryId: next.categoryId,
+              place: next.place, note: next.note, movementId,
+            }).run();
+          },
+        });
       });
     },
   }),

@@ -10,6 +10,38 @@ import type { AppCtx } from '../context.js';
 import { noted, refusal, newId, post, today, DryRun, sourceReading, SOURCE_FIELDS } from './shared.js';
 
 /**
+ * What a sale would be measured against, in the ledger's own currency.
+ *
+ * Two questions wearing one name. Something on a plan has cost whatever has actually been
+ * handed over — the down payment plus every installment marked paid, which is the figure the
+ * portfolio shows and zakat counts. Something bought outright has cost the price it was
+ * bought at, converted the way the asset itself is converted: a car held in dollars costs
+ * what those dollars are worth, not the bare number. An asset older than that column has no
+ * recorded price, and what it stands at now is the only answer the ledger still has.
+ *
+ * Written once and read by both the list and the sale, so a card cannot promise one figure
+ * and the receipt report another.
+ */
+export function purchaseBasisEgp(
+  node: { id: string; currency: string | null; valuation: string; priceKey: string | null;
+          openingQty: number; boughtFor?: number | null },
+  plan: Array<{ paidAt: string | null; amountEgp: number }>,
+  balance: number,
+  market: Parameters<typeof unitValue>[1],
+): number {
+  if (plan.length > 0) {
+    return (node.openingQty ?? 0) + plan.filter((i) => i.paidAt).reduce((sum, i) => sum + i.amountEgp, 0);
+  }
+  const per = unitValue({
+    id: node.id, kind: 'asset', name: '', openingQty: 0,
+    valuation: node.valuation as Valuation,
+    priceKey: node.priceKey ?? undefined,
+    currency: node.currency ?? undefined,
+  }, market);
+  return (node.boughtFor ?? balance) * per;
+}
+
+/**
  * Things you own that are not money.
  *
  * A flat and a car are the same kind of record: something bought, worth something, and either
@@ -23,7 +55,18 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
     name: 'assets.list',
     context: 'holdings',
     summary: 'Everything owned that is not money: what it is worth, what is paid, what is owed.',
-    input: z.object({ includeArchived: z.boolean().default(false) }),
+    input: z.object({
+      includeArchived: z.boolean().default(false),
+      /**
+       * Whether the things already sold belong in the answer.
+       *
+       * A sale archives what was sold — it is not owned any more, and a list of what you own
+       * should not go on naming it. What it made or lost is still worth reading, though, and
+       * a screen that wants to show that asks for it outright rather than by asking for every
+       * archived asset, most of which were archived for other reasons entirely.
+       */
+      includeSold: z.boolean().default(false),
+    }),
     output: z.array(z.object({
       id: z.string(), name: z.string(), kind: z.string(),
       ownership: z.string(), icon: z.string().nullable(), color: z.string().nullable(),
@@ -41,9 +84,25 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       acquiredOn: z.string().nullable(),
       nisabMetOn: z.string().nullable(),
       archived: z.boolean(),
+      /** what it cost when it was bought, in its own currency; nothing for a plan */
+      boughtFor: z.number().nullable(),
+      /**
+       * What a sale today would be measured against, in the ledger's own currency: the
+       * payments made on a plan, or the price paid for something bought outright.
+       */
+      basis: z.number(),
+      /** the sale, once there is one: the day, what it fetched, and what that was measured against */
+      soldOn: z.string().nullable(),
+      soldPrice: z.number().nullable(),
+      soldCurrency: z.string().nullable(),
+      soldAccountId: z.string().nullable(),
+      /** what had gone into it — paid on a plan, or what it cost outright — in the ledger's currency */
+      soldBasis: z.number().nullable(),
+      /** what the sale made or lost against that basis, in the ledger's currency */
+      soldProfit: z.number().nullable(),
       ...SOURCE_FIELDS,
     })),
-    handler: async ({ includeArchived }) => {
+    handler: async ({ includeArchived, includeSold }) => {
       const ctx = ctxOf();
       const balances = allBalances(ctx.db);
       const installments = ctx.db.select().from(t.installments).all();
@@ -78,7 +137,7 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
           && n.priceKey !== 'brokerage_cash'
           && !/^brokerage/.test(n.id)
           && !isDebtNode(n)
-          && (includeArchived || !n.archived))
+          && (includeArchived || !n.archived || (includeSold && !!(n as { soldOn?: string | null }).soldOn)))
         .map((n) => {
           const mine = installments.filter((i) => i.propertyId === n.id);
           const planTotal = mine.reduce((s, i) => s + i.amountEgp, 0);
@@ -111,8 +170,21 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
             intention?: string | null; intentionSince?: string | null;
             acquiredOn?: string | null; nisabMetOn?: string | null;
             sourceCurrency?: string | null; sourceAmount?: number | null; sourceRate?: number | null;
+            boughtFor?: number | null;
+            soldOn?: string | null; soldPrice?: number | null; soldCurrency?: string | null;
+            soldAccountId?: string | null; soldBasis?: number | null;
           };
           const value = valueOf(n, balances[n.id] ?? n.openingQty);
+          /**
+           * What the sale made, in the ledger's own currency.
+           *
+           * The price is converted at today's rate and the basis was written in pounds the
+           * day it was sold, which is the one figure that cannot be worked out again later:
+           * what had been paid towards the thing then is not what the plan says now.
+           */
+          const soldPriceEgp = held.soldPrice == null ? null
+            : held.soldPrice * (!held.soldCurrency || held.soldCurrency === 'EGP'
+              ? 1 : (market.fxRates[held.soldCurrency] ?? 1));
 
           return {
             id: n.id, name: n.name, kind,
@@ -138,6 +210,15 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
             planTotal, paid, remaining: planTotal - paid,
             payments: mine.length, nextDue: next as string | null,
             archived: n.archived,
+            boughtFor: held.boughtFor ?? null,
+            basis: purchaseBasisEgp(n, mine, balances[n.id] ?? n.openingQty, market),
+            soldOn: held.soldOn ?? null,
+            soldPrice: held.soldPrice ?? null,
+            soldCurrency: held.soldCurrency ?? null,
+            soldAccountId: held.soldAccountId ?? null,
+            soldBasis: held.soldBasis ?? null,
+            soldProfit: soldPriceEgp == null || held.soldBasis == null
+              ? null : soldPriceEgp - held.soldBasis,
             // The third reading: what the money that paid for this outright would be worth
             // now, had it never left its own currency. Nothing for a plan, and nothing for an
             // asset bought before this was tracked or with no account named at all.
@@ -205,6 +286,15 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
           id, kind: 'asset', name: input.name, currency: input.currency,
           valuation: 'fixed',
           openingQty: input.ownership === 'installments' ? 0 : buying ? 0 : input.value,
+          /**
+           * What it cost, kept apart from what it is worth.
+           *
+           * The two are the same number today and will not be tomorrow: repricing a flat
+           * rewrites the worth, and a profit measured against a rewritten purchase price is
+           * not a profit. A plan has none — what it cost is what has been paid towards it.
+           */
+          boughtFor: input.ownership === 'installments' || input.value <= 0 ? null : input.value,
+          boughtCurrency: input.ownership === 'installments' || input.value <= 0 ? null : input.currency,
           assetKind: input.kind, ownership: input.ownership,
           intention: stated,
           // a lunar year has to run from somewhere, and the day it was stated is that day
@@ -357,6 +447,97 @@ export const assetCaps = (ctxOf: () => AppCtx) => [
       return noted(held && held !== previous
         ? `${patch.name ?? row.name} is now held ${intentionLabel(kind ?? assetKindOf(row, true), held).toLowerCase()}, from ${clean.intentionSince ?? patch.intentionSince ?? row.intentionSince}`
         : `${patch.name ?? row.name} updated`);
+    },
+  }),
+
+  command({
+    name: 'asset.sell',
+    context: 'holdings',
+    summary: 'Sell something you own: the price it fetched, into the account the money reached.',
+    detail: 'What the sale made or lost is measured against what had gone into the thing — what it cost, for something bought outright, and what has actually been paid so far for something on a plan. Both the price and that figure are written down, so the profit can be read back years later rather than reworked from prices that have since moved. The thing itself leaves the lists: it is not owned any more, and every movement against it stays in the log.',
+    input: z.object({
+      assetId: NodeId,
+      /** what it fetched, in the currency it was sold in */
+      price: z.number().positive(),
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      /** the account the money reached */
+      accountId: NodeId,
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      note: z.string().max(300).optional(),
+    }).merge(DryRun),
+    output: Outcome,
+    handler: async (input) => {
+      const ctx = ctxOf();
+      const { db } = ctx;
+      const row = db.select().from(t.nodes).where(eq(t.nodes.id, input.assetId)).get();
+      if (!row || row.kind !== 'asset') {
+        return refusal('not_found', `${input.assetId} is not an asset in this ledger.`);
+      }
+      const held = row as typeof row & { soldOn?: string | null; boughtFor?: number | null };
+      if (held.soldOn) {
+        return refusal('immutable', `${row.name} was already sold, on ${held.soldOn}.`,
+                       'Undo that sale from the movement log if it was recorded wrongly.');
+      }
+      const acct = ctx.ledger().node(input.accountId);
+      if (!acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
+
+      const market = readMarket(db);
+      const rateOf = (code?: string | null) =>
+        !code || code === 'EGP' ? 1 : (market.fxRates[code] ?? 1);
+
+      const assetCurrency = row.currency ?? 'EGP';
+      const priceCurrency = input.currency ?? assetCurrency;
+      const priceEgp = input.price * rateOf(priceCurrency);
+
+      /**
+       * What the price is measured against.
+       *
+       * On a plan, what has actually been handed over so far — the same figure the portfolio
+       * shows and zakat counts, read the same way `assets.list` reads it, so the three cannot
+       * disagree about what a half-paid flat has cost. Bought outright, the price it was
+       * bought at; and where that was never recorded — an asset older than the column — what
+       * it is worth now, which is the only answer the ledger still has.
+       */
+      const plan = db.select().from(t.installments)
+        .where(eq(t.installments.propertyId, input.assetId)).all();
+      const onPlan = plan.length > 0;
+      const balance = allBalances(db)[input.assetId] ?? row.openingQty;
+      const basisEgp = purchaseBasisEgp(row, plan, balance, market);
+
+      const date = input.date ?? today(ctx);
+      const proceeds = priceEgp / rateOf(acct.currency);
+      const profit = priceEgp - basisEgp;
+
+      /**
+       * What the sale moves.
+       *
+       * The thing leaves at whatever it still stands at in the ledger and the money arrives
+       * at what it fetched; the two are different figures, and their difference is the profit.
+       * Something that stands at nothing — a plan where no payment has bought equity yet —
+       * has nothing to take out, so the movement is the money arriving and nothing else,
+       * rather than a leg moving nought, which is not a movement at all.
+       */
+      const legs = balance > 0
+        ? [{ fromNodeId: input.assetId, qtyFrom: balance, toNodeId: input.accountId, qtyTo: proceeds }]
+        : [{ toNodeId: input.accountId, qtyFrom: proceeds }];
+
+      return post(ctx, {
+        date, kind: 'sale', note: input.note ?? `${row.name} sold`,
+        legs,
+      }, `${row.name} sold for ${Math.round(input.price)} ${priceCurrency} into ${acct.name}` +
+         ` — ${profit >= 0 ? 'a gain' : 'a loss'} of ${Math.abs(Math.round(profit))} EGP against the ${
+           onPlan ? 'payments made' : 'price paid'}`,
+      {
+        dryRun: input.dryRun,
+        after: (db2, movementId) => {
+          db2.update(t.nodes).set({
+            soldOn: date, soldPrice: input.price, soldCurrency: priceCurrency,
+            soldAccountId: input.accountId, soldBasis: basisEgp, soldMovementId: movementId,
+            // It is not owned any more, so it leaves the lists the way anything else does.
+            archived: true,
+          }).where(eq(t.nodes.id, input.assetId)).run();
+        },
+      });
     },
   }),
 

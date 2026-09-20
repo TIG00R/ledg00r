@@ -102,11 +102,20 @@ function Body() {
    */
   const usualAccount = (destinationId: string) =>
     cInfo(destinationId)?.accountId ?? data.settings.burnAccountId;
+  /** an account as one line of text: the bank, then what is held there */
   const accountName = (id?: string) => {
     const n = data.nodes.find((x) => x.id === id);
     const inst = data.institutions.find((i) => i.id === n?.parentId);
-    return n ? `${inst?.name ?? ''} · ${n.name}` : '—';
+    return n ? (inst ? `${inst.name} · ${n.name}` : n.name) : '—';
   };
+  /** the account's own name, for the line the bank is written under rather than into */
+  const accountOnly = (id?: string) => data.nodes.find((x) => x.id === id)?.name ?? '—';
+  /**
+   * What the "Paid from" filter offers: every account money can leave, drawn the way the
+   * picker beside it draws them — the bank over the account, with the bank's mark. What it
+   * matches on is the text the column holds, which is the one thing a filter can compare.
+   */
+  const accountChoices = () => payable.map((n) => accountOption(data, n, { value: accountName(n.id) }));
 
   const split = splitByCurrency(records, (e) => ({ amount: e.amount, currency: e.currency }), market);
 
@@ -232,9 +241,13 @@ function Body() {
 
             { key: 'account', label: 'Paid from', kind: 'pick',
               value: (e) => accountName(e.accountId),
+              choices: accountChoices(),
+              // The account on the first line and the bank under it — the name used to carry
+              // the bank as well, so every row said the bank twice and the account was the
+              // shorter half of a doubled line.
               cell: (e) => (
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  <AccountName name={accountName(e.accountId)} bank={bankOf(e.accountId)} />
+                  <AccountName name={accountOnly(e.accountId)} bank={bankOf(e.accountId)} />
                 </span>
               ),
               field: (d, set) => (

@@ -53,7 +53,8 @@ export function buildDataset(db: Db, now: Date): { data: DataSet; market: Market
       id: n.id, kind: n.kind, name: n.name, parentId: n.parentId ?? undefined,
       currency: n.currency ?? undefined, unit: n.unit ?? undefined,
       valuation: n.valuation, priceKey: n.priceKey ?? undefined,
-      openingQty: n.openingQty, color: n.color ?? undefined, archived: n.archived,
+      openingQty: n.openingQty, color: n.color ?? undefined,
+      icon: n.icon ?? undefined, archived: n.archived,
     })),
     transactions: assembleTransactions(db),
     incomeSources: db.select().from(t.incomeSources).all().map((s) => ({

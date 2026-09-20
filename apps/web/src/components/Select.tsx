@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { Mark } from './Mark';
 
 export interface Option {
   value: string;
@@ -15,6 +16,16 @@ export interface Option {
    * there, which is not what was chosen.
    */
   trigger?: string;
+  /**
+   * The mark that belongs to what is being offered — a bank's logo beside its accounts.
+   *
+   * An icon name or an `img:<id>`, the same string every other mark in the ledger is, so a
+   * picker reads like the rows it is choosing between rather than like a list of words. Left
+   * off, the option is drawn as text and nothing takes up the room a mark would.
+   */
+  icon?: string;
+  /** what colour to draw a mark that is an icon rather than a picture */
+  iconColor?: string;
 }
 
 /** how far the list sits from its trigger, how close it may come to the window edge */
@@ -173,10 +184,12 @@ export function Select({ value, options, onChange, ariaLabel, style, disabled }:
           // Unresolved is a third state, and it stays visible even while open — the point is to
           // be seen before anyone saves, not to be replaced by the ordinary focus ring.
           border: `1px solid ${unresolved ? 'var(--negative)' : open ? 'var(--focus-edge)' : 'var(--control-border)'}`,
-          boxShadow: open && !unresolved ? '0 0 0 1px var(--focus-edge) inset' : 'none',
-          transition: 'border-color 140ms var(--ease), box-shadow 140ms var(--ease)',
+          transition: 'border-color 140ms var(--ease)',
           background: 'var(--control)', color: 'var(--ink)', opacity: disabled ? 0.55 : 1,
         }}>
+        {!unresolved && chosen?.icon && (
+          <Mark mark={chosen.icon} size={15} color={chosen.iconColor ?? 'var(--muted)'} />
+        )}
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                        color: unresolved ? 'var(--negative)' : undefined }}>
           {unresolved ? 'Not offered here' : chosen?.trigger ?? chosen?.label ?? ''}
@@ -208,6 +221,7 @@ export function Select({ value, options, onChange, ariaLabel, style, disabled }:
                   background: i === active ? 'var(--control-hover)' : 'transparent',
                   color: on ? 'var(--ink)' : 'var(--muted)',
                 }}>
+                {o.icon && <Mark mark={o.icon} size={16} color={o.iconColor ?? 'var(--muted)'} />}
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 13, display: 'block', whiteSpace: 'nowrap',
                                  overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</span>

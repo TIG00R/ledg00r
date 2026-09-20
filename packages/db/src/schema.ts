@@ -66,6 +66,27 @@ export const nodes = sqliteTable('nodes', {
   sourceCurrency: text('source_currency'),
   sourceAmount: real('source_amount'),
   sourceRate: real('source_rate'),
+  /**
+   * What it cost when it was bought, and what it fetched when it was sold.
+   *
+   * `boughtFor` is the price the asset was added at, in its own currency, kept apart from
+   * `openingQty` because that figure moves: repricing a flat rewrites what it is worth and
+   * would otherwise rewrite what was paid for it as well. A plan has none — what it cost is
+   * what has been paid towards it, which the plan itself says.
+   *
+   * The sale is the whole of the other side: the day, the price and its currency, the account
+   * the money reached, and `soldBasis`, the figure that price was measured against. The basis
+   * is stored rather than worked out again, because what had been paid towards the thing on
+   * the day it was sold is not something today's ledger can still answer.
+   */
+  boughtFor: real('bought_for'),
+  boughtCurrency: text('bought_currency'),
+  soldOn: text('sold_on'),
+  soldPrice: real('sold_price'),
+  soldCurrency: text('sold_currency'),
+  soldAccountId: text('sold_account_id'),
+  soldBasis: real('sold_basis'),
+  soldMovementId: text('sold_movement_id'),
 }, (t) => ({
   byParent: index('node_parent').on(t.parentId),
   byKind: index('node_kind').on(t.kind, t.archived),

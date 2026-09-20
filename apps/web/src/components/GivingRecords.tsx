@@ -58,6 +58,11 @@ export function GivingRecords({ only, search, fallback, onRows }: {
     const inst = data.institutions.find((i) => i.id === n?.parentId);
     return n ? `${inst?.name ? `${inst.name} · ` : ''}${n.name}` : '—';
   };
+  /** the account's own name, for the line the bank is written under rather than into */
+  const accountOnly = (id: string) => data.nodes.find((x) => x.id === id)?.name ?? '—';
+  /** every account giving can leave, drawn in the filter the way the picker draws them */
+  const accountChoices = () => data.nodes.filter((n) => n.kind === 'cash')
+    .map((n) => accountOption(data, n, { value: accountName(n.id) }));
 
   const [live_, setLive_] = useState<GivingRow[] | null>(null);
   const loadGiving = useCallback(() => {
@@ -129,9 +134,10 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             ) },
           { key: 'from', label: 'Paid from', kind: 'pick',
             value: (r) => accountName(r.from),
+            choices: accountChoices(),
             cell: (r) => (
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                <AccountName name={accountName(r.from)} bank={bankOf(r.from)} />
+                <AccountName name={accountOnly(r.from)} bank={bankOf(r.from)} />
               </span>
             ),
             field: (d, set) => (

@@ -12,6 +12,7 @@ import { Icon } from '../components/Icon';
 import { Mark, MarkPicker } from '../components/Mark';
 import { ActionButton, useLive } from '../Live';
 import { RecordTable, isInteractive } from '../components/RecordTable';
+import { RecordAmount } from '../components/RecordAmount';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { IntentionPicker, HawlBar } from '../components/Intention';
 import { intentionsFor, type Intention } from '@ledger/engine';
@@ -175,6 +176,51 @@ function Body() {
   /** the card that is not a thing yet */
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState<Record<string, string | number>>({});
+  /**
+   * Which card is being sold, and for what.
+   *
+   * Selling is not editing: it ends the thing rather than correcting it, so it opens its own
+   * small form on the card rather than joining the fields that describe what it is. One at a
+   * time, like every other editor here.
+   */
+  const [selling, setSelling] = useState<string | null>(null);
+  const [sale, setSale] = useState<Record<string, string | number>>({});
+  const openSale = (a: any | null, o: { id: string; worth: number; paid: number; onPlan: boolean }) => {
+    setOpenAssetId(null);
+    setSelling(o.id);
+    setSale({
+      /**
+       * What it stands at now, in a currency the figure is actually in.
+       *
+       * An asset held in a currency of its own keeps that figure and that currency. One with
+       * no currency of its own — a car priced off the dollar rate, a flat on a plan — holds a
+       * bare quantity, and offering that beside a pound sign would say a 728,000-pound car
+       * sold for fourteen thousand. What it is worth, in the ledger's own currency, is the
+       * honest opening answer there.
+       */
+      price: Math.round(a?.currency ? (a.amount ?? 0) : (o.worth ?? 0)),
+      currency: a?.currency ?? 'EGP',
+      accountId: data.settings.burnAccountId ?? '',
+      date: new Date().toISOString().slice(0, 10),
+      note: '',
+    });
+  };
+
+  /**
+   * What has been sold, and what each sale made.
+   *
+   * A sold thing is not owned any more, so it is not in the list above — but what it made or
+   * lost is the whole point of having recorded the sale, and it is read from the same
+   * capability with the sold ones asked for by name.
+   */
+  const [sold, setSold] = useState<any[]>([]);
+  const loadSold = useCallback(() => {
+    if (!live) { setSold([]); return; }
+    (ledger as any)['assets.list']({ includeSold: true })
+      .then((rows: any[]) => setSold((rows ?? []).filter((a) => a.soldOn)))
+      .catch(() => setSold([]));
+  }, [live]);
+  useEffect(loadSold, [loadSold, version]);
 
   const openCard = (o: { id: string; name: string; icon: string; colour: string },
                     a: any | null) => {
@@ -409,13 +455,25 @@ function Body() {
                                    .then(() => { stopEditing(); return loadAssets(); }); }} />
                 </span>
               ) : (
-                <button className="btn quiet" onClick={startEditing} aria-label={`Edit ${o.name}'s settings`}
-                        title="Edit" style={{
-                          position: 'absolute', top: 14, right: 14, padding: 7, border: 'none',
-                          opacity: hoverAssetId === id ? 1 : 0, transition: 'opacity 120ms var(--ease)',
-                        }}>
-                  <Icon name="edit" size={14} />
-                </button>
+                <span style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 6,
+                               opacity: hoverAssetId === id || selling === id ? 1 : 0,
+                               transition: 'opacity 120ms var(--ease)' }}>
+                  {/* Selling is offered where correcting is: on the card, when the card is
+                      being pointed at. It is the other thing that happens to a thing you own,
+                      and it had nowhere to be said at all. */}
+                  {live && (
+                    <button className={`btn ${selling === id ? 'go' : 'quiet'} sm`}
+                            aria-expanded={selling === id}
+                            aria-label={`Sell ${o.name}`} title="Sell"
+                            onClick={() => (selling === id ? setSelling(null) : openSale(asset, o))}>
+                      <Icon name="handout" size={13} motion="none" /> Sell
+                    </button>
+                  )}
+                  <button className="btn quiet" onClick={startEditing} aria-label={`Edit ${o.name}'s settings`}
+                          title="Edit" style={{ padding: 7, border: 'none' }}>
+                    <Icon name="edit" size={14} />
+                  </button>
+                </span>
               )}
               <div style={{ display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
               {/* The ring is where the card's own arithmetic lives — the percentage, and what
@@ -646,6 +704,78 @@ function Body() {
                     )}
                   </div>
                 )}
+                {selling === id && (
+                  /**
+                   * What it fetched, and where the money went.
+                   *
+                   * The figure it is measured against is not asked for: it is what the ledger
+                   * already knows went into the thing — the payments made on a plan, the price
+                   * paid for one bought outright — and asking would invite a second answer
+                   * that disagrees with the portfolio and the zakat assessment.
+                   */
+                  <div style={{ padding: '14px 16px', borderRadius: 'var(--r-card)',
+                                background: 'var(--raised)', border: '1px solid var(--hairline)',
+                                display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {/* The figure the ledger itself will measure against, asked for rather
+                        than worked out again here — a card that promised one basis and a
+                        receipt that reported another would be worse than saying nothing. */}
+                    <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+                      {onPlan
+                        ? `Measured against ${dm(asset?.basis ?? paid)} paid so far.`
+                        : `Measured against ${dm(asset?.basis ?? o.worth)}, what it cost.`}
+                    </div>
+                    <div style={{ display: 'grid', gap: 14,
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+                      <Field label="Sold for">
+                        <span className="field-money">
+                          <Amount value={Number(sale.price ?? 0)} ariaLabel={`${o.name} sale price`}
+                                  onChange={(n) => setSale((d) => ({ ...d, price: n }))} />
+                          <Select ariaLabel="Currency" value={String(sale.currency ?? 'EGP')}
+                                  style={{ width: 96 }}
+                                  onChange={(v) => setSale((d) => ({ ...d, currency: v }))}
+                                  options={currencyOptions} />
+                        </span>
+                      </Field>
+                      <Field label="Money went to">
+                        <Select ariaLabel="Account the sale paid into" value={String(sale.accountId ?? '')}
+                                onChange={(v) => setSale((d) => ({ ...d, accountId: v }))}
+                                options={data.nodes.filter((n) => n.kind === 'cash' && !n.archived)
+                                  .map((n) => accountOption(data, n, { currency: true }))} />
+                      </Field>
+                      <Field label="Sold on">
+                        <DateField value={String(sale.date ?? '')} ariaLabel={`${o.name} sold on`}
+                                   onChange={(v) => setSale((d) => ({ ...d, date: v }))} />
+                      </Field>
+                      <Field label="Note">
+                        <input aria-label={`${o.name} sale note`} placeholder="who bought it, anything else"
+                               value={String(sale.note ?? '')}
+                               onChange={(e) => setSale((d) => ({ ...d, note: e.target.value }))} />
+                      </Field>
+                    </div>
+                    <span className="btn-pair">
+                      <button className="btn go sm"
+                              disabled={!!running || !(Number(sale.price) > 0) || !sale.accountId}
+                              onClick={() => {
+                                void run('asset.sell', {
+                                  assetId: id,
+                                  price: Number(sale.price),
+                                  currency: String(sale.currency || 'EGP'),
+                                  accountId: String(sale.accountId),
+                                  date: String(sale.date),
+                                  ...(sale.note ? { note: String(sale.note) } : {}),
+                                }).then((out) => {
+                                  if (out.ok) { setSelling(null); setSale({}); }
+                                  loadAssets(); loadSold();
+                                });
+                              }}>
+                        <Icon name="check" size={13} motion="none" /> Record the sale
+                      </button>
+                      <button className="btn ghost sm" onClick={() => { setSelling(null); setSale({}); }}>
+                        <Icon name="close" size={13} motion="none" /> Cancel
+                      </button>
+                    </span>
+                  </div>
+                )}
                 {next && due && (() => {
                   // Neither the box nor its border take the asset's colour any more — an
                   // asset without one fell back to the same red the amount is always in, so
@@ -747,6 +877,73 @@ function Body() {
       </div>
       )}
 
+
+      {/*
+        * What has been sold, and what each sale made.
+        *
+        * A sold thing has left the cards above — it is not owned any more — and this is where
+        * it goes on being readable. The price is what it fetched, the figure beside it is what
+        * had gone into it, and the last column is the difference, which is the whole reason
+        * both of the others are written down at the moment of the sale rather than worked out
+        * again later from prices that have since moved.
+        */}
+      {tab === 'overview' && sold.length > 0 && (
+        <Panel title="Sold"
+               hint="What each one fetched, against what had gone into it — the price paid for something bought outright, and the payments actually made on something still on a plan.">
+          <RecordTable<any>
+            rows={sold}
+            rowKey={(a) => a.id}
+            sort={{ key: 'soldOn', dir: 'desc' }}
+            columns={[
+              { key: 'soldOn', label: 'Sold on', kind: 'date',
+                value: (a) => a.soldOn ?? '',
+                cell: (a) => <span className="mono" style={{ fontSize: 13 }}>{a.soldOn}</span> },
+              { key: 'name', label: 'What', kind: 'text',
+                value: (a) => a.name,
+                cell: (a) => (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+                    <Mark mark={a.icon ?? undefined} size={16} color={a.color ?? 'var(--muted)'}
+                          fallback={a.kind === 'vehicle' ? 'car' : 'building'} />
+                    <span style={{ fontSize: 13 }}>{a.name}</span>
+                  </span>
+                ) },
+              { key: 'basis', label: 'What went in', kind: 'amount',
+                value: (a) => a.soldBasis ?? 0,
+                cell: (a) => (
+                  <span className="mono" style={{ fontSize: 13 }}>
+                    {dm(a.soldBasis ?? 0)}
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                      {a.planTotal > 0 ? 'paid on the plan' : 'what it cost'}
+                    </span>
+                  </span>
+                ) },
+              { key: 'price', label: 'Sold for', kind: 'money',
+                value: (a) => (a.soldBasis ?? 0) + (a.soldProfit ?? 0),
+                cell: (a) => (
+                  <RecordAmount amount={a.soldPrice ?? 0} currency={a.soldCurrency ?? 'EGP'}
+                                accountId={a.soldAccountId} />
+                ) },
+              { key: 'profit', label: 'Profit or loss', kind: 'amount',
+                value: (a) => a.soldProfit ?? 0,
+                cell: (a) => {
+                  const p = a.soldProfit ?? 0;
+                  const good = p >= 0;
+                  return (
+                    <span className="mono" style={{ fontWeight: 500,
+                                                    color: good ? 'var(--positive)' : 'var(--negative)' }}>
+                      {good ? '+' : '−'}{dm(Math.abs(p))}
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                        {(a.soldBasis ?? 0) > 0
+                          ? `${good ? '+' : '−'}${Math.abs((p / a.soldBasis) * 100).toFixed(1)}%`
+                          : 'nothing had gone in'}
+                      </span>
+                    </span>
+                  );
+                } },
+            ]}
+          />
+        </Panel>
+      )}
 
       {tab === 'plans' && (
         <Panel title="Something spent on upkeep"

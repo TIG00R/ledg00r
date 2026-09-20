@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
+import { RecordAmount } from '../components/RecordAmount';
+import { DateField } from '../components/DateField';
+import { RecordTable } from '../components/RecordTable';
 import { Select } from '../components/Select';
+import { accountOption } from '../accounts';
 import { useApp, market } from '../AppState';
 import { describeLead, zakatDebts, zakatDates, nisabEgp, formatHijri, groupOf,
          ZAKAT_RATE, HIJRI_MONTHS, NISAB_GOLD_G, NISAB_SILVER_G,
          type ZakatEntry, type EntryGroup } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field } from '../components/UI';
+import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field, AccountName } from '../components/UI';
 import { Segmented } from '../components/Segmented';
 import { Icon } from '../components/Icon';
 import { Mark } from '../components/Mark';
@@ -92,7 +96,14 @@ interface LoggedYear {
   nisab: number; basis: string; confirmedAt: string; note: string | null;
   goldPerG: number | null; silverPerG: number | null;
   entries: Entry[];
-  payments: Array<{ id: string; date: string; egp: number; causeId: string; note: string | null }>;
+  payments: ZakatPayment[];
+}
+
+/** one payment made against a confirmed year, as the ledger recorded it */
+interface ZakatPayment {
+  id: string; date: string; egp: number; causeId: string; note: string | null;
+  /** what was handed over and out of what, so a correction shows what was recorded */
+  amount: number; currency: string; accountId: string | null;
 }
 
 /**
@@ -630,11 +641,16 @@ export function Zakat() {
                 <Fragment key={year.id}>
                   <tr>
                     <td>
-                      <button className="btn-quiet" aria-expanded={open}
+                      {/* `btn-quiet` was a class this stylesheet has never defined, so every
+                          one of these read as the browser's own grey button in the browser's
+                          own type. They are the application's quiet button, at the small size
+                          the rest of the tables use. */}
+                      <button className="btn quiet sm" aria-expanded={open}
                               aria-label={`${year.label}, year to ${year.dueOn}`}
-                              style={{ padding: '2px 7px', minWidth: 0 }}
+                              style={{ padding: '4px 6px', minWidth: 0 }}
                               onClick={() => setOpenYear(open ? null : year.id)}>
-                        {open ? '−' : '+'}
+                        <Icon name="chevron" size={12} motion="none"
+                              style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
                       </button>
                     </td>
                     <td style={{ fontWeight: 500 }}>{year.label}</td>
@@ -650,7 +666,14 @@ export function Zakat() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {year.remaining > 0
-                        ? <button className="btn-quiet" onClick={() => setPaying(year.id)}>Record a payment</button>
+                        ? (
+                          <button className={`btn ${paying === year.id ? 'go' : 'quiet'} sm`}
+                                  aria-expanded={paying === year.id}
+                                  onClick={() => setPaying(paying === year.id ? null : year.id)}>
+                            <Icon name="handout" size={12} motion="none" />
+                            Record a payment
+                          </button>
+                        )
                         : <Chip tone="good">Discharged</Chip>}
                     </td>
                   </tr>
@@ -692,9 +715,11 @@ export function Zakat() {
             <Field label="Paid from">
               <Select ariaLabel="Source account" value={payAccount}
                       onChange={(val) => setPayment({ ...payment, accountId: val })}
-                      options={payFrom.map((n) => ({
-                        value: n.id, label: n.name, hint: dm(balances[n.id] ?? 0),
-                      }))} />
+                      /* the same option every other account picker draws — the bank over
+                         the account, its mark beside them — with what it holds on the end,
+                         since which account can cover the payment is the question here */
+                      options={payFrom.map((n) => accountOption(data, n,
+                        { currency: true, note: dm(balances[n.id] ?? 0) }))} />
             </Field>
             <Field label="Amount">
               <Amount value={payment.amount} ariaLabel="Zakat payment amount"
@@ -714,7 +739,7 @@ export function Zakat() {
               })}>
               Record it against this year
             </ActionButton>
-            <button className="btn-quiet" onClick={() => setPaying(null)}>Cancel</button>
+            <button className="btn quiet" onClick={() => setPaying(null)}>Cancel</button>
           </div>
         )}
 
@@ -776,6 +801,22 @@ function YearDetail({ year, dm, causeName, markOf }: {
   causeName: (id: string) => string;
   markOf: (id: string) => EntryMark | null;
 }) {
+  const { data, currencies } = useApp();
+  const causes = data.categories.filter((c) => c.domain === 'charity');
+  const payable = data.nodes.filter((n) => n.kind === 'cash' && !n.archived);
+  const bankOf = (id?: string | null) =>
+    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
+  const accountOnly = (id?: string | null) => data.nodes.find((n) => n.id === id)?.name ?? '—';
+  /**
+   * What a payment was, in its own currency.
+   *
+   * A ledger that predates these three fields answers with the converted figure and nothing
+   * else, so the pounds it discharged the year by stand in for the amount and the currency.
+   * A screen that read `undefined` there printed nothing at all where the payment should be.
+   */
+  const nativeAmount = (p: ZakatPayment) => p.amount ?? p.egp;
+  const nativeCurrency = (p: ZakatPayment) => p.currency ?? 'EGP';
+
   return (
     <div style={{ padding: '16px 18px', background: 'var(--raised)' }}>
       <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -840,30 +881,94 @@ function YearDetail({ year, dm, causeName, markOf }: {
             Nothing yet. {dm(year.due)} is still owed for this year.
           </p>
         ) : (
-          <table>
-            <thead><tr><th>Date</th><th>Went to</th><th>Amount</th></tr></thead>
-            <tbody>
-              {year.payments.map((p) => (
-                <tr key={p.id}>
-                  <td className="mono" style={{ fontSize: 12 }}>{p.date}</td>
-                  <td>
-                    <div style={{ fontSize: 13 }}>{causeName(p.causeId)}</div>
-                    {p.note && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{p.note}</div>}
-                  </td>
-                  <td className="mono">{dm(p.egp)}</td>
-                </tr>
-              ))}
-              <tr>
-                <td colSpan={2} style={{ fontWeight: 600 }}>
-                  {year.remaining > 0 ? 'Still to pay' : 'Discharged in full'}
-                </td>
-                <td className="mono" style={{ fontWeight: 600,
-                                              color: year.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
-                  {dm(year.remaining)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <>
+            {/*
+              * A payment against a year is a record like any other, so it is corrected and
+              * removed like any other: the same table, the same gesture, the same two
+              * capabilities the giving log uses. It used to be flat text, which made a
+              * payment entered against the wrong year or for the wrong amount the one record
+              * in the ledger that could only be fixed by finding it again somewhere else.
+              *
+              * The year it discharges is not offered as a field — this table *is* that year,
+              * and `giving.correct` keeps whatever year a record already paid unless it is
+              * told otherwise.
+              */}
+            <RecordTable<ZakatPayment>
+              rows={year.payments}
+              rowKey={(p) => p.id}
+              sort={{ key: 'date', dir: 'desc' }}
+              columns={[
+                { key: 'date', label: 'Date', kind: 'date',
+                  value: (p) => p.date,
+                  cell: (p) => <span className="mono" style={{ fontSize: 13 }}>{p.date}</span>,
+                  field: (d, set) => <DateField value={String(d.date ?? '')} ariaLabel="Date" hijri
+                                                onChange={(v) => set({ date: v })} /> },
+                { key: 'amount', label: 'Amount', kind: 'money',
+                  value: (p) => p.egp,
+                  cell: (p) => (
+                    <RecordAmount amount={nativeAmount(p)} currency={nativeCurrency(p)}
+                                  accountId={p.accountId} />
+                  ),
+                  field: (d, set) => (
+                    <span className="field-money">
+                      <Amount value={Number(d.amount ?? 0)} ariaLabel="Amount"
+                              onChange={(n) => set({ amount: n })} />
+                      <Select ariaLabel="Currency" value={String(d.currency ?? 'EGP')} style={{ width: 88 }}
+                              onChange={(v) => set({ currency: v })}
+                              options={currencies.map((c) => ({ value: c.code, label: c.code }))} />
+                    </span>
+                  ) },
+                { key: 'from', label: 'Paid from', kind: 'pick',
+                  value: (p) => accountOnly(p.accountId),
+                  cell: (p) => (
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      <AccountName name={accountOnly(p.accountId)} bank={bankOf(p.accountId)} />
+                    </span>
+                  ),
+                  field: (d, set) => (
+                    <Select ariaLabel="Paid from" value={String(d.accountId ?? '')}
+                            onChange={(v) => set({ accountId: v })}
+                            options={payable.map((n) => accountOption(data, n, { currency: true }))} />
+                  ) },
+                { key: 'to', label: 'Went to', kind: 'pick',
+                  value: (p) => causeName(p.causeId),
+                  cell: (p) => <span style={{ fontSize: 13 }}>{causeName(p.causeId)}</span>,
+                  field: (d, set) => (
+                    <Select ariaLabel="Went to" value={String(d.causeId ?? '')}
+                            onChange={(v) => set({ causeId: v })}
+                            options={causes.map((c) => ({ value: c.id, label: c.name }))} />
+                  ) },
+                { key: 'note', label: 'Note', kind: 'text',
+                  value: (p) => p.note ?? '',
+                  cell: (p) => <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {p.note || <span style={{ color: 'var(--faint)' }}>—</span>}</span>,
+                  field: (d, set) => <input aria-label="Note" placeholder="what it was for"
+                                            value={String(d.note ?? '')}
+                                            onChange={(e) => set({ note: e.target.value })} /> },
+              ]}
+              edit={{
+                capability: 'giving.correct',
+                draftOf: (p) => ({ date: p.date, amount: nativeAmount(p), currency: nativeCurrency(p),
+                                   accountId: p.accountId ?? '', causeId: p.causeId, note: p.note ?? '' }),
+                build: (d, p) => ({ givingId: p.id, accountId: d.accountId || undefined,
+                                    amount: Number(d.amount), currency: d.currency,
+                                    causeId: d.causeId, isZakat: true,
+                                    date: d.date, note: d.note ?? '' }),
+              }}
+              remove={{
+                capability: 'giving.remove',
+                build: (p) => ({ givingId: p.id }),
+                what: (p) => `the payment of ${dm(p.egp)} on ${p.date}`,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12,
+                          marginTop: 10, fontWeight: 600, fontSize: 13 }}>
+              <span>{year.remaining > 0 ? 'Still to pay' : 'Discharged in full'}</span>
+              <span className="mono" style={{ color: year.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
+                {dm(year.remaining)}
+              </span>
+            </div>
+          </>
         )}
       </div>
     </div>

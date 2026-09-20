@@ -204,7 +204,6 @@ option { background-color: var(--control); color: var(--ink); }
 :where(input, select, textarea):focus {
   outline: none;
   border-color: var(--focus-edge);
-  box-shadow: 0 0 0 1px var(--focus-edge) inset;
 }
 
 /* Anything without a border of its own to brighten still needs to be findable by keyboard,

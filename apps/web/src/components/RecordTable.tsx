@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
-import { Select } from './Select';
+import { Select, type Option } from './Select';
 import { DateField } from './DateField';
 import { Empty } from './UI';
 import { ConfirmModal } from './Confirm';
@@ -98,8 +98,14 @@ export interface Column<T> {
    * already in this log" rather than "what could be in it" — a column of accounts then lists
    * whichever accounts were touched recently and silently omits the rest. A column that knows
    * its own vocabulary states it here.
+   *
+   * A plain string is both what is matched and what is shown. An option says more about the
+   * same choice — a bank over the account under it, with the bank's mark beside them — which
+   * is what a column of accounts needs: the filter over the log reads like the picker that
+   * wrote the rows, rather than like a list of bare names. Its `value` is still the text the
+   * column holds, because that is what the filter matches against.
    */
-  choices?: string[];
+  choices?: Array<string | Option>;
   /** the control shown when this cell is being added or edited */
   field?: (draft: Record<string, any>, set: (patch: Record<string, any>) => void, row?: T) => ReactNode;
 }
@@ -188,7 +194,18 @@ export function RecordTable<T>({
   trailingWidth = '96px',
 }: RecordTableProps<T>) {
   const { run, running } = useLive();
-  const [sort, setSort] = useState<Dir | null>(initialSort ?? null);
+  /**
+   * How a log opens, when the screen has not said.
+   *
+   * Every log in this application is read newest first — what happened today is what is
+   * being looked for, and what happened two years ago is what is being scrolled to. A table
+   * left to its own devices used to open in whatever order its rows arrived, which for most
+   * of them is oldest first. With no order stated, the first column of dates decides it, the
+   * latest at the top; a screen that wants another order still says so and is obeyed.
+   */
+  const byDate = columns.find((c) => c.kind === 'date');
+  const [sort, setSort] = useState<Dir | null>(
+    initialSort ?? (byDate ? { key: byDate.key, dir: 'desc' } : null));
   const [filters, setFilters] = useState<Record<string, FilterValue>>({});
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<Record<string, any>>(add?.blank ?? {});
@@ -393,7 +410,8 @@ export function RecordTable<T>({
                       <FilterCell kind={kind} label={c.label} value={f}
                         onChange={(patch) => setFilter(c.key, patch)}
                         choices={kind === 'pick'
-                          ? c.choices ?? [...new Set(rows.map((r) => String(c.value(r))).filter(Boolean))].sort()
+                          ? (c.choices ?? [...new Set(rows.map((r) => String(c.value(r))).filter(Boolean))].sort())
+                              .map((x) => (typeof x === 'string' ? { value: x, label: x } : x))
                           : []} />
                     )}
                   </th>
@@ -689,7 +707,7 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
 /** One filter, drawn the way its column's data deserves. */
 function FilterCell({ kind, label, value, onChange, choices }: {
   kind: FilterKind; label: string; value: FilterValue;
-  onChange: (patch: FilterValue) => void; choices: string[];
+  onChange: (patch: FilterValue) => void; choices: Option[];
 }) {
   const box: React.CSSProperties = {
     fontSize: 11, padding: '5px 8px', width: '100%', font: 'inherit', fontWeight: 400,
@@ -699,8 +717,7 @@ function FilterCell({ kind, label, value, onChange, choices }: {
   if (kind === 'pick') {
     return <Select ariaLabel={`Filter by ${label}`} value={value.text ?? ''}
                    onChange={(v) => onChange({ text: v })}
-                   options={[{ value: '', label: 'any' },
-                             ...choices.map((c) => ({ value: c, label: c }))]} />;
+                   options={[{ value: '', label: 'any' }, ...choices]} />;
   }
   if (kind === 'amount' || kind === 'money') {
     return (
