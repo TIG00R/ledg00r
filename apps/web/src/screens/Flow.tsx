@@ -336,9 +336,19 @@ export function Flow() {
                  title={span === 'all' ? 'Nothing has moved yet' : `Nothing moved in ${spanName(month, span)}`}
                  body="Every movement recorded against these months would be drawn here. Widen the span, or step back, to find one that had some." />
         )}
+        {/*
+          * The chart is drawn at the size it was laid out for, and shrinks with the window.
+          *
+          * Sizing the drawing off whatever width the panel happened to have made it the one
+          * thing on the page that did not behave like the rest: it stretched past its own
+          * geometry on a wide window, and a floor under its width held it at full size on a
+          * narrow one while every panel around it gave way. The layout above already knows
+          * how wide the chart is, so that is the width it is drawn at, and a narrower panel
+          * scales the whole of it down rather than pushing it off the side.
+          */}
         <div style={{ overflowX: 'auto', display: drawn.length === 0 ? 'none' : undefined }}>
-          <svg viewBox={`0 0 ${width} ${height}`} width="100%"
-               style={{ minWidth: Math.min(width, 940) }} role="img"
+          <svg viewBox={`0 0 ${width} ${height}`}
+               style={{ width: '100%', maxWidth: width, height: 'auto' }} role="img"
                aria-label={drawn.map((f) => {
                  const a = entities.find((e) => e.id === f.from)!, b = entities.find((e) => e.id === f.to)!;
                  return `${a.label} to ${b.label}, ${Math.round(f.amount).toLocaleString('en-US')}`;
