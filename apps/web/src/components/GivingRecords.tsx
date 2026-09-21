@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApp, market } from '../AppState';
 import { money, toEgp } from '@ledger/engine';
 import { RecordTable } from './RecordTable';
+import { AccountLine } from './AccountLine';
 import { Icon, type IconName } from './Icon';
 import { Amount } from './Amount';
 import { RecordAmount } from './RecordAmount';
 import { DateField } from './DateField';
-import { AccountName } from './UI';
 import { Select } from './Select';
 import { useLive } from '../Live';
 import { ledger } from '../api';
@@ -45,9 +45,6 @@ export function GivingRecords({ only, search, fallback, onRows }: {
   onRows?: (rows: GivingRow[]) => void;
 }) {
   const { data, currencies } = useApp();
-  /** which institution a node sits at, for the second line under an account's name */
-  const bankOf = (id?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
 
   const { live, version } = useLive();
 
@@ -58,8 +55,6 @@ export function GivingRecords({ only, search, fallback, onRows }: {
     const inst = data.institutions.find((i) => i.id === n?.parentId);
     return n ? `${inst?.name ? `${inst.name} · ` : ''}${n.name}` : '—';
   };
-  /** the account's own name, for the line the bank is written under rather than into */
-  const accountOnly = (id: string) => data.nodes.find((x) => x.id === id)?.name ?? '—';
   /** every account giving can leave, drawn in the filter the way the picker draws them */
   const accountChoices = () => data.nodes.filter((n) => n.kind === 'cash')
     .map((n) => accountOption(data, n, { value: accountName(n.id) }));
@@ -137,7 +132,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             choices: accountChoices(),
             cell: (r) => (
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                <AccountName name={accountOnly(r.from)} bank={bankOf(r.from)} />
+                <AccountLine id={r.from} />
               </span>
             ),
             field: (d, set) => (
@@ -164,7 +159,8 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             field: (d, set) => (
             <Select ariaLabel="Went to" value={d.causeId ?? ''}
                   onChange={(v) => set({ causeId: v })}
-                  options={cats.map((c) => ({ value: c.id, label: c.name }))} />
+                  options={cats.map((c) => ({ value: c.id, label: c.name,
+                                             icon: c.icon, iconColor: c.color }))} />
             ) },
           { key: 'note', label: 'Note', kind: 'text',
             value: (r) => r.note,
@@ -202,6 +198,8 @@ export function GivingRecords({ only, search, fallback, onRows }: {
         remove={{
           capability: 'giving.remove',
           build: (r) => ({ givingId: r.id }),
+          keep: { label: 'Just remove the record',
+                  build: (r) => ({ givingId: r.id, reverse: false }) },
           what: (r) => `${r.kind === 'zakat' ? 'zakat' : 'sadaqat'} of ${money(r.amount, r.currency)} on ${r.date}`,
           blocked: () => (live_ ? undefined
             : 'This screen is showing the figures it ships with. Start the ledger to remove one.'),

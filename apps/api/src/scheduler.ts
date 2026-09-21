@@ -4,8 +4,9 @@ import { validate } from '@ledger/domain';
 import { writeMovement, writeMovementDetailed, ledgerView } from '@ledger/db';
 import { installmentDueDate } from '@ledger/engine';
 import { nextOccurrence, readTemplates } from './capabilities/planning.js';
-import { wealthSnapshot } from './capabilities/overview.js';
+import { wealthSnapshot, refreshTodayStatement } from './capabilities/overview.js';
 import { newId, today } from './capabilities/shared.js';
+import { closeDueYears } from './capabilities/giving.js';
 import type { RecurringTemplate } from '@ledger/engine';
 import type { AppCtx } from './context.js';
 
@@ -53,6 +54,11 @@ export function tick(ctx: AppCtx): TickResult {
       currency: snap.currency, netWorth: snap.netWorth, allocation: snap.allocation,
       source: 'auto', note: null, createdAt: now, updatedAt: null,
     }).run();
+    closed.push({ date: todayIso, netWorth: snap.netWorth, currency: snap.currency });
+  } else if (refreshTodayStatement(ctx)) {
+    // Today is not history yet: what was recorded since this morning belongs in this
+    // morning's figure. Every day before it stays exactly as it was closed.
+    const snap = wealthSnapshot(ctx);
     closed.push({ date: todayIso, netWorth: snap.netWorth, currency: snap.currency });
   }
 

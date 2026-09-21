@@ -418,6 +418,10 @@ function Body() {
             build: (l) => ({ lotId: l.id }),
             what: (l) => `${l.direction} of ${l.grams} g`,
             onDone: load,
+            // the metal really did change hands, and only this record of it is wrong
+            keep: { label: 'Just remove the record',
+                    build: (l) => ({ lotId: l.id, reverse: false }),
+                    body: 'Removing it puts the weight and the money back where they came from. If the metal really was bought or sold and only this record is wrong, take the record off and leave what it moved standing.' },
           }}
           clear={{ log: 'metals',
                    what: 'every gold and silver lot, and the movements behind them',

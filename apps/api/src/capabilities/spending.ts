@@ -3,7 +3,8 @@ import { command, query, DateOnly, NodeId, CategoryId, Outcome } from '@ledger/c
 import { schema as t, periodTotals } from '@ledger/db';
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
-import { atomically, post, noted, refusal, today, newId, DryRun, undoMovement } from './shared.js';
+import { atomically, post, noted, refusal, today, newId, DryRun, undoMovement,
+         inAccountQty, rateToEgp } from './shared.js';
 
 /**
  * Spending.
@@ -57,9 +58,13 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       const currency = input.currency ?? acct.currency ?? 'EGP';
       const id = newId('exp');
 
+      // What the account actually loses, in what the account is held in. Stating pounds
+      // against a dollar account used to take the figure out as dollars.
+      const leaves = inAccountQty(ctx.db, input.amount, currency, acct.currency);
+
       return post(ctx, {
         date, kind: 'expense', note: input.note,
-        legs: [{ fromNodeId: accountId, qtyFrom: input.amount, categoryId: input.destinationId }],
+        legs: [{ fromNodeId: accountId, qtyFrom: leaves, categoryId: input.destinationId }],
       }, `${input.amount} ${currency} on ${cat.name}${input.place ? ` at ${input.place}` : ''}, out of ${acct.name}`,
       {
         dryRun: input.dryRun,
@@ -168,6 +173,34 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
       if (!next.accountId) return refusal('unknown_node', 'That expense names no account to come out of.');
 
       /**
+       * A correction that moves no money does not move any.
+       *
+       * Saving a row with the same account, the same amount in the same currency and the same
+       * date used to reverse the movement and post an identical one anyway: the balance ended
+       * where it started, but the log gained a correction handing the money back and a second
+       * expense taking it out again, and a reader watching their own account saw money
+       * returned by an edit that changed a note. Where the four things a movement is made of
+       * are untouched, the record is simply corrected — and the destination, which lives on
+       * the leg as well as on the row, is corrected with it.
+       */
+      const moved = next.accountId !== row.accountId
+        || next.amount !== row.amount
+        || next.currency !== row.currency
+        || next.date !== row.date;
+      if (!moved) {
+        ctx.db.update(t.expenses).set({
+          categoryId: next.categoryId, place: next.place, note: next.note,
+        }).where(eq(t.expenses.id, input.expenseId)).run();
+        if (row.movementId) {
+          ctx.db.update(t.legs).set({ categoryId: next.categoryId })
+            .where(eq(t.legs.transactionId, row.movementId)).run();
+          ctx.db.update(t.transactions).set({ note: next.note })
+            .where(eq(t.transactions.id, row.movementId)).run();
+        }
+        return noted(`${next.place || 'That expense'} updated. Nothing moved — the account, the amount and the date are as they were.`);
+      }
+
+      /**
        * Reverse what was recorded, then record what was meant — or neither.
        *
        * The second half can be refused: the account the expense should have come out of may
@@ -178,13 +211,17 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
        * transaction the whole correction stands or the record is exactly as it was.
        */
       const rate = next.currency === 'EGP' ? 1 : rateFor(ctx.db, next.currency);
+      const acct = ctx.ledger().node(next.accountId);
+      if (!acct) return refusal('unknown_node', `${next.accountId} is not an account in this ledger.`);
+      const leaves = inAccountQty(ctx.db, next.amount, next.currency, acct.currency);
+
       return atomically(ctx, () => {
         undoMovement(ctx, row.movementId);
         ctx.db.delete(t.expenses).where(eq(t.expenses.id, input.expenseId)).run();
 
         return post(ctx, {
           date: next.date, kind: 'expense', note: next.note ?? undefined,
-          legs: [{ fromNodeId: next.accountId!, qtyFrom: next.amount, categoryId: next.categoryId }],
+          legs: [{ fromNodeId: next.accountId!, qtyFrom: leaves, categoryId: next.categoryId }],
         }, `corrected to ${next.amount} ${next.currency}`,
         {
           index: [{ kind: 'expense', recordId: input.expenseId,
@@ -205,18 +242,24 @@ export const spendingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'expense.remove',
     context: 'spending',
-    summary: 'Remove a recorded expense, reversing the movement behind it.',
-    detail: 'The money comes back to the account it left, and the log keeps both the spending and its reversal — nothing is erased.',
+    summary: 'Remove a recorded expense, reversing the movement behind it — or take the record off and leave the money where it went.',
+    detail: 'Reversing is the usual answer: the money comes back to the account it left, and the log keeps both the spending and its reversal, since nothing is erased. Pass reverse false where the money really did leave and only this record of it is wrong — a duplicate, or an expense recorded twice by two different hands. The record goes and the balance stands.',
     effect: 'irreversible',
-    input: z.object({ expenseId: z.string() }),
+    input: z.object({
+      expenseId: z.string(),
+      /** whether the movement behind it is reversed, putting the money back */
+      reverse: z.boolean().default(true),
+    }),
     output: Outcome,
-    handler: async ({ expenseId }) => {
+    handler: async ({ expenseId, reverse }) => {
       const ctx = ctxOf();
       const row = ctx.db.select().from(t.expenses).where(eq(t.expenses.id, expenseId)).get();
       if (!row) return refusal('not_found', 'There is no such expense.');
-      undoMovement(ctx, row.movementId);
+      if (reverse) undoMovement(ctx, row.movementId);
       ctx.db.delete(t.expenses).where(eq(t.expenses.id, expenseId)).run();
-      return noted(`${row.place || 'That expense'} removed, and the money is back in the account`);
+      return noted(reverse
+        ? `${row.place || 'That expense'} removed, and the money is back in the account`
+        : `${row.place || 'That expense'} taken off the log. The movement it recorded still stands, so no balance has changed.`);
     },
   }),
 
@@ -346,8 +389,5 @@ export function nextSeq(db: any, table: string): number {
 
 /** The rate to EGP, from the latest tick, falling back to what the ledger last knew. */
 export function rateFor(db: any, currency: string): number {
-  const row = db.$raw.prepare(
-    'SELECT value FROM market_ticks WHERE key = ? ORDER BY at DESC LIMIT 1',
-  ).get(`${currency}_EGP`) as { value: number } | undefined;
-  return row?.value ?? 1;
+  return rateToEgp(db, currency);
 }

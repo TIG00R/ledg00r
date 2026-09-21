@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Amount } from '../components/Amount';
+import { AccountLine } from '../components/AccountLine';
 import { Donut } from '../components/Donut';
 import { useApp, market } from '../AppState';
 import { money, toEgp, fromEgp, type Currency } from '@ledger/engine';
@@ -808,7 +809,7 @@ function MovementRecords() {
             value: (m) => m.legs[0]?.fromName ?? '—',
             cell: (m) => (m.legs[0]?.fromName
               ? <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  <AccountName name={m.legs[0].fromName!} bank={bankOf(m.legs[0].fromNodeId)} />
+                  <AccountLine id={m.legs[0].fromNodeId} name={m.legs[0].fromName} />
                 </span>
               : <span style={{ fontSize: 12, color: 'var(--faint)' }}>—</span>),
             field: (d, set) => (
@@ -820,7 +821,7 @@ function MovementRecords() {
             value: (m) => m.legs[0]?.toName ?? '—',
             cell: (m) => (m.legs[0]?.toName
               ? <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  <AccountName name={m.legs[0].toName!} bank={bankOf(m.legs[0].toNodeId)} />
+                  <AccountLine id={m.legs[0].toNodeId} name={m.legs[0].toName} />
                 </span>
               : <span style={{ fontSize: 12, color: 'var(--faint)' }}>—</span>),
             field: (d, set) => (

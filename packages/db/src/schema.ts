@@ -236,9 +236,47 @@ export const zakatYears = sqliteTable('zakat_years', {
   entries: text('entries', { mode: 'json' }).notNull(),
   note: text('note'),
   confirmedAt: text('confirmed_at').notNull(),
+  /**
+   * A year typed in for the record rather than closed by the ledger.
+   *
+   * Years before this ledger existed are remembered rather than worked out: what was owed and
+   * what was paid, and nothing behind either figure. They are kept beside the computed ones
+   * because the question "have I paid what I owed" spans both, and `paidManual` is what was
+   * paid against one — there being no giving records from before the ledger to point at it.
+   */
+  manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
+  paidManual: real('paid_manual').notNull().default(0),
 }, (t) => ({
   byBucketDue: index('zy_bucket_due').on(t.bucket, t.dueOn),
   oneEach: uniqueIndex('zy_unique').on(t.bucket, t.dueOn),
+}));
+
+/**
+ * The owner's own half of the reckoning.
+ *
+ * Every other line on the zakat list is worked out from what the ledger holds. These are the
+ * lines it cannot know — wealth kept somewhere it has never been told about, a debt nobody
+ * recorded — and the corrections to the ones it does know, where the owner's figure is the
+ * right one. An override names the computed line it replaces and keeps nothing but the new
+ * amount; the computed figure is still the ledger's to produce, so it is shown beside the
+ * override rather than overwritten by it.
+ */
+export const zakatEntries = sqliteTable('zakat_entries', {
+  id: text('id').primaryKey(),
+  bucket: text('bucket').notNull(),
+  /** the computed line this corrects; null on a line the owner wrote outright */
+  entryId: text('entry_id'),
+  label: text('label'),
+  /** which section it is read under: counted, excluded, debt */
+  grp: text('grp'),
+  sign: integer('sign').notNull().default(1),
+  amount: real('amount'),
+  /** whether the line it names is left out of the reckoning altogether */
+  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
+  note: text('note'),
+  createdAt: text('created_at').notNull(),
+}, (t) => ({
+  byBucket: index('ze_bucket').on(t.bucket),
 }));
 
 export const goldLots = sqliteTable('gold_lots', {
@@ -789,6 +827,7 @@ export type Leg = typeof legs.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Charity = typeof charity.$inferSelect;
 export type ZakatYear = typeof zakatYears.$inferSelect;
+export type ZakatEntryRow = typeof zakatEntries.$inferSelect;
 export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Exchange = typeof exchanges.$inferSelect;

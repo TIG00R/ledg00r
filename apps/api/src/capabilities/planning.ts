@@ -6,7 +6,7 @@ import { upcoming, nextOccurrence, type Reminder, type ReminderSubject,
          type RecurringTemplate, type Dismissal, type ZakatSettings } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun,
-         reversedMovements, nameOf } from './shared.js';
+         reversedMovements, nameOf, inAccountQty } from './shared.js';
 import { buildDataset, readMarket, readPref } from '../read.js';
 import { readBudgets } from './budgets.js';
 
@@ -118,9 +118,18 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
         external = ctx.db.select().from(t.nodes).where(eq(t.nodes.id, extId)).get();
       }
 
+      /**
+       * What reaches the account, in what the account is held in.
+       *
+       * A salary stated in dollars landing in a pound account used to credit the pound
+       * account with the dollar figure — a third of what actually arrived.
+       */
+      const arrives = inAccountQty(ctx.db, input.amount, currency, acct.currency);
+
       return post(ctx, {
         date: input.date ?? today(ctx), kind: 'income', note: input.note,
-        legs: [{ fromNodeId: external?.id, toNodeId: input.accountId, qtyFrom: input.amount }],
+        legs: [{ fromNodeId: external?.id, toNodeId: input.accountId, qtyTo: arrives,
+                 qtyFrom: external ? input.amount : arrives }],
       }, `${input.amount} ${currency} from ${label} into ${acct.name}`,
       {
         dryRun: input.dryRun,

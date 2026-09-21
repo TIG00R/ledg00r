@@ -1,15 +1,17 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
+import { AccountLine } from '../components/AccountLine';
 import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
 import { RecordTable } from '../components/RecordTable';
+import { GivingRecords } from '../components/GivingRecords';
 import { Select } from '../components/Select';
 import { accountOption } from '../accounts';
 import { useApp, market } from '../AppState';
 import { describeLead, zakatDebts, zakatDates, nisabEgp, formatHijri, groupOf,
          ZAKAT_RATE, HIJRI_MONTHS, NISAB_GOLD_G, NISAB_SILVER_G,
          type ZakatEntry, type EntryGroup } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field, AccountName } from '../components/UI';
+import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field } from '../components/UI';
 import { Segmented } from '../components/Segmented';
 import { Icon } from '../components/Icon';
 import { Mark } from '../components/Mark';
@@ -91,6 +93,8 @@ interface ConfirmedYear {
 /** a year as the log keeps it: the frozen arithmetic, and what was paid against it */
 interface LoggedYear {
   id: string; bucket: string; label: string;
+  /** whether it was typed in for the record rather than closed by the ledger itself */
+  manual: boolean;
   startOn: string; dueOn: string; dueHijri: string; anchorOn: string | null;
   base: number; due: number; paid: number; remaining: number;
   nisab: number; basis: string; confirmedAt: string; note: string | null;
@@ -135,7 +139,7 @@ const SECTIONS: Array<{ group: EntryGroup; title: string; hint: string }> = [
 export function Zakat() {
   const { data, values: v, dm, now, balances, reminders, setReminders,
           zakatSettings: z, setZakatSettings: setLocal } = useApp();
-  const { run, live, version } = useLive();
+  const { run, live, version, running } = useLive();
   // Kept in step both ways: the screen answers immediately, the ledger records the choice.
   const setZakatSettings = (next: typeof z) => {
     setLocal(next);
@@ -308,6 +312,10 @@ export function Zakat() {
   const [openYear, setOpenYear] = useState<string | null>(null);
   const causeName = (id: string) =>
     data.categories.find((c) => c.id === id)?.name ?? id;
+
+  /** the line of your own being written, and whether the form for it is open */
+  const [adding, setAdding] = useState(false);
+  const [ownLine, setOwnLine] = useState<Record<string, string | number>>({ group: 'counted' });
 
   const [paying, setPaying] = useState<string | null>(null);
   const [payment, setPayment] = useState({
@@ -544,7 +552,18 @@ export function Zakat() {
                     <EntryRow key={e.id} entry={e} dm={dm} mark={markFor(e.id, assetMarks, pile)}
                       edit={editable && e.group === 'counted'
                         ? (n) => setManualValues({ ...manualValues, [e.id]: n })
-                        : undefined} />
+                        : undefined}
+                      /* Every line is the owner's to state: a figure of their own over the
+                         one the ledger worked out, the line left out of the reckoning
+                         altogether, or — on a line they wrote — taken off the list. */
+                      say={live && !manual ? {
+                        onAmount: (n) => void run('zakat.entry.set',
+                          e.typed ? { entryId: e.id, amount: n } : { entryId: e.id, amount: n }),
+                        onRemove: () => void run('zakat.entry.set', { entryId: e.id, removed: true }),
+                        onRestore: () => void run('zakat.entry.clear', { entryId: e.id }),
+                        typed: !!e.typed,
+                        overridden: !!e.overridden,
+                      } : undefined} />
                   ))}
                 </Fragment>
               );
@@ -600,111 +619,196 @@ export function Zakat() {
           </tbody>
         </table>
 
-        {estate?.state === 'draft' && (
-          <div style={{
-            display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
-            marginTop: 16, padding: '14px 16px', borderRadius: 'var(--r-card)',
-            background: 'color-mix(in srgb, var(--zakat) 6%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--zakat) 30%, transparent)',
-          }}>
-            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, flex: 1, minWidth: 220 }}>
-              The year to <strong>{estate.closedOn}</strong> has closed. Confirming writes this figure down
-              so it stops moving with the market. Change it first if something was missed — the difference
-              is recorded as a line of its own rather than replacing the arithmetic.
+        {/*
+          * A line of your own.
+          *
+          * Everything above is worked out from what the ledger holds, and the ledger does not
+          * hold everything: gold at a relative's house, a loan nobody wrote down. Adding one
+          * here counts it, and it reads on the list beside the computed lines with its own
+          * mark saying whose figure it is.
+          */}
+        {live && !manual && (
+          adding ? (
+            <div style={{
+              display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
+              marginTop: 16, padding: '14px 16px', borderRadius: 'var(--r-card)',
+              background: 'var(--raised)', border: '1px solid var(--hairline)',
+            }}>
+              <Field label="What it is">
+                <input aria-label="What this line is" placeholder="gold at my mother's"
+                       value={String(ownLine.label ?? '')}
+                       onChange={(e) => setOwnLine({ ...ownLine, label: e.target.value })} />
+              </Field>
+              <Field label="How it counts">
+                <Select ariaLabel="How this line counts" value={String(ownLine.group ?? 'counted')}
+                        onChange={(v) => setOwnLine({ ...ownLine, group: v })}
+                        options={[
+                          { value: 'counted', label: 'Counted', hint: 'wealth zakat is owed on' },
+                          { value: 'excluded', label: 'Shown, counts nothing', hint: 'listed so it can be seen to have been considered' },
+                          { value: 'debt', label: 'Comes off', hint: 'something owed' },
+                        ]} />
+              </Field>
+              <Field label="Amount">
+                <Amount value={Number(ownLine.amount ?? 0)} ariaLabel="Amount of this line"
+                        onChange={(n) => setOwnLine({ ...ownLine, amount: n })} style={{ width: 160 }} />
+              </Field>
+              <span className="btn-pair">
+                <button className="btn go sm" disabled={!ownLine.label || !(Number(ownLine.amount) > 0) || !!running}
+                        onClick={() => {
+                          void run('zakat.entry.set', {
+                            label: String(ownLine.label),
+                            group: String(ownLine.group ?? 'counted'),
+                            sign: ownLine.group === 'debt' ? -1 : ownLine.group === 'excluded' ? 0 : 1,
+                            amount: Number(ownLine.amount),
+                          }).then((out) => { if (out.ok) { setAdding(false); setOwnLine({ group: 'counted' }); } });
+                        }}>
+                  <Icon name="check" size={13} motion="none" /> Count it
+                </button>
+                <button className="btn ghost sm" onClick={() => { setAdding(false); setOwnLine({ group: 'counted' }); }}>
+                  <Icon name="close" size={13} motion="none" /> Cancel
+                </button>
+              </span>
             </div>
-            <Field label="Base to confirm">
-              <Amount value={correction ?? Math.round(estate.base)} ariaLabel="Base to confirm"
-                      onChange={setCorrection} style={{ width: 170 }} />
-            </Field>
-            <ActionButton capability="zakat.confirm"
-              input={() => ({ bucketId: estate.id, base: correction ?? Math.round(estate.base) })}>
-              Confirm this year
-            </ActionButton>
-          </div>
+          ) : (
+            <button className="btn quiet sm" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
+              <Icon name="plus" size={12} motion="none" /> Add a line of your own
+            </button>
+          )
         )}
       </Panel>
 
-      {!manual && years.length > 0 && (
-      <Panel title="Every year you have confirmed"
-             hint="The record of past years. Each one keeps the lines it was worked out from and the prices in force the day it closed, so a figure from three years ago can be read back rather than merely remembered.">
-        <table>
-          <thead>
-            <tr><th style={{ width: 28 }}><span className="sr-only">Open</span></th>
-                <th>Pot</th><th>Year to</th><th>Owed</th>
-                <th>Paid</th>
-                <th>Still to pay</th><th /></tr>
-          </thead>
-          <tbody>
-            {years.map((year) => {
-              const open = openYear === year.id;
-              return (
-                <Fragment key={year.id}>
-                  <tr>
-                    <td>
-                      {/* `btn-quiet` was a class this stylesheet has never defined, so every
-                          one of these read as the browser's own grey button in the browser's
-                          own type. They are the application's quiet button, at the small size
-                          the rest of the tables use. */}
-                      <button className="btn quiet sm" aria-expanded={open}
-                              aria-label={`${year.label}, year to ${year.dueOn}`}
-                              style={{ padding: '4px 6px', minWidth: 0 }}
-                              onClick={() => setOpenYear(open ? null : year.id)}>
-                        <Icon name="chevron" size={12} motion="none"
-                              style={{ transform: open ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
-                      </button>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>{year.label}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>
-                      {year.dueOn}
-                      <div style={{ fontSize: 11, color: 'var(--faint)' }}>{year.dueHijri}</div>
-                    </td>
-                    <td className="mono">{dm(year.due)}</td>
-                    <td className="mono">{dm(year.paid)}</td>
-                    <td className="mono" style={{ fontWeight: 600,
-                                                  color: year.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
-                      {dm(year.remaining)}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {year.remaining > 0
-                        ? (
-                          <button className={`btn ${paying === year.id ? 'go' : 'quiet'} sm`}
-                                  aria-expanded={paying === year.id}
-                                  onClick={() => setPaying(paying === year.id ? null : year.id)}>
-                            <Icon name="handout" size={12} motion="none" />
-                            Record a payment
-                          </button>
-                        )
-                        : <Chip tone="good">Discharged</Chip>}
-                    </td>
-                  </tr>
-                  {open && (
-                    <tr>
-                      <td colSpan={7} style={{ padding: 0 }}>
-                        <YearDetail year={year} dm={dm} causeName={causeName}
+      {!manual && (
+      <Panel title="Every year on the record"
+             hint="A lunar year writes itself down the day it closes — what was owed, the lines it was worked out from and the prices it was struck at, so a figure from three years ago can be read back rather than merely remembered. Years from before this ledger are typed in at the top: what was owed, and what was paid against it.">
+        {/* The same table every log in the application is drawn with: headings that sort and
+            filter, a row at the top that adds, and a row that opens into fields. The years
+            used to be a table of this screen's own, with its own borders and its own idea of
+            where a button goes. */}
+        <RecordTable<LoggedYear>
+          rows={years}
+          rowKey={(y) => y.id}
+          sort={{ key: 'dueOn', dir: 'desc' }}
+          empty={{ icon: 'zakat', title: 'No year has closed yet',
+                   body: 'A lunar year writes itself down when it closes. One from before this ledger can be typed in above.' }}
+          columns={[
+            { key: 'dueOn', label: 'Year to', kind: 'date',
+              value: (y) => y.dueOn,
+              cell: (y) => (
+                <span className="mono" style={{ fontSize: 13 }}>
+                  {y.dueOn}
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>{y.dueHijri}</span>
+                </span>
+              ),
+              field: (d, set) => <DateField value={String(d.dueOn ?? '')} ariaLabel="Year closed on" hijri
+                                            onChange={(v) => set({ dueOn: v })} /> },
+            { key: 'label', label: 'Pot', kind: 'text',
+              value: (y) => y.label,
+              cell: (y) => (
+                <span style={{ fontSize: 13 }}>
+                  {y.label}
+                  {y.manual && <span className="at-bank">typed in</span>}
+                </span>
+              ),
+              field: (d, set) => <input aria-label="What this year covers" placeholder="Everything you own"
+                                        value={String(d.label ?? '')}
+                                        onChange={(e) => set({ label: e.target.value })} /> },
+            { key: 'base', label: 'Reckoned on', kind: 'amount',
+              value: (y) => y.base,
+              cell: (y) => <span className="mono" style={{ fontSize: 13, color: 'var(--muted)' }}>{dm(y.base)}</span>,
+              field: (d, set) => <Amount value={Number(d.base ?? 0)} ariaLabel="Wealth it was reckoned on"
+                                         onChange={(n) => set({ base: n })} /> },
+            { key: 'due', label: 'Owed', kind: 'amount',
+              value: (y) => y.due,
+              cell: (y) => <span className="mono">{dm(y.due)}</span>,
+              field: (d, set) => <Amount value={Number(d.due ?? 0)} ariaLabel="What was owed"
+                                         onChange={(n) => set({ due: n })} /> },
+            { key: 'paid', label: 'Paid', kind: 'amount',
+              value: (y) => y.paid,
+              cell: (y) => <span className="mono">{dm(y.paid)}</span>,
+              /* Only a year typed in states what was paid outright. On the others it is the
+                 giving recorded against the year, and those are corrected where they live. */
+              field: (d, set, row) => (row?.manual ?? !row)
+                ? <Amount value={Number(d.paid ?? 0)} ariaLabel="What was paid against it"
+                          onChange={(n) => set({ paid: n })} />
+                : <span style={{ fontSize: 11, color: 'var(--faint)' }}>what was given against it</span> },
+            { key: 'remaining', label: 'Still to pay', kind: 'amount',
+              value: (y) => y.remaining,
+              cell: (y) => (
+                <span className="mono" style={{ fontWeight: 600,
+                                                color: y.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
+                  {y.remaining > 0 ? dm(y.remaining) : 'discharged'}
+                </span>
+              ) },
+            { key: 'note', label: 'Note', kind: 'text',
+              value: (y) => y.note ?? '',
+              cell: (y) => <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {y.note || <span style={{ color: 'var(--faint)' }}>—</span>}</span>,
+              field: (d, set) => <input aria-label="Note" placeholder="what is worth remembering about it"
+                                        value={String(d.note ?? '')}
+                                        onChange={(e) => set({ note: e.target.value })} /> },
+          ]}
+          add={{
+            label: 'Add a year from before this ledger',
+            capability: 'zakat.year.add',
+            blank: { dueOn: '', label: 'Everything you own', base: 0, due: 0, paid: 0, note: '' },
+            valid: (d) => !!d.dueOn && Number(d.due) >= 0,
+            build: (d) => ({
+              dueOn: d.dueOn, label: d.label || 'Everything you own',
+              due: Number(d.due), paid: Number(d.paid ?? 0),
+              ...(Number(d.base) > 0 ? { base: Number(d.base) } : {}),
+              ...(d.note ? { note: d.note } : {}),
+            }),
+          }}
+          edit={{
+            capability: 'zakat.year.update',
+            draftOf: (y) => ({ dueOn: y.dueOn, label: y.label, base: y.base, due: y.due,
+                               paid: y.paid, note: y.note ?? '' }),
+            build: (d, y) => ({
+              yearId: y.id, label: d.label, base: Number(d.base), due: Number(d.due),
+              note: d.note ?? '',
+              // a computed year's payments are its giving records, and the ledger refuses
+              // to have them typed over — so the figure only travels on a year typed in
+              ...(y.manual ? { paid: Number(d.paid) } : {}),
+            }),
+          }}
+          remove={{
+            capability: 'zakat.year.remove',
+            build: (y) => ({ yearId: y.id }),
+            what: (y) => `the year to ${y.dueOn}`,
+            blocked: (y) => (y.manual ? undefined
+              : 'The lunar year behind this one has passed, so the ledger writes it down again as soon as the screen is read. Correct the figure instead.'),
+          }}
+          /* The arithmetic a year was struck on is a table of its own, so it waits to be
+             asked for: shown under the row that was opened, and nowhere else. */
+          detail={(y) => (openYear === y.id
+            ? (
+              <YearDetail year={y} dm={dm} causeName={causeName}
                           markOf={(id) => markFor(id, assetMarks, pile)} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-            <tr>
-              <td />
-              <td colSpan={2} style={{ fontWeight: 600 }}>Across every year</td>
-              <td className="mono" style={{ fontWeight: 600 }}>
-                {dm(years.reduce((t2, y) => t2 + y.due, 0))}
-              </td>
-              <td className="mono" style={{ fontWeight: 600 }}>
-                {dm(years.reduce((t2, y) => t2 + y.paid, 0))}
-              </td>
-              <td className="mono" style={{ fontWeight: 600,
-                                            color: years.some((y) => y.remaining > 0) ? 'var(--negative)' : 'var(--positive)' }}>
-                {dm(years.reduce((t2, y) => t2 + y.remaining, 0))}
-              </td>
-              <td />
-            </tr>
-          </tbody>
-        </table>
+            )
+            : null)}
+          trailing={(y) => (
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+              {y.remaining > 0
+                ? (
+                  <button className={`btn ${paying === y.id ? 'go' : 'quiet'} sm`}
+                          aria-expanded={paying === y.id}
+                          onClick={() => setPaying(paying === y.id ? null : y.id)}>
+                    <Icon name="handout" size={12} motion="none" />
+                    Record a payment
+                  </button>
+                )
+                : <Chip tone="good">Discharged</Chip>}
+              <button className="btn quiet sm" aria-expanded={openYear === y.id}
+                      aria-label={`${y.label}, year to ${y.dueOn}`}
+                      style={{ padding: '4px 6px', minWidth: 0 }}
+                      onClick={() => setOpenYear(openYear === y.id ? null : y.id)}>
+                <Icon name="chevron" size={12} motion="none"
+                      style={{ transform: openYear === y.id ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
+              </button>
+            </span>
+          )}
+          trailingWidth="210px"
+        />
 
         {paying && (
           <div style={{
@@ -729,7 +833,8 @@ export function Zakat() {
               <Select ariaLabel="Cause" value={payment.causeId}
                       onChange={(val) => setPayment({ ...payment, causeId: val })}
                       options={data.categories.filter((c) => c.domain === 'charity')
-                        .map((c) => ({ value: c.id, label: c.name }))} />
+                        .map((c) => ({ value: c.id, label: c.name,
+                                       icon: c.icon, iconColor: c.color }))} />
             </Field>
             <ActionButton capability="giving.record" disabled={!(payment.amount > 0)}
               onDone={(o) => { if (o.ok) { setPaying(null); setPayment({ ...payment, amount: 0 }); } }}
@@ -744,10 +849,25 @@ export function Zakat() {
         )}
 
         <p style={{ margin: '14px 0 0', fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>
-          A confirmed figure does not move. If something was wrong with it, reopen the year — the payments
-          stay on the record but stop discharging it, and the figure is worked out again.
+          A year closes itself the day the lunar year runs out, at the prices in force then, and
+          the figure stops moving from that moment. Correct it here if something was missed —
+          what it was worked out from is kept underneath either way.
         </p>
       </Panel>
+      )}
+
+      {/*
+        * Every zakat payment, as its own log.
+        *
+        * They were reachable only by opening the year they discharged, which left a payment
+        * booked against the wrong year — or against none — with nowhere to be seen at all.
+        * This is the same table the giving screen draws, narrowed to zakat.
+        */}
+      {!manual && (
+        <Panel title="Zakat records"
+               hint="Everything paid as zakat, whichever year it discharges. Double-click a row to correct it, or to move it onto another year.">
+          <GivingRecords only="zakat" fallback={[]} />
+        </Panel>
       )}
 
       <Panel title="Which nisab to use"
@@ -804,8 +924,6 @@ function YearDetail({ year, dm, causeName, markOf }: {
   const { data, currencies } = useApp();
   const causes = data.categories.filter((c) => c.domain === 'charity');
   const payable = data.nodes.filter((n) => n.kind === 'cash' && !n.archived);
-  const bankOf = (id?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
   const accountOnly = (id?: string | null) => data.nodes.find((n) => n.id === id)?.name ?? '—';
   /**
    * What a payment was, in its own currency.
@@ -922,7 +1040,7 @@ function YearDetail({ year, dm, causeName, markOf }: {
                   value: (p) => accountOnly(p.accountId),
                   cell: (p) => (
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                      <AccountName name={accountOnly(p.accountId)} bank={bankOf(p.accountId)} />
+                      <AccountLine id={p.accountId} />
                     </span>
                   ),
                   field: (d, set) => (
@@ -936,7 +1054,8 @@ function YearDetail({ year, dm, causeName, markOf }: {
                   field: (d, set) => (
                     <Select ariaLabel="Went to" value={String(d.causeId ?? '')}
                             onChange={(v) => set({ causeId: v })}
-                            options={causes.map((c) => ({ value: c.id, label: c.name }))} />
+                            options={causes.map((c) => ({ value: c.id, label: c.name,
+                                                         icon: c.icon, iconColor: c.color }))} />
                   ) },
                 { key: 'note', label: 'Note', kind: 'text',
                   value: (p) => p.note ?? '',
@@ -958,6 +1077,8 @@ function YearDetail({ year, dm, causeName, markOf }: {
               remove={{
                 capability: 'giving.remove',
                 build: (p) => ({ givingId: p.id }),
+                keep: { label: 'Just remove the record',
+                        build: (p) => ({ givingId: p.id, reverse: false }) },
                 what: (p) => `the payment of ${dm(p.egp)} on ${p.date}`,
               }}
             />
@@ -985,16 +1106,34 @@ function YearDetail({ year, dm, causeName, markOf }: {
  * The detail sits under the label rather than in columns of its own because there is no fixed
  * set of it: a flat has three dates behind it, a card balance has one, and cash has none.
  */
-function EntryRow({ entry: e, dm, edit, mark }: {
+function EntryRow({ entry: e, dm, edit, mark, say }: {
   entry: Entry;
   dm: (n: number) => string;
   /** typed figures are the owner's own, so the amount is theirs to change */
   edit?: (n: number) => void;
   /** the icon behind a line that stands for a thing owned — absent for cash, debt and the like */
   mark?: EntryMark | null;
+  /**
+   * What the owner can say about this line, where the ledger is running.
+   *
+   * A figure of their own instead of the one worked out, the line taken out of the reckoning,
+   * or — on a line they wrote themselves — taken off the list. The controls appear when the
+   * row is pointed at, the way a record's pencil does, so a list of forty lines is not a list
+   * of forty buttons.
+   */
+  say?: {
+    onAmount: (n: number) => void;
+    onRemove: () => void;
+    onRestore: () => void;
+    typed: boolean;
+    overridden: boolean;
+  };
 }) {
+  const [saying, setSaying] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [figure, setFigure] = useState(e.amount);
   return (
-    <tr>
+    <tr onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <td className="mono" style={{
         fontSize: 15, fontWeight: 600, textAlign: 'center', verticalAlign: 'top',
         color: e.sign === -1 ? 'var(--negative)' : e.sign === 1 ? 'var(--positive)' : 'var(--faint)',
@@ -1021,6 +1160,46 @@ function EntryRow({ entry: e, dm, edit, mark }: {
         {e.note && (
           <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 3, maxWidth: 520, lineHeight: 1.5 }}>
             {e.note}
+          </div>
+        )}
+        {/* What the ledger says, under a figure that is not the ledger's. It is kept rather
+            than replaced, so the correction can always be read against what it corrected. */}
+        {e.overridden && e.computed != null && (
+          <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 3 }}>
+            yours · the ledger works it out as {dm(e.computed)}
+          </div>
+        )}
+        {say && (hover || saying) && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            {saying ? (
+              <>
+                <Amount value={figure} ariaLabel={`${e.label} as you state it`}
+                        onChange={setFigure} style={{ width: 150 }} />
+                <button className="btn go sm" onClick={() => { say.onAmount(figure); setSaying(false); }}>
+                  <Icon name="check" size={12} motion="none" /> Save
+                </button>
+                <button className="btn ghost sm" onClick={() => { setFigure(e.amount); setSaying(false); }}>
+                  <Icon name="close" size={12} motion="none" /> Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn quiet sm" onClick={() => { setFigure(e.amount); setSaying(true); }}>
+                  <Icon name="edit" size={12} motion="none" /> State it yourself
+                </button>
+                {(say.overridden || say.typed) && (
+                  <button className="btn quiet sm" onClick={say.onRestore}>
+                    <Icon name="undo" size={12} motion="none" />
+                    {say.typed ? 'Remove' : 'Back to the ledger\'s'}
+                  </button>
+                )}
+                {!say.typed && (
+                  <button className="btn quiet sm" onClick={say.onRemove}>
+                    <Icon name="close" size={12} motion="none" /> Leave it out
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </td>

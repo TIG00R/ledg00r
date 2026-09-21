@@ -79,7 +79,8 @@ function Body() {
           <Field label="Went to">
             <Select ariaLabel="Cause" value={draft.causeId}
                     onChange={(v) => setDraft({ ...draft, causeId: v })}
-                    options={cats.map((c) => ({ value: c.id, label: c.name }))} />
+                    options={cats.map((c) => ({ value: c.id, label: c.name,
+                                               icon: c.icon, iconColor: c.color }))} />
           </Field>
           <Field label="Date"><DateField value={logDate} onChange={setLogDate} ariaLabel="Date it was given" hijri /></Field>
           <Field label="Note">

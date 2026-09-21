@@ -166,6 +166,19 @@ export interface RecordTableProps<T> {
     what: (row: T) => string;
     blocked?: (row: T) => string | undefined;
     onDone?: () => void;
+    /**
+     * The other answer to the bin, for a record that moved money.
+     *
+     * Removing one usually means putting the money back: the movement behind it is reversed,
+     * the balance returns, and the log keeps both halves. That is right when the spending
+     * never happened — and wrong when it did and only the record of it is a duplicate, since
+     * reversing then invents money that was really spent. So the question offers both: take
+     * the record off and put the money back, or take the record off and leave what it moved
+     * exactly where it is.
+     *
+     * Absent on anything that moved nothing, where there is only one thing removal can mean.
+     */
+    keep?: { label: string; build: (row: T) => unknown; body?: string };
   };
   /**
    * Emptying the whole log, as opposed to removing one row of it.
@@ -611,6 +624,17 @@ export function RecordTable<T>({
                             else { closeEdit(); remove!.onDone?.(); }
                           } : undefined,
                           blocked: cannotRemove,
+                          keep: remove!.keep && canRemoveRow ? {
+                            label: remove!.keep.label,
+                            body: remove!.keep.body,
+                            onClick: async () => {
+                              const capability = typeof remove!.capability === 'function'
+                                ? remove!.capability(row) : remove!.capability;
+                              const res = await run(capability, remove!.keep!.build(row));
+                              if (!res.ok) setProblem(res.message ?? 'That was not removed.');
+                              else { closeEdit(); remove!.onDone?.(); }
+                            },
+                          } : undefined,
                         } : undefined} />
                     </td>
                   </tr>
@@ -646,7 +670,11 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
   note?: string;
   /** offered once the row is open, subordinate to Save and Cancel */
   duplicate?: { onClick?: () => void; blocked?: string };
-  remove?: { onClick?: () => void; blocked?: string };
+  remove?: {
+    onClick?: () => void; blocked?: string;
+    /** the second answer: the record goes and what it moved stays */
+    keep?: { label: string; body?: string; onClick: () => void };
+  };
   /** what the row is — for Duplicate and Remove's own labels, and the question Remove asks */
   what?: string;
 }) {
@@ -697,8 +725,15 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
       {remove && (
         <ConfirmModal open={asking} onClose={() => setAsking(false)}
           title={`Remove ${named}?`}
-          body="This cannot be undone from here."
-          onConfirm={remove.onClick} />
+          body={remove.keep
+            ? (remove.keep.body
+              ?? 'Removing it puts the money back where it came from. If the money really did move and only this record is wrong, take the record off and leave the movement standing.')
+            : 'This cannot be undone from here.'}
+          confirmLabel={remove.keep ? 'Remove and put the money back' : 'Remove'}
+          onConfirm={remove.onClick}
+          alternative={remove.keep
+            ? { label: remove.keep.label, onPick: () => { setAsking(false); remove.keep!.onClick(); } }
+            : undefined} />
       )}
     </span>
   );

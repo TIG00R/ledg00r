@@ -7,12 +7,13 @@ import { ConfirmDelete } from '../components/Confirm';
 import { installmentDueDate, daysUntil, nextInstallment, isPrincipal,
          toEgp } from '@ledger/engine';
 import { useCallback, useEffect, useState } from 'react';
-import { Page, Panel, Chip, Stat, Empty, Toggle, Field, AccountName } from '../components/UI';
+import { Page, Panel, Chip, Stat, Empty, Toggle, Field } from '../components/UI';
 import { Icon } from '../components/Icon';
 import { Mark, MarkPicker } from '../components/Mark';
 import { ActionButton, useLive } from '../Live';
 import { RecordTable, isInteractive } from '../components/RecordTable';
 import { RecordAmount } from '../components/RecordAmount';
+import { AccountLine } from '../components/AccountLine';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { IntentionPicker, HawlBar } from '../components/Intention';
 import { intentionsFor, type Intention } from '@ledger/engine';
@@ -51,10 +52,6 @@ function Body() {
   const { enabled } = useModules();
   /** whether the zakat module is on — the one check every intention control on this screen answers to */
   const zakatOn = enabled.giving !== false;
-  /** which institution a node sits at, for the second line under an account's name */
-  const bankOf = (id?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
-
   // The arrangement lives in app state rather than this screen, because the reminders and
   // the flow chart both need to know which installments post themselves.
   const auto = Object.fromEntries(Object.entries(autoPay).map(([k, x]) => [k, x.on]));
@@ -333,30 +330,6 @@ function Body() {
     const i = nextInstallment(data.installments, now, propertyId);
     const due = i ? installmentDueDate(i.monthLabel, i.dueDayKind, i.dueDayNum) : null;
     return i && due ? { amountEgp: i.amountEgp, due } : null;
-  };
-
-  /**
-   * The mark of whichever institution holds this account.
-   *
-   * The bank, never the account: an account picks up no mark of its own, and drawing the
-   * generic one put the same red shape beside every bank in the ledger — which named none of
-   * them. A bank with a logo wears it; one without wears its short code on its own colour,
-   * the way the accounts screen writes it, so the tile is still the bank rather than a
-   * stand-in for any account anywhere.
-   */
-  const InstitutionMark = ({ nodeId }: { nodeId?: string | null }) => {
-    const inst = data.institutions.find(
-      (i) => i.id === data.nodes.find((n) => n.id === nodeId)?.parentId);
-    if (!inst) return null;
-    const colour = inst.color ?? 'var(--muted)';
-    return (
-      <span aria-hidden style={{ width: 26, height: 20, flex: '0 0 26px', borderRadius: 6,
-                                 overflow: 'hidden', background: inst.logo ? 'var(--surface)' : colour,
-                                 color: '#fff', fontSize: 8, fontWeight: 700, letterSpacing: '.02em',
-                                 display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {inst.logo ? <Mark mark={inst.logo} size={18} fallback="accounts" /> : inst.shortCode}
-      </span>
-    );
   };
 
   /**
@@ -952,9 +925,13 @@ function Body() {
             <Field label="Which property">
               <Select ariaLabel="Property" value={upkeep.propertyId}
                       onChange={(v) => setUpkeep({ ...upkeep, propertyId: v })}
-                      options={props.map((pid) => ({
-                        value: pid, label: data.nodes.find((n) => n.id === pid)?.name ?? pid,
-                      }))} />
+                      /* a thing you own wears its own mark everywhere else on this screen,
+                         and wore none in the two pickers that name it */
+                      options={props.map((pid) => {
+                        const o = owned.find((x) => x.id === pid);
+                        return { value: pid, label: o?.name ?? data.nodes.find((n) => n.id === pid)?.name ?? pid,
+                                 icon: o?.icon, iconColor: o?.colour };
+                      })} />
             </Field>
             <Field label="Paid from">
               <Select ariaLabel="Paid from" value={upkeep.accountId}
@@ -1032,7 +1009,8 @@ function Body() {
                 : <Select ariaLabel="Property" value={d.propertyId ?? ''}
                           onChange={(v) => set({ propertyId: v })}
                           options={owned.filter((o) => o.onPlan)
-                            .map((o) => ({ value: o.id, label: o.name }))} />) },
+                            .map((o) => ({ value: o.id, label: o.name,
+                                           icon: o.icon, iconColor: o.colour }))} />) },
             /**
              * What the payment is for in money.
              *
@@ -1059,8 +1037,7 @@ function Body() {
             { key: 'payFrom', label: 'Paid from', kind: 'pick', width: '176px',
               value: (r) => r.payFromName ?? 'not set',
               cell: (r) => (r.payFromName
-                ? <AccountName name={r.payFromName} bank={bankOf(r.payFrom)}
-                               mark={<InstitutionMark nodeId={r.payFrom} />} />
+                ? <AccountLine id={r.payFrom} name={r.payFromName} />
                 : <span style={{ color: 'var(--faint)' }}>not set</span>),
               field: (d, set) => (
                 <Select ariaLabel="Account it comes out of" value={d.payFrom ?? ''}

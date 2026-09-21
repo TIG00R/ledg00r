@@ -4,6 +4,7 @@ import { schema as t } from '@ledger/db';
 import { eq } from 'drizzle-orm';
 import type { AppCtx } from '../context.js';
 import { refusal, noted, today } from './shared.js';
+import { refreshTodayStatement } from './overview.js';
 
 /**
  * A day, closed.
@@ -33,7 +34,10 @@ export const statementCaps = (ctxOf: () => AppCtx) => [
     input: z.object({}),
     output: z.array(StatementRow),
     handler: async () => {
-      const { db } = ctxOf();
+      const ctx = ctxOf();
+      const { db } = ctx;
+      // today's figure answers to everything recorded today, including a moment ago
+      refreshTodayStatement(ctx);
       return db.select().from(t.wealthStatements).all()
         .sort((a, b) => a.date.localeCompare(b.date))
         .map((s) => ({ ...s, allocation: s.allocation as z.infer<typeof Allocation> }));
@@ -55,6 +59,8 @@ export const statementCaps = (ctxOf: () => AppCtx) => [
     }),
     handler: async ({ span }) => {
       const ctx = ctxOf();
+      // the last point on the chart is today, and today answers to what was recorded today
+      refreshTodayStatement(ctx);
       const all = ctx.db.select().from(t.wealthStatements).all()
         .sort((a, b) => a.date.localeCompare(b.date));
       const todayIso = today(ctx);

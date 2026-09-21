@@ -1054,9 +1054,13 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'metal.removeLot',
     context: 'holdings',
-    summary: 'Remove a purchase or sale of metal from the ledger.',
-    detail: 'A lot bought through this ledger is reversed: the movement that paid for it gets its opposite, so the account and the weight both come back, and the log keeps both entries. A lot that was already held when the books were opened has no movement to reverse, so the row goes and the holding\'s opening weight comes down with it.',
-    input: z.object({ lotId: z.string() }),
+    summary: 'Remove a purchase or sale of metal from the ledger — reversing what it moved, or leaving it where it went.',
+    detail: 'A lot bought through this ledger is reversed: the movement that paid for it gets its opposite, so the account and the weight both come back, and the log keeps both entries. A lot that was already held when the books were opened has no movement to reverse, so the row goes and the holding\'s opening weight comes down with it. Pass reverse false where the metal really was bought or sold and only this record of it is wrong — the row goes and nothing moves.',
+    input: z.object({
+      lotId: z.string(),
+      /** whether what the lot moved is put back */
+      reverse: z.boolean().default(true),
+    }),
     output: Outcome,
     handler: async (input) => {
       const ctx = ctxOf();
@@ -1067,6 +1071,11 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       if (!holding) return refusal('not_found', `This ledger has no ${metal} holding.`);
 
       return atomically(ctx, () => {
+        if (!input.reverse) {
+          // The weight and the money stay exactly where the lot put them; only the row goes.
+          ctx.db.delete(t.goldLots).where(eq(t.goldLots.id, input.lotId)).run();
+          return noted(`${lot.direction} of ${lot.grams} g of ${metal} taken off the log. What it moved still stands.`);
+        }
         if (lot.movementId) {
           undoMovement(ctx, lot.movementId);
         } else {

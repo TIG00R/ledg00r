@@ -87,6 +87,37 @@ export function refusal(code: Refusal['code'], message: string, remedy?: string)
 }
 
 export const today = (ctx: AppCtx) => ctx.now.toISOString().slice(0, 10);
+
+/** what one unit of a currency is worth in pounds, from the latest tick the ledger holds */
+export function rateToEgp(db: Db, currency?: string | null): number {
+  if (!currency || currency === 'EGP') return 1;
+  const row = db.$raw.prepare(
+    'SELECT value FROM market_ticks WHERE key = ? ORDER BY at DESC LIMIT 1',
+  ).get(`${currency}_EGP`) as { value: number } | undefined;
+  return row?.value ?? 1;
+}
+
+/**
+ * What actually leaves or reaches the account, in the account's own unit.
+ *
+ * A record states an amount and the currency it was in; a leg moves the account's own unit
+ * and nothing else. The two are the same number only when the two currencies are, and where
+ * they were not the raw figure was being taken out as though it were the account's: 5,000
+ * pounds spent off a dollar account took five thousand dollars, which either emptied the
+ * account or was refused as being four thousand dollars short. Neither is what happened.
+ *
+ * Converted through pounds, which is the one rate this ledger keeps for every currency, at
+ * the rate in force now — the same conversion `asset.add` has always made for the money that
+ * paid for a thing. The record keeps the amount and the currency it was actually stated in.
+ */
+export function inAccountQty(
+  db: Db, amount: number, currency: string | null | undefined, accountCurrency: string | null | undefined,
+): number {
+  const from = currency ?? 'EGP';
+  const to = accountCurrency ?? 'EGP';
+  if (from === to) return amount;
+  return (amount * rateToEgp(db, from)) / rateToEgp(db, to);
+}
 export const bucketOf = (date: string) => date.slice(0, 7);
 
 /**

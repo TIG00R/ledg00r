@@ -4,7 +4,9 @@ import { RecordAmount } from '../components/RecordAmount';
 import { Select } from '../components/Select';
 import { useApp, market } from '../AppState';
 import { money, splitByCurrency, toEgp, fromEgp } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
+import { Page, Panel, Stat, Stats } from '../components/UI';
+import { AccountLine } from '../components/AccountLine';
+import { Mark } from '../components/Mark';
 import { CurrencySplits } from '../components/CurrencySplits';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useLive } from '../Live';
@@ -32,9 +34,6 @@ const FALLBACK_LOGGED = [
 
 function Body() {
   const { data, dm, values, currencies, display } = useApp();
-  /** the same, where the log carries the account's name rather than its id */
-  const bankOfName = (name?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.name === name)?.parentId)?.name ?? null;
 
   /** things that can earn rent, so a source can name the one that earns it */
   const lettable = data.nodes.filter((n) => n.kind === 'asset' && !n.unit
@@ -352,6 +351,18 @@ function Body() {
                dollar retainer arrived, by default, in an Egyptian account. */
             { key: 'source', label: 'Source', kind: 'pick',
               value: (l) => l.source,
+              /* A source has a mark of its own, chosen on the tab beside this one, and the
+                 log named it in bare text — the one column on this screen where the thing
+                 being named was drawn as a word rather than as itself. */
+              cell: (l) => {
+                const src = data.incomeSources.find((x) => x.name === l.source);
+                return (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <Mark mark={src?.icon} size={15} fallback="salary" />
+                    <span style={{ fontSize: 13 }}>{l.source}</span>
+                  </span>
+                );
+              },
               /**
                * What this payment is offered against.
                *
@@ -366,9 +377,11 @@ function Body() {
               field: (d, set, row) => {
                 const named = row ? data.incomeSources.find((x) => x.name === row.source) : undefined;
                 const already = named && occasional.some((x) => x.id === named.id);
+                const option = (x: { id: string; name: string; icon?: string }) =>
+                  ({ value: x.id, label: x.name, icon: x.icon });
                 const choices = named && !already
-                  ? [{ value: named.id, label: named.name }, ...occasional.map((x) => ({ value: x.id, label: x.name }))]
-                  : occasional.map((x) => ({ value: x.id, label: x.name }));
+                  ? [option(named), ...occasional.map(option)]
+                  : occasional.map(option);
                 return (
                   <Select ariaLabel="Source" value={d.sourceId}
                           onChange={(v) => {
@@ -405,7 +418,9 @@ function Body() {
               value: (l) => l.into,
               cell: (l) => (
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  <AccountName name={l.into} bank={bankOfName(l.into)} />
+                  {/* the movement names the account by name rather than by id, so the line is
+                      drawn from the node that answers to that name where one still does */}
+                  <AccountLine id={data.nodes.find((n) => n.name === l.into)?.id} name={l.into} />
                 </span>
               ),
               field: (d, set) => (

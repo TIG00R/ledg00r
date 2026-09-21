@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { command, query, Outcome } from '@ledger/contracts';
 import { schema as t } from '@ledger/db';
+import { eq } from 'drizzle-orm';
 import { toEgp, fromEgp } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { noted } from './shared.js';
@@ -24,6 +25,34 @@ import { assetKindOf, isDebtNode } from '../zakat-assets.js';
  * this function's answer at the moment it was called, not a second arithmetic that happens to
  * agree with it today.
  */
+/**
+ * Today's statement, kept current while today is still today.
+ *
+ * Every other day's is frozen on purpose — a timeline whose past moves is not a timeline —
+ * but the day being lived in was frozen too, at whatever the first reading after midnight
+ * happened to be. Everything recorded afterwards was then invisible on the chart until the
+ * next day: record an expense, correct one, sell something, and the figure sat where it had
+ * been that morning. A screen that does not answer to what was just recorded reads as a
+ * screen that does not work, and that reading is right.
+ *
+ * Called by the tick and by the screens that draw the timeline, so the figure is current
+ * whether or not a ledger has been left running. A statement somebody wrote themselves is
+ * never touched, and neither is any day but today.
+ */
+export function refreshTodayStatement(ctx: AppCtx): boolean {
+  const date = ctx.now.toISOString().slice(0, 10);
+  const row = ctx.db.select().from(t.wealthStatements)
+    .where(eq(t.wealthStatements.date, date)).get();
+  if (!row || row.source !== 'auto') return false;
+  const snap = wealthSnapshot(ctx);
+  if (snap.netWorth === row.netWorth) return false;
+  ctx.db.update(t.wealthStatements).set({
+    netWorth: snap.netWorth, allocation: snap.allocation, currency: snap.currency,
+    updatedAt: ctx.now.toISOString(),
+  }).where(eq(t.wealthStatements.id, row.id)).run();
+  return true;
+}
+
 export function wealthSnapshot(ctx: AppCtx, currency?: string) {
   const market = readMarket(ctx.db);
   const display = currency ?? (readPref<any>(ctx.db, 'settings')?.displayCurrency ?? 'EGP');

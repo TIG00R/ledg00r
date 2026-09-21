@@ -1027,6 +1027,47 @@ const STEPS: Step[] = [
       `);
     },
   },
+  {
+    version: 42,
+    name: 'a year closes itself, and the reckoning takes the owner\'s own lines',
+    /**
+     * Two changes to the same screen, and both are about who decides.
+     *
+     * A year used to wait for a button. What is owed was settled the day the lunar year
+     * closed, and asking someone to press Confirm before the ledger would say so meant a year
+     * could sit closed and unrecorded for months. Years close themselves now; `manual` marks
+     * the ones typed in for the record instead — a year from before this ledger existed,
+     * where all that is remembered is what was owed and what was paid. `paid_manual` is that
+     * remembered payment, counted beside the giving records booked against the year.
+     *
+     * And the reckoning was the ledger's alone. `zakat_entries` is the owner's half of it:
+     * a line the ledger cannot see (coins kept elsewhere, a debt nobody recorded), or a
+     * correction to one it worked out. An override keeps the computed figure beside it, so
+     * what the arithmetic said is never lost and the change can be taken back.
+     */
+    up: (db) => {
+      for (const col of ['manual INTEGER NOT NULL DEFAULT 0', 'paid_manual REAL NOT NULL DEFAULT 0']) {
+        try { db.$raw.exec(`ALTER TABLE zakat_years ADD COLUMN ${col}`); } catch { /* already there */ }
+      }
+      db.$raw.exec(`
+        CREATE TABLE IF NOT EXISTS zakat_entries (
+          id          TEXT PRIMARY KEY,
+          bucket      TEXT NOT NULL,
+          /* the computed line this corrects, or null for a line the owner wrote */
+          entry_id    TEXT,
+          label       TEXT,
+          grp         TEXT,
+          sign        INTEGER NOT NULL DEFAULT 1,
+          amount      REAL,
+          removed     INTEGER NOT NULL DEFAULT 0,
+          note        TEXT,
+          created_at  TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS zakat_entry_target
+          ON zakat_entries(bucket, entry_id) WHERE entry_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Amount } from '../components/Amount';
+import { AccountLine } from '../components/AccountLine';
 import { RecordAmount } from '../components/RecordAmount';
 import { DateField } from '../components/DateField';
 import { Select } from '../components/Select';
@@ -7,7 +8,7 @@ import { Segmented } from '../components/Segmented';
 import { useApp, market } from '../AppState';
 import { useModules } from '../Modules';
 import { splitByCurrency, toEgp } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, AccountName } from '../components/UI';
+import { Page, Panel, Stat, Stats } from '../components/UI';
 import { CurrencySplits } from '../components/CurrencySplits';
 import { Pie } from '../components/Pie';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
@@ -73,9 +74,6 @@ export function ExpensesAndBudgets() {
 
 function Body() {
   const { data, dm, values, currencies, display } = useApp();
-  /** which institution a node sits at, for the second line under an account's name */
-  const bankOf = (id?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
 
   const { run } = useLive();
   /**
@@ -108,8 +106,6 @@ function Body() {
     const inst = data.institutions.find((i) => i.id === n?.parentId);
     return n ? (inst ? `${inst.name} · ${n.name}` : n.name) : '—';
   };
-  /** the account's own name, for the line the bank is written under rather than into */
-  const accountOnly = (id?: string) => data.nodes.find((x) => x.id === id)?.name ?? '—';
   /**
    * What the "Paid from" filter offers: every account money can leave, drawn the way the
    * picker beside it draws them — the bank over the account, with the bank's mark. What it
@@ -247,7 +243,7 @@ function Body() {
               // shorter half of a doubled line.
               cell: (e) => (
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  <AccountName name={accountOnly(e.accountId)} bank={bankOf(e.accountId)} />
+                  <AccountLine id={e.accountId} />
                 </span>
               ),
               field: (d, set) => (
@@ -282,7 +278,11 @@ function Body() {
                         onChange={(v) => set(row
                           ? { destinationId: v }
                           : { destinationId: v, accountId: usualAccount(v) })}
-                        options={cats.map((c) => ({ value: c.id, label: c.name }))} />
+                        /* a destination is a mark and a colour as much as a name, and the
+                           picker showed neither — the one list on this screen that named
+                           things the log beside it draws */
+                        options={cats.map((c) => ({ value: c.id, label: c.name,
+                                                    icon: c.icon, iconColor: c.color }))} />
               ) },
 
             { key: 'place', label: 'Place', kind: 'text',
@@ -333,6 +333,9 @@ function Body() {
             capability: 'expense.remove',
             build: (e) => ({ expenseId: e.id }),
             what: (e) => `${e.place || 'this expense'} on ${e.date}`,
+            // the money really did leave, and only this record of it is wrong
+            keep: { label: 'Just remove the record',
+                    build: (e) => ({ expenseId: e.id, reverse: false }) },
           }}
           clear={{ log: 'expenses',
                    what: 'every expense recorded, and the movements behind them' }}

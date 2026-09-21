@@ -281,17 +281,36 @@ const SCENES: Record<AnimName, React.ReactNode> = {
    * A solid shape has no such floor, and it says something the outline could not: the car is
    * nearer than the house. Which is also why it sits lower.
    */
+  /**
+   * And both of them drawn at the size the rest of the set is drawn at.
+   *
+   * Two objects in one frame will always be smaller than one, but they were smaller than they
+   * needed to be: the house held the top-right quadrant and the car the bottom-left, and each
+   * read as about half the subject every other icon here draws. Beside a full-width house on
+   * the properties mark or a full-width chart on the statistics one, the same weight of line
+   * around a smaller shape reads as finer, not as further away.
+   *
+   * Each grows into the empty corner beside it rather than about the middle — the house
+   * anchored at its bottom-right, the car at its bottom-left — so the two keep their places
+   * and their overlap deepens, which is the one thing the composition was always saying: the
+   * car is in front. The house's stroke is divided by its own scale so the line comes out at
+   * the set's weight rather than a fifth heavier; the car is filled and needs no such care.
+   */
   assets: (
     <g>
-      <path data-part="roof" d="M10 9 15.4 4.4l5.4 4.6" />
-      <path data-part="wallL" d="M11.6 8.4v7" />
-      <path data-part="wallR" d="M19.2 8.4v7" />
-      <path data-part="floor" d="M10.7 15.4h9.4" />
-      <path data-part="door" d="M14.2 15.4v-3.3h2.6v3.3" />
-      <g data-part="car" fill="currentColor" stroke="none">
-        <path d="M1.5 19.1v-1.7c0-.3.2-.5.4-.6l1.8-.4 1.4-1.5c.2-.2.4-.3.7-.3h2.6c.3 0 .5.1.7.3l1.3 1.5 1.8.4c.3.1.4.3.4.6v1.7c0 .3-.2.5-.5.5H2c-.3 0-.5-.2-.5-.5z" />
-        <circle cx="4" cy="19.9" r="1.25" />
-        <circle cx="9.4" cy="19.9" r="1.25" />
+      <g transform="translate(20.8 15) scale(1.2) translate(-20.8 -15)" strokeWidth="1.46">
+        <path data-part="roof" d="M10 9 15.4 4.4l5.4 4.6" />
+        <path data-part="wallL" d="M11.6 8.4v7" />
+        <path data-part="wallR" d="M19.2 8.4v7" />
+        <path data-part="floor" d="M10.7 15.4h9.4" />
+        <path data-part="door" d="M14.2 15.4v-3.3h2.6v3.3" />
+      </g>
+      <g transform="translate(1.5 21.2) scale(1.25) translate(-1.5 -21.2)">
+        <g data-part="car" fill="currentColor" stroke="none">
+          <path d="M1.5 19.1v-1.7c0-.3.2-.5.4-.6l1.8-.4 1.4-1.5c.2-.2.4-.3.7-.3h2.6c.3 0 .5.1.7.3l1.3 1.5 1.8.4c.3.1.4.3.4.6v1.7c0 .3-.2.5-.5.5H2c-.3 0-.5-.2-.5-.5z" />
+          <circle cx="4" cy="19.9" r="1.25" />
+          <circle cx="9.4" cy="19.9" r="1.25" />
+        </g>
       </g>
     </g>
   ),

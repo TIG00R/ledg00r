@@ -112,6 +112,55 @@ function confirmedFor(
   };
 }
 
+/**
+ * The list, with the owner's own corrections applied to it.
+ *
+ * Three things can have been said about a line. It can be left alone, which is every line
+ * until somebody touches one. It can carry a figure of the owner's instead of the ledger's —
+ * the ledger's own answer is kept beside it, because it is still what the arithmetic says and
+ * the correction has to be undoable. Or it can be taken out of the reckoning altogether,
+ * which is not the same as the ledger not knowing about it: the thing is still owned, it is
+ * simply not being counted.
+ *
+ * And lines can be added that the ledger has no way to produce: gold at a relative's house,
+ * a loan nobody wrote down. Those are the owner's outright, and are removed outright.
+ */
+function withOwnLines(db: Db, bucket: string, computed: ZakatEntry[]): ZakatEntry[] {
+  const rows = db.select().from(t.zakatEntries).all().filter((r) => r.bucket === bucket);
+  if (rows.length === 0) return computed;
+
+  const corrections = new Map(rows.filter((r) => r.entryId).map((r) => [r.entryId!, r]));
+  const kept: ZakatEntry[] = [];
+  for (const entry of computed) {
+    const said = corrections.get(entry.id);
+    if (!said) { kept.push(entry); continue; }
+    if (said.removed) continue;
+    if (said.amount == null) { kept.push(entry); continue; }
+    kept.push({
+      ...entry,
+      amount: said.amount,
+      computed: entry.amount,
+      overridden: true,
+      note: said.note ?? entry.note,
+    });
+  }
+
+  for (const own of rows.filter((r) => !r.entryId && !r.removed)) {
+    const group = (own.grp as ZakatEntry['group']) ?? 'counted';
+    kept.push({
+      id: own.id,
+      label: own.label ?? 'A line of your own',
+      sign: (own.sign === -1 ? -1 : own.sign === 0 ? 0 : 1) as ZakatEntry['sign'],
+      amount: own.amount ?? 0,
+      group,
+      detail: 'yours, not the ledger\'s',
+      note: own.note ?? undefined,
+      typed: true,
+    });
+  }
+  return kept;
+}
+
 /** the dates a thing turns on, for the reader who wants to check them */
 function datesOf(l: ZakatLine): EntryFact[] {
   const out: EntryFact[] = [];
@@ -211,7 +260,8 @@ export function zakatBuckets(db: Db, src: BucketSources): ZakatBucket[] {
     });
   }
 
-  const base = bucketTotal(entries);
+  const reckoned = withOwnLines(db, ESTATE, entries);
+  const base = bucketTotal(reckoned);
   const hawl = estateHawl(now, settings, src.ledgerSince);
   const closedOn = closedOnOf(hawl);
   const confirmed = confirmedFor(db, ESTATE, closedOn, paidByYear(db));
@@ -223,7 +273,7 @@ export function zakatBuckets(db: Db, src: BucketSources): ZakatBucket[] {
     // date to anchor to beyond the one the hawl already carries.
     anchorOn: null,
     hawl,
-    entries,
+    entries: reckoned,
     base,
     // Nothing is owed on wealth that never reached the threshold, however long it sat there.
     due: aboveNisab ? bucketDue(base) : 0,

@@ -69,6 +69,25 @@ export interface ZakatEntry {
   group?: EntryGroup;
   /** the dates and figures behind the line, for the reader who wants them */
   facts?: EntryFact[];
+  /**
+   * What the ledger worked this line out to be, where the owner has said otherwise.
+   *
+   * An override replaces the amount the arithmetic produced; the arithmetic's own answer is
+   * kept beside it rather than discarded, so the list can show both and the change can be
+   * undone. Absent on every line nobody has touched.
+   */
+  computed?: number;
+  /** whether the amount on this line is the owner's rather than the ledger's */
+  overridden?: boolean;
+  /**
+   * A line the owner wrote, rather than one the ledger worked out.
+   *
+   * Wealth the app cannot see — coins at a relative's house, a debt nobody recorded — belongs
+   * in the reckoning all the same. A typed line is removed outright when it is no longer
+   * true; a computed one can only be overridden or hidden, because the thing behind it is
+   * still in the ledger.
+   */
+  typed?: boolean;
 }
 
 /** where a line sits when it does not say — the reading the sign implies */

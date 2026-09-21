@@ -1,83 +1,93 @@
 Legend: [ ] not started · [~] in progress · [x] done, verified
 
-Reviewed and finished on 2026-09-20. Notes under an item say what the code does now.
+Reviewed and finished on 2026-09-21. Notes under an item say what the code does now.
 
-[x] in zakat correct ui design of "record a payment" button + make the row editab
-    - The three buttons on that screen asked for `btn-quiet`, a class this stylesheet has
-      never defined, so each one rendered as the browser's own grey button in the browser's
-      own type. They are the application's own quiet button now: "Record a payment" carries
-      the giving mark and lights green while its form is open, the year opener is a chevron
-      that turns, and Cancel matches the Cancel in every other form.
-    - The payment form's account picker is the same option the rest of the application draws
-      — the bank over the account, its mark beside them — with what the account holds on the
-      end, since that is the question being asked of it there.
+[x] "Every year you have confirmed" in zakat table, fix border design ( make like other tables in thte system ) . and margins of "record a payment" button
+    - The years are a RecordTable now, the same table every log in the application is drawn
+      with: headings that sort and filter, a row at the top that adds, a row that opens into
+      fields, one set of borders. It had been a table of this screen's own.
+    - Every button on that screen asked for `btn-quiet`, a class this stylesheet has never
+      defined, so each rendered as the browser's own grey button in the browser's own type and
+      spacing. "Record a payment" is the application's small quiet button now, in the row's
+      trailing cell beside the opener, at the spacing the tables keep everywhere.
+
+[x] remove the confirmation function in the everthing you own table. make it be calculated automatically + add options to add/edit/remove entries under each category + add a table for Zakat records + add option to add records of past years and the amount payed
+    - A lunar year writes itself down when it closes. `closeDueYears` runs on the scheduler's
+      tick and on the first read of the assessment or the log, so the figure is frozen at the
+      prices in force when the year actually closed rather than whenever somebody next pressed
+      Confirm. `zakat.confirm` and `zakat.reopen` are gone.
+    - Every line of the reckoning is the owner's to state: a figure of their own over the one
+      the ledger worked out (the computed figure is kept beside it, and "Back to the ledger's"
+      takes it back), a line left out of the reckoning altogether, or a line of their own for
+      wealth the app cannot see. `zakat_entries` holds them; `zakat.entry.set` and
+      `zakat.entry.clear` write them.
+    - Zakat records are a panel of their own on the screen — every payment, whichever year it
+      discharges, corrected and removed like any other log. They were reachable only by
+      opening the year they paid, which left a payment booked against the wrong year nowhere
+      to be seen at all.
+    - Years from before this ledger are typed in: `zakat.year.add` takes the day it closed,
+      what was owed and what was paid, with nothing worked out from anything. `paid_manual`
+      keeps that payment, there being no giving records from before the ledger to point at it.
+      `zakat.year.update` and `zakat.year.remove` correct and remove them.
+
 [x] make the zakat record editable and deletable
-    - A year's payments are a RecordTable now, so they are corrected and removed the way
-      every other log is: double-click or Enter opens the row, Save writes it, the bin asks
-      first. `giving.correct` and `giving.remove` do the work, and the year a payment
-      discharges is not offered as a field — the table is that year.
-    - `zakat.years` reports what each payment actually was, not only the pounds it
-      discharged the year by: the amount, its currency, and the account it left. Correcting a
-      dollar payment used to be impossible without rewriting it as a pound one.
-[x] in accounts records, make drop down lists and filters bank names bigger and subaccounts smaller and under it like we did before with drop down lists in money movements dropdownlists and show letters of currency next to amounts
-    - A column filter's choices can be options rather than bare strings, so the Source and
-      Destination filters draw accounts the way every picker does — the bank on the first
-      line, the account under it, the bank's mark beside them. What they match on is still
-      the text the column holds, which is all a filter can compare.
-    - An option carries a mark, and an account's is its bank's logo (its own where no bank
-      holds it). Node marks reach the screens for that: `read.ts` passes `icon` through.
-    - Amount and Fee say which currency they are counted in — the account's own letters,
-      read off whichever side of the movement is actually held in something, so a salary
-      from an employer still says USD.
-[x] make an option for selling an asset with a price:
-    - `asset.sell` takes the price, its currency, the account the money reached and the day.
-      The thing leaves at what it still stands at, the money arrives at what it fetched, and
-      the difference is the profit. It is archived — it is not owned any more — and the log
-      keeps the movement.
-    - What the price is measured against is one reading, `purchaseBasisEgp`, used by the
-      sale and by `assets.list` so the card and the receipt cannot disagree:
-        · bought outright: the price it was bought at, frozen at `bought_for` the day it was
-          added, converted the way the asset itself is. Repricing a flat rewrites what it is
-          worth and no longer rewrites what was paid for it.
-        · on a plan: the total actually paid so far — the same figure the portfolio shows and
-          zakat counts, read the same way `assets.list` reads it.
-    - A "Sell" button sits beside the pencil on each card and opens the form on the card. A
-      "Sold" panel underneath lists what has been sold with what went in, what it fetched,
-      and the profit or loss, with the percentage under it.
-    - Migration 41 adds the columns and backfills `bought_for` from what each outright asset
-      opened at, which is exactly what was typed when it was added.
-[x] make all records default order based on latest date first
-    - A RecordTable with no order stated now opens on its first column of dates, newest
-      first, instead of however the rows happened to arrive. Every table that states one
-      already states desc.
-    - A confirmed year's payments came back oldest first from `zakat.years`; they are newest
-      first, like every other log.
-    - The installment plan is left ascending on purpose: it is a schedule of what is coming,
-      not a log of what happened, and the next payment due belongs at the top.
-[x] in expenses when i changed the source account, the transaction was reversed correctly in logs, but it wasn't deducted from the new account chosen ... investigate this case
-    - Reproduced. `expense.correct` reversed the movement and deleted the log row before
-      posting the corrected one, and those three steps ran in the open: when the second half
-      was refused — the account chosen could not cover it — the reversal stood, the money
-      went back to the account it had left, nothing came out of the account chosen, and the
-      expense itself was gone from the log. Exactly what was reported.
-    - It is wrapped in `atomically` now, as `giving.correct` already was, so the whole
-      correction stands or the record is exactly as it was. A test holds it.
-    - The other half of what was seen is not a fault: a correction keeps the expense's own
-      date and only the reversal is dated today, so in a newest-first log the reversal sits
-      at the top and the corrected expense sits back at the original date, beside the
-      original — which is marked "undone".
-[x] drop down list in expenses for accounts when configuring the record shows the currency not the bank name and subaccount names, fix
-    - Closed, an account picker said the account alone, which is the half a reader already
-      knows: accounts are named for what they hold ("EGP", "USD"), so it read as a currency
-      wherever the bank was the thing telling two of them apart. It names both now, in the
-      order the open list reads them.
-    - The Paid from column said the bank twice — once inside the name, once on the line
-      under it. The account leads and the bank reads under it, and the filter offers every
-      account money can leave rather than only the ones recently used.
-[x] all drop down filters list of source and destination accounts of bank account records is broken, it should show the normal bank anmes with their subaccounts like other drop down lists across the application with their icons
-    - Covered by the filter work above. A node with no bank over it leads with its own name
-      and says what it is underneath — "Brokerage wallet / cash" rather than "cash /
-      Brokerage wallet".
+    - Done twice over now: the payments under a year, and the Zakat records panel above, both
+      open on double-click or Enter and carry Save and a bin. What made it read as "still not
+      editable" is that the only way in was through a confirmed year, and there was no way to
+      confirm one without pressing a button nobody had pressed.
+
+[x] in all tabless across the entire application, make all bank account appear in same style ( bank name big font first then subaccount ) + the icon
+    - One component, `AccountLine`, draws an account wherever a table names one: the bank
+      leads, the account reads under it, and the bank's mark sits beside them — its logo, or
+      its short code on its own colour where it has none. Expenses, Giving, the movement log,
+      the zakat payments, the installment plan and Income all draw it, so choosing an account
+      and reading it back are the same shape.
+    - Marks in the pickers too, and not only for accounts: destinations and causes carry their
+      own mark and colour, income sources carry theirs, and an asset carries its own in both
+      pickers that name one. The Income log drew its source as bare text and now draws it as
+      itself.
+
+[x] for the assets icon and animation, make the house and the cat 1.5 times bigger
+    - The house held the top-right quadrant and the car the bottom-left, each about half the
+      subject every other icon in the set draws. Each grows into the empty corner beside it
+      now — the house anchored at its bottom-right, the car at its bottom-left — so they keep
+      their places and their overlap deepens, which is what the composition was always saying:
+      the car is in front. The house's stroke is divided by its own scale, so the line comes
+      out at the set's weight rather than a fifth heavier.
+
+[x] in expenses when i changed the source account ... the calculations are so much off, the numbers aren't changing / updating
+    Three separate faults, all of them real:
+    - An amount stated in a currency the account does not hold was taken out of the account as
+      though it were the account's own. 5,000 pounds spent off a dollar account took five
+      thousand dollars — or was refused as being four thousand dollars short. `inAccountQty`
+      converts through pounds, the way `asset.add` always has, and the record keeps the amount
+      and the currency actually stated. Expenses, giving and income all shared the fault.
+    - A correction that moved no money wrote a movement anyway: saving a row with the same
+      account, amount, currency and date reversed the movement and posted an identical one, so
+      the log gained a correction handing the money back and a second expense taking it out
+      again. Net zero, but it reads as money returned by an edit to a note — which is exactly
+      what was reported. Where none of the four things a movement is made of has changed, the
+      record is corrected in place and nothing moves. Giving keeps the same rule.
+    - The timeline did not move because today's statement was frozen by the first tick after
+      midnight and left alone until tomorrow, so everything recorded for the rest of the day
+      was invisible on it. Today is not history yet: its figure follows what is recorded, every
+      day before it stays frozen, and a figure somebody wrote themselves is never touched.
+    - Balances themselves were never wrong. A test now walks the whole sequence — record, move
+      to another account, correct with the same values, correct the amount, remove — and
+      checks the balance after every step.
+
+[x] for any money movement record in the application ... when delete show 2 options: just delete the record, or delete the record and reverse the transaction
+    - The bin asks which. "Remove and put the money back" is what it always did — the movement
+      is reversed, the balance returns, the log keeps both halves. "Just remove the record"
+      takes the row off and leaves what it moved exactly where it is, which is the right answer
+      when the money really did move and it is the record that is wrong: the same expense
+      entered twice, a gift recorded by two hands.
+    - `expense.remove`, `giving.remove` and `metal.removeLot` take `reverse`, true unless said
+      otherwise, so nothing that already calls them changes behaviour. Offered on spending,
+      giving, the zakat payments and the metal lots — the logs that keep a record of their own
+      beside the movement. The movement log itself still only undoes: a movement is not a
+      record standing beside something else, it is the something else, and this ledger does not
+      erase one.
 
 
 Not from this list, still standing:
