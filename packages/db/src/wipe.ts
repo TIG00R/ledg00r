@@ -147,9 +147,19 @@ export function countLog(db: Db, log: LogName): number {
   return row.n;
 }
 
-export function countLogs(db: Db): Array<{ log: LogName; label: string; what: string; count: number }> {
+export function countLogs(db: Db): Array<{
+  log: LogName; label: string; what: string; count: number; movements: boolean;
+}> {
   return LOG_NAMES.map((log) => ({
     log, label: LOGS[log].label, what: LOGS[log].what, count: countLog(db, log),
+    /*
+     * Whether emptying this log has two answers to choose between.
+     *
+     * Said here rather than worked out again by whatever is asking. A screen guessing from
+     * the log's name which of them stand on movements is a screen that will guess wrong the
+     * first time a log is added, and offer one answer where there are two.
+     */
+    movements: !!(LOGS[log] as LogSpec).movementColumn,
   }));
 }
 
@@ -160,17 +170,29 @@ export function countLogs(db: Db): Array<{ log: LogName; label: string; what: st
  * have to come out in would otherwise depend on which table references which, and deferring
  * lets the whole thing be judged once, when it is consistent again.
  */
-export function clearLog(db: Db, log: LogName): number {
+export function clearLog(db: Db, log: LogName, opts: { movements?: boolean } = {}): number {
   const spec: LogSpec = LOGS[log];
+  /**
+   * Whether the movements behind the records go with them.
+   *
+   * They always did, and for most of what this is used for that is right: a record whose
+   * movement is gone claims something the balances do not agree with. But it is not the only
+   * thing "clear this log" can mean. A log imported twice, or kept in two places and now kept
+   * in one, is a list of records that are wrong about money that really moved — and erasing
+   * the movements there rewrites every balance in the ledger to undo spending that happened.
+   * So the caller says which it means, and the movement log itself has no choice to make: it
+   * is the movements.
+   */
+  const withMovements = opts.movements ?? true;
   let removed = 0;
 
   db.$raw.transaction(() => {
     db.$raw.exec('PRAGMA defer_foreign_keys = ON');
 
     // The movement log stands under every money record, so emptying it empties those first.
-    if (log === 'movements') for (const other of MONEY_LOGS) removed += clearRows(db, LOGS[other]);
+    if (log === 'movements') for (const other of MONEY_LOGS) removed += clearRows(db, LOGS[other], true);
 
-    removed += clearRows(db, spec);
+    removed += clearRows(db, spec, withMovements || log === 'movements');
   })();
 
   forgetSequences();
@@ -182,7 +204,7 @@ export function clearAllRecords(db: Db): number {
   let removed = 0;
   db.$raw.transaction(() => {
     db.$raw.exec('PRAGMA defer_foreign_keys = ON');
-    for (const log of LOG_NAMES) removed += clearRows(db, LOGS[log]);
+    for (const log of LOG_NAMES) removed += clearRows(db, LOGS[log], true);
   })();
   forgetSequences();
   return removed;
@@ -267,8 +289,8 @@ function hasTable(db: Db, name: string): boolean {
  * The movements go before the records that name them, because the records are where the
  * movement ids are read from. Assumed to be running inside a transaction already.
  */
-function clearRows(db: Db, spec: LogSpec): number {
-  if (spec.movementColumn) {
+function clearRows(db: Db, spec: LogSpec, withMovements: boolean): number {
+  if (spec.movementColumn && withMovements) {
     for (const table of spec.tables) {
       if (!hasColumn(db, table, spec.movementColumn)) continue;
       db.$raw.prepare(`
@@ -280,7 +302,7 @@ function clearRows(db: Db, spec: LogSpec): number {
 
   // A debt is held as a node, so the node goes with the record; nothing else would ever
   // remove it, and a stray one shows up in what you are worth.
-  if (spec.nodePrefix) {
+  if (spec.nodePrefix && withMovements) {
     const ids = db.$raw.prepare('SELECT node_id AS id FROM debts').all() as Array<{ id: string }>;
     const del = db.$raw.prepare('DELETE FROM transactions WHERE id IN (SELECT transaction_id FROM legs WHERE from_node_id = ? OR to_node_id = ?)');
     for (const { id } of ids) del.run(id, id);

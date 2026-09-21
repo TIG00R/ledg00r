@@ -118,12 +118,12 @@ export function HawlBar({ hawl, tone = 'var(--zakat)' }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11 }}>
         <span>
           <span style={{ color: 'var(--muted)' }}>from </span>
-          <span className="mono">{hawl.startOn}</span>
+          <span className="mono public">{hawl.startOn}</span>
           <span style={{ display: 'block', color: 'var(--faint)' }}>{hawl.startHijriText} AH</span>
         </span>
         <span style={{ textAlign: 'right' }}>
           <span style={{ color: 'var(--muted)' }}>closes </span>
-          <span className="mono">{hawl.dueOn}</span>
+          <span className="mono public">{hawl.dueOn}</span>
           <span style={{ display: 'block', color: 'var(--faint)' }}>{hawl.dueHijriText} AH</span>
         </span>
       </div>

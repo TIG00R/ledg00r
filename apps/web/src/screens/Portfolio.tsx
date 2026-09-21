@@ -41,9 +41,21 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
       key, value, label: style(key).label, color: style(key).color,
     }));
 
+  /*
+   * The class, not the styles, is what makes this page behave on a narrow window.
+   *
+   * This screen draws its own frame rather than going through `Page`, and for four rounds
+   * that meant every narrow-window rule in the stylesheet — fold the aside under the work,
+   * give the gutters back to the columns — sailed past the one screen the app opens on,
+   * because each of those rules is written against `.page` and this main had no class at
+   * all. Dragged to 900 pixels it still asked for a 300-pixel column beside a 445-pixel one;
+   * at 560 the work had 192 pixels and the panel beside it still had its 300.
+   */
   return (
-    <main style={{ padding: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px',
-                   gap: 20, alignItems: 'start', maxWidth: 1440, margin: '0 auto', width: '100%' }}>
+    <main className="page"
+          style={{ padding: 24, display: 'grid',
+                   gridTemplateColumns: 'minmax(0, 1fr) clamp(238px, 23%, 320px)',
+                   gap: 20, alignItems: 'start', width: '100%' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
 
         {/* The overview is one chart and its legend. The strip that used to sit here said the
@@ -58,7 +70,7 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
             </div>
             {/* No rate is not a rate of zero: until one has been recorded there is nothing
                 to convert at, and the line says nothing rather than saying NaN. */}
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+            <div className="private" style={{ fontSize: 13, color: 'var(--muted)' }}>
               {v.rate > 0
                 ? display === 'EGP'
                   ? `≈ ${money(v.total / v.rate, 'USD')} at ${v.rate.toFixed(4)}`
@@ -95,7 +107,7 @@ export function Portfolio({ onNavigate }: { onNavigate: (id: string) => void }) 
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{s.label}</div>
                   <div className="mono" style={{ fontSize: 15, fontWeight: 500 }}>{dm(s.value)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--faint)' }}>
+                  <div className="private" style={{ fontSize: 11, color: 'var(--faint)' }}>
                     {/* nothing is not 0% of nothing; a ledger holding nothing has no shares */}
                     {v.total > 0 ? `${((s.value / v.total) * 100).toFixed(1)}%` : '—'}
                     {s.key === 'gold' ? ` · ${a.goldGrams.toFixed(1)} g` : ''}
@@ -135,6 +147,19 @@ const labelFor = (span: Span, key: string) => {
 };
 
 /**
+ * Ask the ledger for something it may be too old to have.
+ *
+ * A capability that does not exist on the other end is not an error the call can return —
+ * there is nothing to call. Written as `ledger['x'](...)`, a service older than this bundle
+ * throws where the parenthesis is, synchronously, before any promise exists for `.catch` to
+ * be attached to: the effect dies, and a screen that had a perfectly good fallback renders
+ * nothing instead of using it. Going through a promise puts that failure where every other
+ * failure already goes.
+ */
+const ask = (capability: string, input: unknown): Promise<any> =>
+  Promise.resolve().then(() => (ledger as any)[capability](input));
+
+/**
  * What things were worth, over time.
  *
  * `portfolio.overview` above answers what is held right now, and the answer moves every time
@@ -151,13 +176,13 @@ function WealthTimeline() {
 
   const loadSeries = useCallback(() => {
     if (!live) { setSeries(null); return; }
-    (ledger as any)['wealth.statement.series']({ span }).then(setSeries).catch(() => setSeries(null));
+    ask('wealth.statement.series', { span }).then(setSeries).catch(() => setSeries(null));
   }, [live, span]);
   useEffect(loadSeries, [loadSeries, version]);
 
   const loadRows = useCallback(() => {
     if (!live) { setRows(null); return; }
-    (ledger as any)['wealth.statement.list']({}).then(setRows).catch(() => setRows([]));
+    ask('wealth.statement.list', {}).then(setRows).catch(() => setRows([]));
   }, [live]);
   useEffect(loadRows, [loadRows, version]);
 
@@ -220,6 +245,11 @@ const PAD_X = 8;
  * full width instead of collapsing to a dot in the corner.
  */
 function AreaAxis({ span, points }: { span: Span; points: Point[] }) {
+  /* A blur cannot reach a native tooltip: the browser paints it outside the page, out of
+     reach of any filter, so a point that said what the day was worth said it in clear
+     while the rest of the screen was covered. With privacy on the tooltip names the day
+     and stops there. */
+  const { privacy } = useApp();
   const values = points.map((p) => p.netWorth);
   const max = Math.max(...values);
   const min = Math.min(0, ...values);
@@ -259,15 +289,21 @@ function AreaAxis({ span, points }: { span: Span; points: Point[] }) {
         {points.map((p, i) => (
           <circle key={p.key} cx={n === 1 ? w / 2 : x(i)} cy={y(p.netWorth)} r={n > 40 ? 0 : 3}
                   fill={p.source === 'manual' ? 'var(--gold)' : (rising ? 'var(--positive)' : 'var(--negative)')}>
-            <title>{`${p.date}: ${money(p.netWorth, p.currency as Currency)}${p.source === 'manual' ? ' (by hand)' : ''}`}</title>
+            <title>{privacy
+              ? `${p.date}${p.source === 'manual' ? ' (by hand)' : ''}`
+              : `${p.date}: ${money(p.netWorth, p.currency as Currency)}${p.source === 'manual' ? ' (by hand)' : ''}`}</title>
           </circle>
         ))}
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6,
                     fontSize: 10, color: 'var(--faint)' }}>
-        <span>{labelFor(span, first.key)} · {money(first.netWorth, first.currency as Currency)}</span>
-        <span className="mono" style={{ color: rising ? 'var(--positive)' : 'var(--negative)' }}>
-          {labelFor(span, last.key)} · {money(last.netWorth, last.currency as Currency)}
+        <span>
+          {labelFor(span, first.key)} ·{' '}
+          <span className="private">{money(first.netWorth, first.currency as Currency)}</span>
+        </span>
+        <span style={{ color: rising ? 'var(--positive)' : 'var(--negative)' }}>
+          {labelFor(span, last.key)} ·{' '}
+          <span className="mono">{money(last.netWorth, last.currency as Currency)}</span>
         </span>
       </div>
     </div>
@@ -328,7 +364,7 @@ function StatementRow({ row, run, onDone }: {
            e.preventDefault();
            open();
          }}>
-      <span style={{ minWidth: 90, fontWeight: 600 }}>{row.date}</span>
+      <span className="public" style={{ minWidth: 90, fontWeight: 600 }}>{row.date}</span>
       <span className="mono" style={{ minWidth: 110 }}>
         {money(row.netWorth, row.currency as Currency)}
       </span>

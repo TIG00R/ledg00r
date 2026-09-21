@@ -194,7 +194,7 @@ function TheList({ currencies, data, run }: {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12,
                          padding: '8px 13px' }}
                 onClick={() => run('currency.add', k)}>
-                <span className="mono" style={{ color: k.color, fontWeight: 600 }}>{k.symbol}</span>
+                <span className="mono public" style={{ color: k.color, fontWeight: 600 }}>{k.symbol}</span>
                 {k.code}
                 <span style={{ color: 'var(--faint)' }}>{k.name}</span>
               </button>

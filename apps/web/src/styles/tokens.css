@@ -25,6 +25,15 @@
   --zakat: #B37E00;
   --sadaqat: #C13C86;
   --switch-off: rgba(20, 18, 14, 0.20);
+  /* On is green, everywhere, on purpose.
+     A switch in the accent colour was the same near-black as every button on the page, so
+     the one control whose whole job is to be read at a glance across a settings list read
+     as "a dark pill" in both states. Green is the only colour in this palette that already
+     means yes — it is what a positive figure wears — and it is not the colour of anything
+     that is merely selected. Its own token rather than --positive directly: a switch is a
+     filled area behind a white knob, not a line of text, and the two want different weights
+     of the same green in each theme. */
+  --switch-on: #00A32E;
   /* Controls sit on their own step, not on a card colour — on a dark page a card is
      only a couple of values away from the background and a button disappears into it. */
   --control: #FFFFFF;
@@ -74,6 +83,9 @@
   --zakat: #FFD400;
   --sadaqat: #FF7FC0;
   --switch-off: rgba(255, 255, 255, 0.26);
+  /* Dark's --positive is tuned for text on a dark page and is far too light to sit under a
+     white knob; this is the same green at a weight that carries one. */
+  --switch-on: #17B84A;
   --control: #33302A;
   --control-hover: #423E36;
   --control-border: rgba(255, 255, 255, 0.20);
@@ -177,6 +189,18 @@ a { color: var(--accent); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .btn svg { flex: 0 0 auto; }
 
+/*
+ * A button is one line, at every width.
+ *
+ * Narrowing the window used to break a label across two and three lines: "Remove and put the
+ * money back" became a paragraph inside a box, the row grew taller to hold it, and a line of
+ * buttons stopped reading as a line. The label is the button — it stays on one line and the
+ * button takes whatever width that needs, so a narrow screen scrolls the row it sits in
+ * rather than rewrapping the words inside it, and a button never shrinks to make room for
+ * something beside it.
+ */
+.btn { white-space: nowrap; flex-shrink: 0; }
+
 /* One smaller size, for buttons that live inside a row of a table rather than under a form.
    Every table had picked its own padding and type size, so Save in one log was a different
    button from Save in the next. It is as tight as it can be and still read as a button,
@@ -189,8 +213,9 @@ a { color: var(--accent); }
   display: flex; gap: 6px; align-items: center; justify-content: flex-end;
   flex-wrap: nowrap; min-width: 0;
 }
-/* a pair that still cannot fit shrinks its labels rather than spilling over the row */
-.btn-pair .btn { min-width: 0; overflow: hidden; }
+/* A pair that still cannot fit shrinks its labels rather than spilling over the row. Cut
+   with an ellipsis, not wrapped: the pair gives up letters before it gives up the line. */
+.btn-pair .btn { min-width: 0; overflow: hidden; flex-shrink: 1; text-overflow: ellipsis; }
 
 /* Inputs share the control surface so a field and a button read as the same family. */
 input, select, textarea { background-color: var(--control); border-color: var(--control-border); }
@@ -274,15 +299,55 @@ th:last-child, td:last-child { padding-right: 0; }
 :root[data-density='compact'] .chip { padding: 2px 8px; }
 
 /* Privacy blurs the figures in place. Nothing is substituted, so the layout does not move
-   and the shape of the page is still readable across a room. */
+   and the shape of the page is still readable across a room.
+
+   Seven pixels left a short figure guessable — the digits smeared, but the shape of
+   "E£1,472,009" against the shape of "E£145,000" did not, and a number you can read
+   the length of over a shoulder is half a number given away. Fourteen closes it: what
+   survives is the line of a figure being there, which is the whole point. */
 :root[data-privacy='on'] .mono,
+:root[data-privacy='on'] .figure,
 :root[data-privacy='on'] .private {
-  filter: blur(7px);
+  filter: blur(14px);
   user-select: none;
 }
 /* Hold the pointer on one figure to read it without unhiding the whole page. */
 :root[data-privacy='on'] .mono:hover,
+:root[data-privacy='on'] .figure:hover,
 :root[data-privacy='on'] .private:hover { filter: blur(0px); }
+/*
+ * What privacy has no business hiding.
+ *
+ * The switch is for the figures that say what you are worth, not for every set of digits
+ * on the page. The clock is not yours to hide, and a panel you are filling in is a thing
+ * you are looking at on purpose — an amount you have just typed, blurred back at you, is
+ * the control refusing to answer the person using it. Both stay legible, and the class is
+ * given to the container so everything inside it is covered at once.
+ */
+:root[data-privacy='on'] .reveal,
+:root[data-privacy='on'] .reveal .mono,
+:root[data-privacy='on'] .reveal .figure,
+:root[data-privacy='on'] .reveal .private { filter: none; user-select: auto; }
+/*
+ * What is not yours to hide.
+ *
+ * The mono class marks a figure as a figure, and for a while that was taken to mean a figure
+ * worth hiding — so privacy smeared the date on a row, the price of gold, the nisab
+ * threshold and the name of a model, none of which say anything about what you hold. What
+ * privacy covers is the part of a line that is yours: the amount, the approximation beside
+ * it, the share of a total, the count of a thing you own. The rest stays readable, because a
+ * date you cannot read is a row you cannot find, and a gold price you cannot read is a
+ * market you have to leave the page to check.
+ *
+ * Four classes say it. `mono` is a figure set in the numeral face, and `figure` is a figure
+ * inside a line of ordinary prose — both are hidden by default and both are let through by
+ * `public`, which is given either to the figure itself or to a container holding nothing
+ * but public ones. `private` is the hard one: it stays hidden inside a public region, so a
+ * panel of market rates can still cover the single line that is a holding.
+ */
+:root[data-privacy='on'] .public,
+:root[data-privacy='on'] .public .mono,
+:root[data-privacy='on'] .public .figure { filter: none; user-select: auto; }
 
 /* Native date fields: keep the picker, match the rest of the inputs. */
 input[type='date'] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -545,47 +610,25 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 :where(button, a, label):hover .anim-dashboards [data-part='b2'] { transform: scaleY(0.62); }
 :where(button, a, label):hover .anim-dashboards [data-part='b3'] { transform: scaleY(1.26); }
 
-/* Accounts — the globe turns and the banks ride round on it.
+/* Accounts — the bank stands still, and money passes over it.
 
-   The orbit group turns one full revolution and every bank turns exactly as far the other
-   way. That is not decoration: the banks sit inside the squash that makes the equator an
-   ellipse, so without the counter-turn the parent's scale and the orbit's rotation would
-   compose into a shear, and each building would lean and stretch as it went round.
-   Cancelled, all that survives is position.
+   Nothing happens to the building. It was lifting its pediment a pixel on hover, which is
+   the picture nodding — and a bank that moves is a bank in an earthquake, not an account
+   with money going through it. The bank is the place; the money is the event.
 
-   Depth is a second animation on a group of its own, because one element can only run one
-   transform: a bank swells and darkens through the near half and shrinks and fades through
-   the far half. All three share the cycle and differ only by where they start in it, which
-   is what the negative delays are for — a third of the turn apart, the same as their
-   placement. Their resting opacities are the values that cycle holds at those three points,
-   so nothing jumps when the hover starts.
-
-   The meridian narrows to a line at the quarter and three-quarter marks, which is where the
-   banks are crossing the poles, so the wireframe and the buildings agree about which way the
-   globe is facing. Linear on both, because a planet does not ease. */
-.anim-accounts [data-part] { transform-origin: 12px 12px; }
-.anim-accounts [data-part='mark'],
-.anim-accounts [data-part='depth'] { transform-origin: 20.4px 12px; }
-.anim-accounts [data-part='globe'] { transition: transform 520ms cubic-bezier(0.3, 1.1, 0.3, 1); }
-:where(button, a, label):hover .anim-accounts [data-part='globe'] { transform: scale(1.03); }
-:where(button, a, label):hover .anim-accounts [data-part='orbit'] { animation: globe-turn 3200ms linear infinite; }
-:where(button, a, label):hover .anim-accounts [data-part='mark'] { animation: globe-hold 3200ms linear infinite; }
-:where(button, a, label):hover .anim-accounts [data-part='depth'] { animation: globe-depth 3200ms linear infinite; }
-:where(button, a, label):hover .anim-accounts [data-part='meridian'] { animation: globe-face 3200ms ease-in-out infinite; }
-/* a third of a turn apart, so the three banks are never at the same depth */
-.anim-accounts g:nth-child(2) [data-part='depth'] { animation-delay: -1067ms; }
-.anim-accounts g:nth-child(3) [data-part='depth'] { animation-delay: -2133ms; }
-@keyframes globe-turn { to { transform: rotate(360deg); } }
-@keyframes globe-hold { to { transform: rotate(-360deg); } }
-@keyframes globe-depth {
-  0%, 100% { transform: scale(1); opacity: 0.72; }
-  25%      { transform: scale(1.16); opacity: 1; }
-  50%      { transform: scale(1); opacity: 0.72; }
-  75%      { transform: scale(0.84); opacity: 0.42; }
-}
-@keyframes globe-face {
-  0%, 50%, 100% { transform: scaleX(1); }
-  25%, 75%      { transform: scaleX(0.06); }
+   So the money, and the same money as everywhere else: the note run the wallet uses for
+   income and expenses, unchanged, because a note crossing a rim and fading through it is
+   one gesture this set already owns. Left note down into the roof, right note up and away,
+   each replaced from the end it did not leave by. Each chevron brightens with the note on
+   its own lane, because a direction belongs to whatever is travelling in it. */
+:where(button, a, label):hover .anim-accounts [data-part='noteIn'] { animation: note-in 1150ms cubic-bezier(0.32, 0, 0.24, 1); }
+:where(button, a, label):hover .anim-accounts [data-part='noteOut'] { animation: note-out 1150ms cubic-bezier(0.32, 0, 0.24, 1); }
+:where(button, a, label):hover .anim-accounts [data-part='cueIn'] { animation: acct-cue 1150ms ease-out; }
+:where(button, a, label):hover .anim-accounts [data-part='cueOut'] { animation: acct-cue 1150ms ease-out; }
+@keyframes acct-cue {
+  0%, 10%   { opacity: 0.5; }
+  52%       { opacity: 0.95; }
+  78%, 100% { opacity: 0.5; }
 }
 
 
@@ -789,18 +832,25 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 /* Budgets — the band runs at the limit, and the limit answers.
    It grows from its own left edge, so the track stays exactly as long as it was while only
    the band's far end moves. Nothing else has a rule: a ceiling that shifted would not be a
-   ceiling, so the line only brightens as the band arrives under it. */
+   ceiling, so the line only brightens as the band arrives under it.
+
+   The band ends under the limit, not short of it, and it darkens on the way — the same run
+   read twice, once as length and once as weight, so the movement survives being shown at
+   seventeen pixels. The easing overshoots a little and settles back: spending arrives at a
+   ceiling with momentum, and a band that glided to a stop on it read as a progress bar
+   filling rather than as money running out. */
 .anim-budgets [data-part='fill'] {
-  transform-origin: 4.3px 12px;
-  transition: transform 780ms cubic-bezier(0.3, 1.02, 0.32, 1);
+  transform-origin: 4.05px 12px;
+  transition: transform 820ms cubic-bezier(0.32, 1.32, 0.34, 1),
+              fill-opacity 620ms var(--ease);
 }
 .anim-budgets [data-part='limitCap'] { transition: opacity 320ms var(--ease); }
-:where(button, a, label):hover .anim-budgets [data-part='fill'] { transform: scaleX(1.78); }
-:where(button, a, label):hover .anim-budgets [data-part='limit'] { animation: limit-warn 900ms ease-in-out 420ms; }
-:where(button, a, label):hover .anim-budgets [data-part='limitCap'] { opacity: 0.9; }
+:where(button, a, label):hover .anim-budgets [data-part='fill'] { transform: scaleX(1.4); fill-opacity: 0.8; }
+:where(button, a, label):hover .anim-budgets [data-part='limit'] { animation: limit-warn 900ms ease-in-out 520ms 2; }
+:where(button, a, label):hover .anim-budgets [data-part='limitCap'] { opacity: 0.95; }
 @keyframes limit-warn {
   0%, 100% { opacity: 1; }
-  45%      { opacity: 0.35; }
+  45%      { opacity: 0.3; }
 }
 
 /* Logs — each entry arrives in the order it was written.
@@ -856,24 +906,60 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
   100%      { opacity: 0; transform: scale(1); }
 }
 
-/* Sadaqat — the coin leaves the hands, and the hands give as it goes.
-   Giving that is chosen: the coin goes up and out rather than falling in, which is the one
-   thing that tells this apart from the heart at a glance. The cup and its thumbs stay. */
-.anim-hands [data-part='coin'] { transform-origin: 12px 6.4px; }
-.anim-hands [data-part='cup'] { transform-origin: 12px 14.4px; }
-:where(button, a, label):hover .anim-hands [data-part='coin'] { animation: offered 1150ms cubic-bezier(0.3, 0, 0.26, 1); }
-:where(button, a, label):hover .anim-hands [data-part='cup'] { animation: cup-release 1150ms ease-in-out 120ms; }
-@keyframes offered {
-  0%, 12%   { transform: translateY(0); opacity: 1; }
-  56%       { transform: translateY(-3.4px); opacity: 1; }
-  76%       { transform: translateY(-5.2px); opacity: 0; }
-  84%       { transform: translateY(1.2px); opacity: 0; }
-  100%      { transform: translateY(0); opacity: 1; }
+/* Giving — the hearts go up off the hand, and the hand does not move.
+   The hand is the fixed thing: a hand that lifted would be the picture nodding along, and
+   whatever it is holding is the part that is meant to leave. So the hearts travel and
+   nothing else does, a fifth of a second apart so the two are one habit rather than one
+   gesture drawn twice.
+
+   It is the same run the notes make over the bank and through the wallet — up, fade out
+   before the top, and back from below while invisible, so neither heart is ever seen
+   sliding home the way it came. Short travel on purpose: this sits at 17px in a tab. */
+:where(button, a, label):hover .anim-hands [data-part='p1'] { animation: heart-up 1600ms ease-in-out infinite; }
+:where(button, a, label):hover .anim-hands [data-part='p2'] { animation: heart-up 1600ms ease-in-out infinite 200ms; }
+@keyframes heart-up {
+  0%, 10%   { transform: translateY(0); opacity: 1; }
+  56%       { transform: translateY(-1.5px); opacity: 1; }
+  72%       { transform: translateY(-2.4px); opacity: 0; }
+  80%       { transform: translateY(1.2px); opacity: 0; }
+  96%, 100% { transform: translateY(0); opacity: 1; }
 }
-@keyframes cup-release {
+
+/* Causes — the same money, leaving on three different bearings.
+   Each coin has its own line and its own beat, because three coins moving together is one
+   payment drawn three times; staggered and divergent it is a share-out, which is what a list
+   of causes is. Each resets while invisible, so none is seen returning to the hand. */
+:where(button, a, label):hover .anim-causes [data-part='c1'] { animation: scatter-up 1500ms ease-out infinite; }
+:where(button, a, label):hover .anim-causes [data-part='c2'] { animation: scatter-mid 1500ms ease-out infinite 130ms; }
+:where(button, a, label):hover .anim-causes [data-part='c3'] { animation: scatter-out 1500ms ease-out infinite 260ms; }
+:where(button, a, label):hover .anim-causes [data-part='cup'] { animation: cup-catch 1500ms ease-in-out infinite; }
+.anim-causes [data-part='cup'] { transform-origin: 7.2px 16.8px; }
+/* the hand taking the weight of what is in it */
+@keyframes cup-catch {
   0%, 100% { transform: scaleY(1); }
-  34%      { transform: scaleY(0.9); }
-  68%      { transform: scaleY(1.03); }
+  26%      { transform: scaleY(1.09); }
+  62%      { transform: scaleY(0.97); }
+}
+@keyframes scatter-up {
+  0%, 8%    { transform: translate(0, 0); opacity: 1; }
+  58%       { transform: translate(-0.4px, -2.8px); opacity: 1; }
+  74%       { transform: translate(-0.6px, -4.1px); opacity: 0; }
+  80%       { transform: translate(0.3px, 1.4px); opacity: 0; }
+  96%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes scatter-mid {
+  0%, 8%    { transform: translate(0, 0); opacity: 1; }
+  58%       { transform: translate(2.1px, -2.1px); opacity: 1; }
+  74%       { transform: translate(3.1px, -3.1px); opacity: 0; }
+  80%       { transform: translate(-1px, 1px); opacity: 0; }
+  96%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes scatter-out {
+  0%, 8%    { transform: translate(0, 0); opacity: 1; }
+  58%       { transform: translate(2.8px, -0.7px); opacity: 1; }
+  74%       { transform: translate(4.1px, -1px); opacity: 0; }
+  80%       { transform: translate(-1.4px, 0.4px); opacity: 0; }
+  96%, 100% { transform: translate(0, 0); opacity: 1; }
 }
 
 /* Settings — the handles run along their tracks and settle somewhere new */
@@ -1168,15 +1254,68 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
    more columns than there is room for — and each is answered once.
    --------------------------------------------------------------------------- */
 
-@media (max-width: 1080px) {
-  /* the panel beside the work goes under it rather than squeezing it */
+/*
+ * The work, and how much of the window is actually left for it.
+ *
+ * Everything under here used to be decided by the width of the window, which is the one
+ * number that does not answer the question: the sidebar takes 240 pixels with its words
+ * and 72 without them, so two windows of the same width can leave the page a hundred and
+ * fifty pixels apart. `work` is what is left after the sidebar, declared as a container so
+ * the rules below can ask it rather than the window — which is also why collapsing the
+ * sidebar now widens the work instead of widening the margins either side of it.
+ */
+.work { flex: 1; min-width: 0; display: flex; flex-direction: column;
+        container-type: inline-size; container-name: work; }
+
+/* The panel beside the work keeps its place and gives up width.
+
+   It used to go under the work as soon as the work came inside 1320 pixels, which is most
+   of a laptop: the panel dropped, and a table that had been given the whole width still
+   read as though it had not, because what the narrowing actually cost was the page's own
+   arrangement. Operations belong on the right — that is where the hand goes for them — so
+   the column is a share of the page rather than a fixed 300, and narrowing takes it from
+   the panel while the work keeps everything left over. Only where 238 pixels of panel
+   would leave the work less than a table can use does the panel go underneath, which is a
+   phone and a window dragged to the size of one. */
+@container work (max-width: 820px) {
   .page { grid-template-columns: minmax(0, 1fr) !important; }
   .page > aside { position: static !important; }
 }
+/* the same call for a browser without container queries, made against the window instead —
+   the sidebar's rail is 72 pixels wide by the time this matters, so the window is the work
+   plus that much */
+@supports not (container-type: inline-size) {
+  @media (max-width: 892px) {
+    .page { grid-template-columns: minmax(0, 1fr) !important; }
+    .page > aside { position: static !important; }
+  }
+}
+
+/*
+ * A window made smaller should give the work the room, not the margins.
+ *
+ * The page kept a 24-pixel gutter and every panel another 24 inside it, which is right at a
+ * desk and wrong the moment the window is dragged narrow: ninety-six pixels of nothing down
+ * the sides of a table that has run out of room for its own columns and started scrolling
+ * sideways. Below the width where the sidebar gives up its words, the gutters give up theirs
+ * too — the page, the panels and the cells of a table each take a little less, so a column
+ * that would have been pushed off the edge stays on it.
+ */
+@media (max-width: 1180px) {
+  .page { padding: 14px !important; gap: 14px !important; }
+  /* the tab strip above a page keeps its top gap and follows the page's side gutters, so
+     the switch stays on the same left edge as the panels under it */
+  .page-strip { padding-left: 14px !important; padding-right: 14px !important; }
+  .panel { padding: 16px !important; }
+  .rt-h, .rt-c { padding: 10px 9px !important; }
+  .rt tr > .rt-h:first-child, .rt tr > .rt-c:first-child { padding-left: 12px !important; }
+  .rt tr > .rt-h:last-child, .rt tr > .rt-c:last-child { padding-right: 12px !important; }
+}
 
 @media (max-width: 860px) {
-  .page { padding: 16px !important; gap: 16px !important; }
-  .panel { padding: 18px !important; }
+  .page { padding: 12px !important; gap: 12px !important; }
+  .page-strip { padding-left: 12px !important; padding-right: 12px !important; }
+  .panel { padding: 14px !important; }
   .topbar { padding: 10px 16px !important; gap: 10px !important; }
   /* a table of records is the one thing that cannot be made narrower, so it scrolls
      inside its own panel rather than pushing the page sideways */
@@ -1202,6 +1341,7 @@ input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
 @media (max-width: 620px) {
   .page { padding: 12px !important; }
+  .page-strip { padding-left: 12px !important; padding-right: 12px !important; }
   .panel { padding: 14px !important; }
   /* two columns of figures read better than one column of squeezed ones */
   .panel :where(div[style*='repeat(auto-fit']) { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important; }

@@ -10,6 +10,12 @@ type Kind = 'zakat' | 'sadaqat';
 
 type Row = GivingRow;
 
+/** a year as the zakat log keeps it, for the half of giving that answers to one */
+interface LoggedYear {
+  id: string; label: string; dueOn: string; dueHijri: string; manual: boolean;
+  due: number; paid: number; remaining: number;
+}
+
 /**
  * Every gift, zakat and sadaqat together — read here, corrected on the table itself.
  *
@@ -59,17 +65,16 @@ function Body() {
    * Not an estimate of what this year might come to: a year still running owes nothing yet,
    * and a figure that mixes the two tells an owner to pay something nobody is owed.
    */
-  const [outstanding, setOutstanding] = useState<number | null>(null);
+  const [years, setYears] = useState<LoggedYear[]>([]);
   useEffect(() => {
-    if (!live) { setOutstanding(null); return; }
+    if (!live) { setYears([]); return; }
     let off = false;
     (ledger as any)['zakat.years']({})
-      .then((ys: Array<{ remaining: number }>) => {
-        if (!off) setOutstanding((ys ?? []).reduce((s, y) => s + y.remaining, 0));
-      })
-      .catch(() => { if (!off) setOutstanding(null); });
+      .then((ys: LoggedYear[]) => { if (!off) setYears(ys ?? []); })
+      .catch(() => { if (!off) setYears([]); });
     return () => { off = true; };
   }, [live, version]);
+  const outstanding = live ? years.reduce((s, y) => s + y.remaining, 0) : null;
 
   return (
     <Page>
@@ -105,6 +110,52 @@ function Body() {
 
         <GivingRecords only={kind} fallback={fallback} onRows={setShown} />
       </Panel>
+
+      {/*
+        * The years the giving answers to.
+        *
+        * Half of what is given is given against something: a lunar year that closed owing a
+        * figure. The list above is every payment and says nothing about what they were for,
+        * and the years lived on another screen entirely — so "have I paid what I owed" could
+        * only be answered by reading two pages and doing the subtraction. A year typed in by
+        * hand has no payments to list at all; what it remembers being paid is the only record
+        * of it there is, and it belongs where giving is read.
+        */}
+      {years.length > 0 && (
+        <Panel title="The years this answers to"
+               hint="What each closed lunar year owed, what has been given against it, and what is left. Corrected on the zakat screen, where the years are kept.">
+          <div className="rt-wrap">
+            <table className="rt">
+              <thead>
+                <tr>
+                  <th className="rt-h">Year to</th>
+                  <th className="rt-h">Owed</th>
+                  <th className="rt-h">Given against it</th>
+                  <th className="rt-h">Still to pay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((y) => (
+                  <tr key={y.id}>
+                    <td className="rt-c">
+                      <span className="mono public" style={{ fontSize: 13 }}>{y.dueOn}</span>
+                      <span className="at-bank">
+                        {y.dueHijri}{y.manual ? ' · typed in' : ''}
+                      </span>
+                    </td>
+                    <td className="mono rt-c">{dm(y.due)}</td>
+                    <td className="mono rt-c">{dm(y.paid)}</td>
+                    <td className="mono rt-c" style={{ fontWeight: 600,
+                                                       color: y.remaining > 0 ? 'var(--negative)' : 'var(--positive)' }}>
+                      {y.remaining > 0 ? dm(y.remaining) : 'discharged'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
     </Page>
   );
 }

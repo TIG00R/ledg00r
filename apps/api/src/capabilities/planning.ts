@@ -68,7 +68,7 @@ export const planningCaps = (ctxOf: () => AppCtx) => [
         date: e.date.toISOString().slice(0, 10), daysAway: e.daysAway,
         amount: e.amount, currency: e.currency, due: e.due, overdue: e.overdue,
         reminderLead: e.reminderLead, internal: e.internal,
-      })).concat(budgetWarnings(ctx));
+      })).concat(budgetWarnings(ctx), noteReminders(ctx, withinDays));
     },
   }),
 
@@ -659,6 +659,58 @@ function budgetWarnings(ctx: AppCtx): Array<{
       };
     })
     .filter((e) => !silenced.has(e.id));
+}
+
+/**
+ * Notes in the share notebook that asked to be read again.
+ *
+ * Not reminders in the `reminders` table sense: nobody sets one of these against a subject,
+ * the note carries its own date and its own switch. They are raised here anyway, because a
+ * date written down and never surfaced is the same as a date not written down — and the one
+ * panel that answers "what is coming" should not have a second list beside it that also
+ * answers it.
+ *
+ * A note's day is the day it is due. There is no lead time to apply: the owner chose the day
+ * they wanted to be asked, so it is due on that day and overdue after it, and one already
+ * past is still shown rather than dropped, since a note nobody acted on is exactly the one
+ * worth raising.
+ */
+function noteReminders(ctx: AppCtx, withinDays: number): Array<{
+  id: string; kind: ReminderSubject; label: string; detail: string | undefined; date: string;
+  daysAway: number; amount: number | undefined; currency: string | undefined;
+  due: boolean; overdue: boolean | undefined;
+  reminderLead: string | undefined; internal: boolean | undefined;
+}> {
+  const on = ctx.now.toISOString().slice(0, 10);
+  const silenced = new Set(ctx.db.select().from(t.dismissals).all()
+    .filter((d) => !d.until || d.until >= on)
+    .map((d) => d.eventId));
+  const day = 86_400_000;
+  const midnight = Date.parse(`${on}T00:00:00Z`);
+  const names = new Map(ctx.db.select().from(t.stocks).all().map((r) => [r.ticker, r.name]));
+
+  return ctx.db.select().from(t.stockNotes).all()
+    .filter((n) => n.remindEnabled && !!n.remindOn)
+    .map((n) => {
+      const date = n.remindOn!;
+      const daysAway = Math.round((Date.parse(`${date}T00:00:00Z`) - midnight) / day);
+      return {
+        id: `note-${n.id}`,
+        kind: 'note' as const,
+        label: `${n.ticker} — ${names.get(n.ticker) ?? 'a note to read again'}`,
+        detail: n.note.length > 200 ? `${n.note.slice(0, 197)}…` : n.note,
+        date,
+        daysAway,
+        // A note owes nothing. An amount here would be read as money due.
+        amount: undefined,
+        currency: undefined,
+        due: daysAway <= 0,
+        overdue: daysAway < 0 ? true : undefined,
+        reminderLead: undefined,
+        internal: undefined,
+      };
+    })
+    .filter((e) => e.daysAway <= withinDays && !silenced.has(e.id));
 }
 
 export function readReminders(ctx: AppCtx): Reminder[] {

@@ -33,6 +33,17 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
     output: z.array(z.object({
       id: z.string(), date: z.string(), kind: z.string(), note: z.string().nullable(),
       automatic: z.boolean(), reversedBy: z.string().nullable(), reverses: z.string().nullable(),
+      /**
+       * The record this movement was written for, where one exists.
+       *
+       * A movement is not always the whole of what happened. An expense, a gift, an order, a
+       * lot of metal and an installment each keep a record of their own — the place, the note,
+       * the destination, the shares — and the movement is only the money half of it. Correcting
+       * the movement alone would leave that record standing over a movement it no longer
+       * describes, so the log says which log a row belongs to and sends the correction there.
+       * Null for a movement that is the whole of itself: a transfer between two accounts.
+       */
+      origin: z.object({ log: z.string(), label: z.string(), recordId: z.string() }).nullable(),
       legs: z.array(z.object({
         fromNodeId: z.string().nullable(), fromName: z.string().nullable(),
         toNodeId: z.string().nullable(), toName: z.string().nullable(),
@@ -48,6 +59,28 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
       const all = db.select().from(t.transactions).all();
       const reversedBy = new Map(all.filter((x) => x.correctsId).map((x) => [x.correctsId!, x.id]));
 
+      /**
+       * Which log each movement was written for.
+       *
+       * Read from the record tables themselves rather than guessed from the movement's kind:
+       * `kind` says what sort of act it was, and two different logs can write the same kind.
+       * What matters here is which screen holds the rest of the record.
+       */
+      const origin = new Map<string, { log: string; label: string; recordId: string }>();
+      const claim = (rows: Array<{ id: string; movementId: string | null }>, log: string, label: string) => {
+        for (const r of rows) {
+          if (r.movementId && !origin.has(r.movementId)) {
+            origin.set(r.movementId, { log, label, recordId: r.id });
+          }
+        }
+      };
+      claim(db.select().from(t.expenses).all(), 'expenses', 'Expenses');
+      claim(db.select().from(t.charity).all(), 'giving', 'Zakat and Sadaqat');
+      claim(db.select().from(t.orders).all(), 'stocks', 'Stocks');
+      claim(db.select().from(t.goldLots).all(), 'gold', 'Gold and silver');
+      claim(db.select().from(t.installments).all().map((i) => ({ id: i.id, movementId: i.movementId })),
+            'realestate', 'Installment plans');
+
       return all
         .filter((tx) => !input.kind || tx.kind === input.kind)
         .filter((tx) => !input.from || tx.date >= input.from)
@@ -61,6 +94,7 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
           automatic: tx.automatic,
           reversedBy: reversedBy.get(tx.id) ?? null,
           reverses: tx.correctsId,
+          origin: origin.get(tx.id) ?? null,
           legs: legs.filter((l) => l.transactionId === tx.id).sort((a, b) => a.seq - b.seq).map((l) => ({
             fromNodeId: l.fromNodeId, fromName: l.fromNodeId ? names.get(l.fromNodeId) ?? null : null,
             toNodeId: l.toNodeId, toName: l.toNodeId ? names.get(l.toNodeId) ?? null : null,
@@ -74,11 +108,13 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'movement.undo',
     context: 'ledger',
-    summary: 'Undo a movement by writing its opposite. The balance returns; the log keeps both.',
-    detail: 'This is what "delete" means in a ledger. Nothing is removed — a movement that reverses it is written, so the figures come back to where they were and the record still says what happened and what was undone.',
+    summary: 'Undo a movement by writing its opposite — or erase it outright.',
+    detail: 'Reversing is what "delete" usually means in a ledger: nothing is removed, a movement that reverses it is written, the figures come back to where they were and the record still says what happened and what was undone. Pass reverse false to erase it instead — the row and its legs go, and the balances read as though it had never been recorded. Use that for a movement that never happened at all: an import run twice, a figure typed into the wrong ledger. A movement that another log keeps a record of is refused either way; that record is removed in its own log, which takes both halves.',
     input: z.object({
       movementId: z.string(),
       note: z.string().max(300).optional(),
+      /** whether the opposite is written, or the movement is erased outright */
+      reverse: z.boolean().default(true),
       dryRun: z.boolean().default(false),
     }),
     output: Outcome,
@@ -98,6 +134,44 @@ export const movementCaps = (ctxOf: () => AppCtx) => [
       }
 
       const legs = ctx.db.select().from(t.legs).where(eq(t.legs.transactionId, tx.id)).all();
+
+      if (!input.reverse) {
+        /**
+         * Erasing, which the rest of this file exists to avoid.
+         *
+         * A movement is normally undone by writing its opposite, because a past that can be
+         * edited is a past nobody can check. But there is one case the rule serves badly: a
+         * movement that never happened — an import run twice, a month typed into the wrong
+         * ledger — where reversing leaves two rows describing an event that did not occur.
+         * The owner says which they mean; this is the one that takes the row.
+         *
+         * Not offered for a movement another log keeps a record of. That record would be left
+         * describing something that no longer exists, which is the state this ledger must
+         * never be left in — it is removed in its own log, and that takes both halves.
+         */
+        const kept = [
+          ctx.db.select().from(t.expenses).all().some((r) => r.movementId === tx.id) && 'an expense',
+          ctx.db.select().from(t.charity).all().some((r) => r.movementId === tx.id) && 'a record of giving',
+          ctx.db.select().from(t.orders).all().some((r) => r.movementId === tx.id) && 'a share order',
+          ctx.db.select().from(t.goldLots).all().some((r) => r.movementId === tx.id) && 'a metal lot',
+          ctx.db.select().from(t.installments).all().some((r) => r.movementId === tx.id) && 'a payment on a plan',
+        ].filter(Boolean)[0];
+        if (kept) {
+          return refusal('immutable',
+            `${kept} is recorded against that movement, and erasing it would leave that record describing something that no longer exists.`,
+            'Remove it in its own log — that takes the record and the movement together.');
+        }
+        if (input.dryRun) {
+          return { ok: true as const, dryRun: true, kind: tx.kind, date: tx.date,
+                   summary: `Would erase the ${tx.kind} of ${tx.date}`, changes: [], warnings: [] };
+        }
+        ctx.db.delete(t.legs).where(eq(t.legs.transactionId, tx.id)).run();
+        ctx.db.delete(t.transactions).where(eq(t.transactions.id, tx.id)).run();
+        return { ok: true as const, movementId: tx.id, dryRun: false, kind: tx.kind, date: tx.date,
+                 summary: `Erased the ${tx.kind} of ${tx.date}. The log does not say it happened.`,
+                 changes: [], warnings: [] };
+      }
+
       const flipped = reversalLegs(legs);
 
       try {

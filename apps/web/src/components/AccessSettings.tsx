@@ -177,8 +177,8 @@ export function AccessSettings() {
                 <tr key={k.id} style={{ opacity: k.revoked ? 0.5 : 1 }}>
                   <td style={{ fontSize: 13 }}>{k.label}</td>
                   <td className="mono" style={{ fontSize: 12, color: 'var(--faint)' }}>{k.prefix}…</td>
-                  <td className="mono" style={{ fontSize: 12 }}>{k.createdAt.slice(0, 10)}</td>
-                  <td className="mono" style={{ fontSize: 12, color: 'var(--faint)' }}>
+                  <td className="mono public" style={{ fontSize: 12 }}>{k.createdAt.slice(0, 10)}</td>
+                  <td className="mono public" style={{ fontSize: 12, color: 'var(--faint)' }}>
                     {k.lastUsedAt ? k.lastUsedAt.slice(0, 10) : 'never'}
                   </td>
                   <td style={{ textAlign: 'right' }}>

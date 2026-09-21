@@ -251,34 +251,6 @@ export const zakatYears = sqliteTable('zakat_years', {
   oneEach: uniqueIndex('zy_unique').on(t.bucket, t.dueOn),
 }));
 
-/**
- * The owner's own half of the reckoning.
- *
- * Every other line on the zakat list is worked out from what the ledger holds. These are the
- * lines it cannot know — wealth kept somewhere it has never been told about, a debt nobody
- * recorded — and the corrections to the ones it does know, where the owner's figure is the
- * right one. An override names the computed line it replaces and keeps nothing but the new
- * amount; the computed figure is still the ledger's to produce, so it is shown beside the
- * override rather than overwritten by it.
- */
-export const zakatEntries = sqliteTable('zakat_entries', {
-  id: text('id').primaryKey(),
-  bucket: text('bucket').notNull(),
-  /** the computed line this corrects; null on a line the owner wrote outright */
-  entryId: text('entry_id'),
-  label: text('label'),
-  /** which section it is read under: counted, excluded, debt */
-  grp: text('grp'),
-  sign: integer('sign').notNull().default(1),
-  amount: real('amount'),
-  /** whether the line it names is left out of the reckoning altogether */
-  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  note: text('note'),
-  createdAt: text('created_at').notNull(),
-}, (t) => ({
-  byBucket: index('ze_bucket').on(t.bucket),
-}));
-
 export const goldLots = sqliteTable('gold_lots', {
   id: text('id').primaryKey(),
   seq: integer('seq').notNull(),
@@ -452,11 +424,22 @@ export const stockNotes = sqliteTable('stock_notes', {
   ticker: text('ticker').notNull(),
   date: text('date').notNull(),          // YYYY-MM-DD, the day the note is about
   note: text('note').notNull(),
+  /**
+   * The day this note wants to be read again, and whether it still wants to be.
+   *
+   * A note is about a day that has passed; this is the day it points at. They are two
+   * different dates and collapsing them would have made every note a reminder — so the
+   * reminder is its own field, empty until one is asked for, and switched off without being
+   * thrown away, because "not now" and "never" are different answers.
+   */
+  remindOn: text('remind_on'),
+  remindEnabled: integer('remind_enabled', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at'),
 }, (t) => ({
   byTickerDate: index('stock_note_ticker_date').on(t.ticker, t.date),
   byDate: index('stock_note_date').on(t.date),
+  byRemind: index('stock_note_remind').on(t.remindOn),
 }));
 
 /**
@@ -827,7 +810,6 @@ export type Leg = typeof legs.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Charity = typeof charity.$inferSelect;
 export type ZakatYear = typeof zakatYears.$inferSelect;
-export type ZakatEntryRow = typeof zakatEntries.$inferSelect;
 export type GoldLot = typeof goldLots.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type Exchange = typeof exchanges.$inferSelect;

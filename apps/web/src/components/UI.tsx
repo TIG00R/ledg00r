@@ -22,8 +22,15 @@ export function Page({ children, aside }: { children: ReactNode; aside?: ReactNo
   return (
     <main className="page" style={{
       padding: 24, display: 'grid', gap: 20, alignItems: 'start',
-      gridTemplateColumns: aside ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)',
-      maxWidth: 1440, margin: '0 auto', width: '100%',
+      // The panel beside the work keeps its side of the page and gives up width instead of
+      // its place: a fixed 300 pixels is what forced the whole arrangement to collapse the
+      // moment the window came in, so it is a share of the page with a floor and a ceiling.
+      // Everything left over is the work's, which is the table nearly every time.
+      gridTemplateColumns: aside ? 'minmax(0, 1fr) clamp(238px, 23%, 320px)' : 'minmax(0, 1fr)',
+      // No cap, and no `0 auto`. A ledger is a table, and a table given 1440 pixels in a
+      // window that had 1900 spent the rest on two matching margins — the work is what the
+      // width is for, so the page takes all of it.
+      width: '100%',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
         <LastOutcome />
@@ -59,18 +66,35 @@ export function Panel({ title, hint, action, children, style }: {
  * and letting the box scroll is wrong too, so the caller that asks for this also gives the
  * figure a column it fits in.
  */
-export function Stat({ label, value, sub, color, nowrap }: {
-  label: string; value: string; sub?: string; color?: string; nowrap?: boolean;
+export function Stat({ label, value, sub, color, nowrap, open }: {
+  label: string; value: ReactNode; sub?: ReactNode; color?: string; nowrap?: boolean;
+  /**
+   * The figure is not one of yours, so privacy leaves it alone.
+   *
+   * A nisab threshold or a market price is the same number for everybody and reads as one
+   * of your balances only because it is set in the same face. Callers whose figure says
+   * something about what you hold leave this off, which is the default.
+   */
+  open?: boolean;
 }) {
   return (
-    <div style={{ minWidth: 0 }}>
+    <div className={open ? 'public' : undefined} style={{ minWidth: 0 }}>
       <div className="ov">{label}</div>
       <div className="mono" style={{ fontSize: nowrap ? 17 : 20, fontWeight: 500, marginTop: 5, color,
                                      whiteSpace: nowrap ? 'nowrap' : undefined }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{sub}</div>}
+      {/* The second line restates the figure above it — "at E£4,500 a gram", "3.2 months",
+          "E£812,000 less E£40,000 owed" — so a line with a number in it is hidden whole
+          rather than word by word: splitting it leaves the words standing around a smear
+          and says almost as much as the number would. A line with no number in it is a
+          sentence, and stays readable. */}
+      {sub && <div className={!open && hasFigure(sub) ? 'private' : undefined}
+                   style={{ fontSize: 11, color: 'var(--faint)' }}>{sub}</div>}
     </div>
   );
 }
+
+/** Whether a stat's second line carries a figure at all, and so has anything to hide. */
+const hasFigure = (sub: ReactNode) => typeof sub === 'string' && /\d/.test(sub);
 
 export function Stats({ children }: { children: ReactNode }) {
   return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 24 }}>{children}</div>;
@@ -137,13 +161,22 @@ export function Empty({ icon, title, body, action }: { icon: IconName; title: st
   );
 }
 
+/**
+ * On or off, and on is green.
+ *
+ * It wore the accent colour before, which is the same near-black as every button on the
+ * page — so in a list of settings the one control whose state is the whole point read as a
+ * dark pill either way, and the only difference between yes and no was which end the knob
+ * sat at. Green is the one colour in this palette that already means yes, and it means
+ * nothing else: it is not the colour of a selected thing, only of a positive one.
+ */
 export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)}
       style={{
         width: 44, height: 25, borderRadius: 999, border: 'none', cursor: 'pointer', padding: 0,
         position: 'relative', flex: '0 0 44px',
-        background: on ? 'var(--accent)' : 'var(--switch-off)',
+        background: on ? 'var(--switch-on)' : 'var(--switch-off)',
         transition: 'background 150ms var(--ease)',
       }}>
       <span style={{

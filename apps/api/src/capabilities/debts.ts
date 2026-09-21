@@ -380,15 +380,35 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'debt.remove',
     context: 'debts',
-    summary: 'Remove a debt from the record entirely, reversing everything it moved.',
-    detail: 'For a loan that should never have been written down. The money returns to the account it left, every repayment against it is reversed too, and the debt and the node holding it are gone. This is not the same as writing a loan off: writing off says you gave up on money you were genuinely owed, and the log keeps the day you did.',
+    summary: 'Remove a debt from the record, reversing everything it moved — or take the record off and leave the money where it went.',
+    detail: 'Reversing is the usual answer, for a loan that should never have been written down: the money returns to the account it left, every repayment against it is reversed too, and the debt and the node holding it are gone. Pass reverse false where the lending and the repayments really happened and only this record of them is wrong — a loan written down twice. The debt row goes, every movement it made stands, and the node holding them is archived rather than deleted, since movements cannot point at an account that no longer exists. Neither is the same as writing a loan off: writing off says you gave up on money you were genuinely owed, and the log keeps the day you did.',
     effect: 'irreversible',
-    input: z.object({ debtId: z.string() }),
+    input: z.object({
+      debtId: z.string(),
+      /** whether every movement this debt made is reversed, putting the money back */
+      reverse: z.boolean().default(true),
+    }),
     output: Outcome,
-    handler: async ({ debtId }) => {
+    handler: async ({ debtId, reverse }) => {
       const ctx = ctxOf();
       const debt = ctx.db.select().from(t.debts).where(eq(t.debts.id, debtId)).get();
       if (!debt) return refusal('not_found', 'There is no such debt.');
+
+      /*
+       * Taking the row and leaving the money.
+       *
+       * The node cannot go with it here. It is one end of every movement this debt ever made,
+       * and those movements are staying — a leg pointing at an account that has been deleted
+       * is the one state this ledger must never be left in. So it is archived instead: out of
+       * the pickers and the lists that offer accounts, still there for the log to name.
+       */
+      if (!reverse) {
+        ctx.db.update(t.nodes).set({ archived: true }).where(eq(t.nodes.id, debt.nodeId)).run();
+        ctx.db.delete(t.debts).where(eq(t.debts.id, debtId)).run();
+        return noted(debt.direction === 'lent'
+          ? `The loan to ${debt.counterparty} is off the record. What it moved still stands, so no balance has changed.`
+          : `What you owed ${debt.counterparty} is off the record. What it moved still stands, so no balance has changed.`);
+      }
 
       /*
        * Every movement that ever touched the debt's own node: the one that opened it, each
@@ -410,9 +430,20 @@ export const debtCaps = (ctxOf: () => AppCtx) => [
       for (const movementId of touching) undoMovement(ctx, movementId);
 
       ctx.db.delete(t.debts).where(eq(t.debts.id, debtId)).run();
-      // the node exists only to hold this debt, so it goes with it rather than lingering
-      // archived in every list that walks nodes
-      ctx.db.delete(t.nodes).where(eq(t.nodes.id, debt.nodeId)).run();
+
+      /*
+       * The node exists only to hold this debt, so it goes with it rather than lingering
+       * archived in every list that walks nodes — but only once nothing points at it any
+       * more. Reversing does not erase what it reverses: the movement that opened the debt
+       * is still in the log, and the correction written against it names this node too. Both
+       * were left pointing at an account that had been deleted underneath them, which is the
+       * one thing a double-entry log cannot survive. Where a leg remains, the node is
+       * archived instead: out of the pickers, still there for the log to name.
+       */
+      const stillNamed = ctx.db.select().from(t.legs).all()
+        .some((l) => l.fromNodeId === debt.nodeId || l.toNodeId === debt.nodeId);
+      if (stillNamed) ctx.db.update(t.nodes).set({ archived: true }).where(eq(t.nodes.id, debt.nodeId)).run();
+      else ctx.db.delete(t.nodes).where(eq(t.nodes.id, debt.nodeId)).run();
 
       return noted(debt.direction === 'lent'
         ? `The loan to ${debt.counterparty} is off the record, and the money is back in the account it left`

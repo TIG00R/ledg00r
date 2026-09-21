@@ -122,7 +122,7 @@ export function DateField({ value, onChange, ariaLabel, min, max, style, hijri =
   return (
     <div ref={root} style={{ position: 'relative', ...style }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-        <input className="mono" value={typed} onChange={(e) => commit(e.target.value)}
+        <input className="mono public" value={typed} onChange={(e) => commit(e.target.value)}
                aria-label={ariaLabel} placeholder="yyyy-mm-dd" inputMode="numeric"
                style={{ flex: 1, minWidth: 0, paddingRight: 36 }} />
         <button type="button" className="df-open" onClick={() => setOpen((o) => !o)} aria-expanded={open}

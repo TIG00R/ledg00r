@@ -14,7 +14,7 @@ export type AnimName =
   | 'portfolio' | 'accounts' | 'income' | 'expenses'
   | 'gold' | 'stocks' | 'zakat' | 'settings' | 'flow' | 'assets'
   | 'dashboards' | 'budgets' | 'logs' | 'debts'
-  | 'charity' | 'hands' | 'realestate';
+  | 'charity' | 'hands' | 'causes' | 'realestate';
 
 const COMMON = {
   fill: 'none' as const,
@@ -28,12 +28,36 @@ export function AnimIcon({ name, size = 17, color = 'currentColor', strokeWidth 
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" stroke={color} strokeWidth={strokeWidth}
          className={`ico anim anim-${name}`} aria-hidden="true" {...COMMON}>
-      {SCENES[name]}
+      {typeof SCENES[name] === 'function'
+        ? (SCENES[name] as Scene)(strokeWidth)
+        : SCENES[name]}
     </svg>
   );
 }
 
-const SCENES: Record<AnimName, React.ReactNode> = {
+/**
+ * A scene is usually a fixed drawing. The ones that place the same shape at two different
+ * scales are given the stroke weight instead, so each group can divide it back out of its own
+ * `scale()` — otherwise a shape drawn at 0.25 comes out four times thinner than the set.
+ */
+type Scene = (strokeWidth: number) => React.ReactNode;
+
+/**
+ * The library's hand, kept because it is the hand this application already meant by giving.
+ * Giving draws it and puts hearts where the library puts coins.
+ */
+const HAND = (
+  <>
+    <path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17" />
+    <path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9" />
+    <path d="m2 16 6 6" />
+  </>
+);
+
+/** The heart, at whatever size the scene holding it needs. */
+const HEART = "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
+
+const SCENES: Record<AnimName, React.ReactNode | Scene> = {
   /**
    * The pie the overview itself draws, seen from a low angle rather than straight down.
    *
@@ -109,74 +133,49 @@ const SCENES: Record<AnimName, React.ReactNode> = {
   ),
 
   /**
-   * Money held in several places at once: three banks standing on a turning globe.
+   * Where money is kept: the bank, and the money going into it and out of it.
    *
-   * The globe is a wireframe — a rim, an equator and one meridian — and the equator is an
-   * ellipse 0.369 as tall as it is wide, the same low camera the pie is seen from. The banks
-   * are placed inside that squash, so one at the side stands on the silhouette and one at
-   * the front stands low on the near face, the way a building on a sphere does.
+   * The globe this replaces said "money in several places at once", which is true of the
+   * screen and is not what anybody looks for in a sidebar — a turning planet reads as the
+   * world, or as a network, or as sync, and never as the place your current account is. A
+   * bank is the one building everybody draws the same way: a pediment on columns.
    *
-   * Each bank then undoes the squash and the turn on itself. That cancellation is the whole
-   * trick: without it the parent's scale and the orbit's rotation compose into a shear, and
-   * a building would lean and stretch as it went round instead of standing up. What is left
-   * is position — three upright banks travelling an ellipse.
+   * The building sits at the foot of the grid and the money moves above it, which is the
+   * only arrangement where the money is the subject. Under the bank there were three units
+   * of room, the movement was a twitch at the bottom edge, and the eye went to the building
+   * — a picture of a bank with something happening near its feet. Over it there are nine,
+   * which is enough for two notes to travel far enough to read as travelling.
    *
-   * Depth is the second layer. A bank grows and darkens as it comes to the front and shrinks
-   * and fades as it goes behind, on a cycle that is the same for all three and merely
-   * started at a different point, which is what a fixed paint order cannot say on its own.
-   * The meridian narrows to a line as the banks cross the poles, so the wireframe and the
-   * buildings agree about which way the globe is facing.
+   * Notes rather than coins. A coin is a unit and a note is an amount, and an account holds
+   * amounts; the same note the income and expenses pair uses, so money is one object across
+   * the whole set rather than a different shape per screen.
+   *
+   * Both notes are there at rest, at different heights and on opposite sides — the left one
+   * low and dropping in, the right one high and already leaving — so the two directions read
+   * without hovering. The chevron ahead of each is the direction and not a thing, the same
+   * part the wallet pair uses for the same job.
    */
   accounts: (
     <g>
-      <circle data-part="globe" cx="12" cy="12" r="8.4" />
-      <ellipse data-part="equator" cx="12" cy="12" rx="8.4" ry="3.1" strokeWidth="1.15" opacity="0.34" />
-      <ellipse data-part="meridian" cx="12" cy="12" rx="3.3" ry="8.4" strokeWidth="1.15" opacity="0.34" />
-      <g transform="matrix(1 0 0 0.369 0 7.572)">
-        <g data-part="orbit">
-          <g transform="rotate(0 12 12)">
-            <g data-part="mark">
-              <g transform="rotate(0 19.6 12)">
-                <g data-part="depth" opacity="0.72">
-                  <g transform="matrix(1 0 0 2.71 0 -20.52)" strokeWidth="1.45">
-                    <path d="M18.15 10.55 19.6 9.15 21.05 10.55" />
-                    <path d="M18.85 11.05V12.2" />
-                    <path d="M20.35 11.05V12.2" />
-                    <path d="M18.05 12.55H21.15" />
-                  </g>
-                </g>
-              </g>
-            </g>
-          </g>
-          <g transform="rotate(120 12 12)">
-            <g data-part="mark">
-              <g transform="rotate(-120 19.6 12)">
-                <g data-part="depth" opacity="0.87">
-                  <g transform="matrix(1 0 0 2.71 0 -20.52)" strokeWidth="1.45">
-                    <path d="M18.15 10.55 19.6 9.15 21.05 10.55" />
-                    <path d="M18.85 11.05V12.2" />
-                    <path d="M20.35 11.05V12.2" />
-                    <path d="M18.05 12.55H21.15" />
-                  </g>
-                </g>
-              </g>
-            </g>
-          </g>
-          <g transform="rotate(240 12 12)">
-            <g data-part="mark">
-              <g transform="rotate(-240 19.6 12)">
-                <g data-part="depth" opacity="0.57">
-                  <g transform="matrix(1 0 0 2.71 0 -20.52)" strokeWidth="1.45">
-                    <path d="M18.15 10.55 19.6 9.15 21.05 10.55" />
-                    <path d="M18.85 11.05V12.2" />
-                    <path d="M20.35 11.05V12.2" />
-                    <path d="M18.05 12.55H21.15" />
-                  </g>
-                </g>
-              </g>
-            </g>
-          </g>
-        </g>
+      {/* in — a note coming down into the bank, with its chevron above it */}
+      <path data-part="cueIn" d="M5.2 2.7 6.5 4 7.8 2.7" opacity="0.5" />
+      <g data-part="noteIn">
+        <rect x="2.4" y="5.6" width="8.2" height="4.6" rx="0.9" />
+        <circle cx="6.5" cy="7.9" r="0.85" strokeWidth="1.15" />
+      </g>
+      {/* out — and one already on its way up and away */}
+      <g data-part="noteOut">
+        <rect x="13.4" y="2.2" width="8.2" height="4.6" rx="0.9" />
+        <circle cx="17.5" cy="4.5" r="0.85" strokeWidth="1.15" />
+      </g>
+      <path data-part="cueOut" d="M16.2 9.7 17.5 8.4 18.8 9.7" opacity="0.5" />
+
+      <path data-part="roof" d="M12 11.4 19.4 15.3H4.6Z" />
+      <g data-part="body">
+        <path d="M7.9 16.6V20.1" />
+        <path d="M12 16.6V20.1" />
+        <path d="M16.1 16.6V20.1" />
+        <path d="M4.8 20.1H19.2" />
       </g>
     </g>
   ),
@@ -525,15 +524,28 @@ const SCENES: Record<AnimName, React.ReactNode> = {
    *
    * Drawn along rather than up. Standing it on end made a lidded column, which at seventeen
    * pixels is a bin, and there is already a bin in this set.
+   *
+   * The track is as tall and as wide as the grid will carry, and the band inside it is thick
+   * enough and solid enough to be a quantity rather than a tint. A thin band on a thin track
+   * was legible at the size this is drawn at and invisible at the size it is used at — the
+   * sidebar shows it at seventeen pixels, where two and a half units of fill is under two
+   * pixels of ink. The band deepens as it runs, so the movement carries weight as well as
+   * length, and it stops exactly under the limit rather than short of it: a budget spent is
+   * a budget met, and the drawing should be able to say so.
+   *
+   * The corners are not fully round and the band is not short. A pill with a stub inside it
+   * at one end is a switch — every phone in the world has taught that shape — and a switch
+   * is the last thing a budget should be mistaken for in a list of settings-adjacent rows.
+   * A squarer track and a band already half the length of it read as a quantity instead.
    */
   budgets: (
     <g>
       {/* the allowance, and the limit standing at the end of it */}
-      <rect x="2.9" y="9.2" width="18.2" height="5.6" rx="2.8" />
-      <rect data-part="fill" x="4.3" y="10.6" width="6.4" height="2.8" rx="1.4"
-            stroke="none" fill="currentColor" fillOpacity="0.34" />
-      <path data-part="limit" d="M17.6 6.4v11.2" />
-      <path data-part="limitCap" d="M16.5 6.4h2.2M16.5 17.6h2.2" opacity="0.5" />
+      <rect x="2.4" y="8.1" width="19.2" height="7.8" rx="2.5" />
+      <rect data-part="fill" x="4.05" y="9.75" width="9.4" height="4.5" rx="1.4"
+            stroke="none" fill="currentColor" fillOpacity="0.46" />
+      <path data-part="limit" d="M17.6 5.2v13.6" />
+      <path data-part="limitCap" d="M16.3 5.2h2.6M16.3 18.8h2.6" opacity="0.5" />
     </g>
   ),
 
@@ -602,25 +614,79 @@ const SCENES: Record<AnimName, React.ReactNode> = {
   ),
 
   /**
-   * Sadaqat: cupped hands, and the coin leaving them.
+   * Giving: the causes hand, with hearts where its coins were.
    *
-   * Giving that is chosen rather than owed. It shared a heart with charity before, which made
-   * two different obligations look like the same one — so this one keeps the hands and
-   * charity keeps the heart, and neither borrows the other's.
+   * Every giving in this application is marked with this one drawing — sadaqat and what was
+   * given — because they are one subject seen from two sides and two different marks made
+   * them look like two subjects. Causes keeps the coins: a list of destinations is about
+   * money, and this is not.
    *
-   * The fingers are not decoration. Cupped hands drawn as one arc with a coin sitting in them
-   * is an eye with a pupil, which is what the first attempt was; four fingers coming up out
-   * of the rim, and the coin held clear above them, is a hand offering something. The hands
-   * stay put — the coin rises out and goes, and the cup gives a little as it lets go.
+   * So it is the library's hand-holding-coins exactly as it stands, at the same size and on
+   * the same bearings, with each coin swapped for a heart of the same width. Nothing else
+   * about the glyph is touched, which is the whole point — beside the causes mark the two
+   * read as one family, and the only difference between them is what is being held out.
+   *
+   * The hand never moves. The hearts rise off it, a fifth of a second apart, and fade before
+   * the top of the grid; each comes back from below while it is invisible, so neither is
+   * ever seen sliding home the way it came.
+   *
+   * Each heart is two nested groups. The outer one is the stylesheet's to move; the inner one
+   * carries where the heart sits and how big it is. They cannot be one group: a CSS transform
+   * replaces the transform attribute rather than composing with it, so a heart animated on
+   * the group that also scales it loses its scale on the first frame of the hover and comes
+   * up the size of the whole icon.
    */
-  hands: (
+  hands: (sw) => (
     <g>
-      <path data-part="cup" d="M4.2 14.4a7.8 4.6 0 0 0 15.6 0" />
-      <path data-part="fingers" d="M4.2 14.4 5.5 11.1M8.4 13.6 9 10.2M15.6 13.6 15 10.2M19.8 14.4 18.5 11.1" />
-      <g data-part="coin">
-        <circle cx="12" cy="6.4" r="2.8" />
-        <path d="M12 4.8v3.2" />
+      {HAND}
+      {/* the coin at 16,9, r 2.9 */}
+      <g data-part="p1">
+        <g transform="translate(12.64 5.84) scale(0.28)" strokeWidth={sw / 0.28}>
+          <path d={HEART} />
+        </g>
       </g>
+      {/* the coin at 6,5, r 3 — a shade lower, so the top of it has somewhere to rise into */}
+      <g data-part="p2">
+        <g transform="translate(2.64 2.24) scale(0.28)" strokeWidth={sw / 0.28}>
+          <path d={HEART} />
+        </g>
+      </g>
+    </g>
+  ),
+
+  /**
+   * Causes: one hand, and money leaving it several ways at once.
+   *
+   * The tab this marks is not an act of giving — it is the list of places giving goes, which
+   * is a different noun and had the library's hand-holding-coins standing in for it. That
+   * glyph is a hand that has money. A list of causes is a hand that is dividing it.
+   *
+   * So: a hand in the lower corner and three coins leaving it on three different bearings,
+   * fanned from straight up round to straight out. Three rather than two, because two read
+   * as a pair going the same way with one mirrored, and rather than four, because four over
+   * a hand this size is a cloud.
+   *
+   * The hand is in the corner and not under the middle, which is the whole of the layout and
+   * was learnt the hard way: a cup centred at the foot with three coins in a row above it is
+   * a mouth with two eyes over it, and once seen as a face it cannot be unseen. Off to one
+   * side with the coins sweeping away there is no symmetry left for a face to live in.
+   */
+  causes: (
+    <g>
+      <g data-part="c1">
+        <circle cx="8.6" cy="9.4" r="1.7" />
+        <path d="M8.6 8.55v1.7" strokeWidth="1.1" opacity="0.65" />
+      </g>
+      <g data-part="c2">
+        <circle cx="13.7" cy="11.7" r="1.7" />
+        <path d="M13.7 10.85v1.7" strokeWidth="1.1" opacity="0.65" />
+      </g>
+      <g data-part="c3">
+        <circle cx="17.9" cy="15.3" r="1.7" />
+        <path d="M17.9 14.45v1.7" strokeWidth="1.1" opacity="0.65" />
+      </g>
+      <path data-part="cup" d="M2.6 16.8a4.6 2.7 0 0 0 9.2 0" />
+      <path data-part="fingers" d="M2.6 16.8 3.3 14.6M5.9 16.2 6.1 13.9M9.8 16 9.6 13.8M11.8 16.8 11.1 14.7" />
     </g>
   ),
 };

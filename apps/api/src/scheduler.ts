@@ -6,7 +6,6 @@ import { installmentDueDate } from '@ledger/engine';
 import { nextOccurrence, readTemplates } from './capabilities/planning.js';
 import { wealthSnapshot, refreshTodayStatement } from './capabilities/overview.js';
 import { newId, today } from './capabilities/shared.js';
-import { closeDueYears } from './capabilities/giving.js';
 import type { RecurringTemplate } from '@ledger/engine';
 import type { AppCtx } from './context.js';
 

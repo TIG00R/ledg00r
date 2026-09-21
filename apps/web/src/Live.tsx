@@ -200,9 +200,18 @@ export function ActionButton({ capability, input, children, className = 'btn', s
   );
 }
 
-/** How long a receipt stays up before it dismisses itself: long enough to read a failure's
- *  remedy, short enough that a success does not linger over the next thing you do. */
-const TOAST_MS = { ok: 2000, fail: 5000 } as const;
+/**
+ * How long a receipt is on screen, from the first frame of it appearing to the last of it
+ * going: four seconds, fading at both ends.
+ *
+ * Two seconds that arrived and vanished at full strength read as a flicker — by the time the
+ * eye had found the corner the sentence was half gone, and what a write actually did is the
+ * one thing worth reading. The fades are part of the four, not added to them.
+ */
+const TOAST_MS = { ok: 4000, fail: 5000 } as const;
+/** in and out, of that total */
+const FADE_IN_MS = 420;
+const FADE_OUT_MS = 900;
 
 /**
  * What the last write did, or why it was refused. A toast, floating over whichever screen
@@ -219,13 +228,27 @@ export function LastOutcome() {
   const { last, clear } = useLive();
   const onScreen = !!last && last.screen === screenNow();
 
+  /**
+   * Which part of its life this receipt is in.
+   *
+   * It mounts faded out, is brought up on the next frame, and is taken back down for the
+   * last of its time on screen — so the sentence arrives and leaves at a speed that can be
+   * read, rather than appearing and disappearing between two blinks. The stored outcome is
+   * cleared when the fade out has finished, not when it starts, or the toast would vanish
+   * mid-fade.
+   */
+  const [phase, setPhase] = useState<'in' | 'up' | 'out'>('in');
+
   // A fresh receipt — even for the same capability — is a new object, so this effect tears
-  // down the previous timer and starts a new one: that is the reset a new arrival needs.
+  // down the previous timers and starts new ones: that is the reset a new arrival needs.
   useEffect(() => {
     if (!onScreen) return;
-    const ms = last!.ok ? TOAST_MS.ok : TOAST_MS.fail;
-    const id = window.setTimeout(clear, ms);
-    return () => window.clearTimeout(id);
+    const total = last!.ok ? TOAST_MS.ok : TOAST_MS.fail;
+    setPhase('in');
+    const up = window.setTimeout(() => setPhase('up'), 20);
+    const out = window.setTimeout(() => setPhase('out'), Math.max(0, total - FADE_OUT_MS));
+    const gone = window.setTimeout(clear, total);
+    return () => { window.clearTimeout(up); window.clearTimeout(out); window.clearTimeout(gone); };
   }, [last, onScreen, clear]);
 
   if (!onScreen) return null;
@@ -239,6 +262,10 @@ export function LastOutcome() {
       boxShadow: 'var(--shadow-lg)',
       background: `color-mix(in srgb, var(--${good ? 'positive' : 'negative'}) 9%, var(--surface))`,
       border: `1px solid color-mix(in srgb, var(--${good ? 'positive' : 'negative'}) 26%, transparent)`,
+      opacity: phase === 'up' ? 1 : 0,
+      transform: phase === 'up' ? 'translateY(0)' : 'translateY(6px)',
+      transition: `opacity ${phase === 'out' ? FADE_OUT_MS : FADE_IN_MS}ms var(--ease),`
+        + ` transform ${phase === 'out' ? FADE_OUT_MS : FADE_IN_MS}ms var(--ease)`,
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ color: `var(--${good ? 'positive' : 'negative'})`, fontWeight: 500 }}>

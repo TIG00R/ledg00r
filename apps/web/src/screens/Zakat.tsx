@@ -8,9 +8,9 @@ import { GivingRecords } from '../components/GivingRecords';
 import { Select } from '../components/Select';
 import { accountOption } from '../accounts';
 import { useApp, market } from '../AppState';
-import { describeLead, zakatDebts, zakatDates, nisabEgp, formatHijri, groupOf,
+import { describeLead, zakatDebts, zakatDates, nisabEgp, formatHijri, toHijri, groupOf,
          ZAKAT_RATE, HIJRI_MONTHS, NISAB_GOLD_G, NISAB_SILVER_G,
-         type ZakatEntry, type EntryGroup } from '@ledger/engine';
+         type HijriDate, type ZakatEntry, type EntryGroup } from '@ledger/engine';
 import { Page, Panel, Stat, Stats, Chip, Toggle, Row, Field } from '../components/UI';
 import { Segmented } from '../components/Segmented';
 import { Icon } from '../components/Icon';
@@ -18,6 +18,7 @@ import { Mark } from '../components/Mark';
 import { useAppearance, type AssetKey } from '../Appearance';
 import { useLive, ActionButton } from '../Live';
 import { ledger } from '../api';
+import { INITIAL_PAYMENT, realAccountId } from '../components/Operations';
 
 /** the icon and colour behind one line of the list — an asset's own mark where it has one,
     the pile's own where it does not, and nothing at all for what you owe */
@@ -79,6 +80,46 @@ function markFor(
 /** one line of the arithmetic, with the sign that says which way it goes */
 type Entry = ZakatEntry;
 
+/**
+ * The crescent, drawn rather than borrowed.
+ *
+ * The icon set has a moon, and a moon is not a hilal: it is a phase, stroked like a piece of
+ * chrome, and it sits at the centre of the one thing on this screen that is not chrome. This
+ * is the shape itself — a full disc with a smaller one taken out of it — filled, tilted the
+ * way a new moon actually hangs, and sized to the ring it lives in.
+ */
+function Hilal({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path transform="rotate(-24 12 12)" fill={color}
+            d="M12 2.4A9.6 9.6 0 1 0 12 21.6A11.4 11.4 0 0 1 12 2.4Z" />
+    </svg>
+  );
+}
+
+/**
+ * One date, twice: the lunar reckoning the obligation runs on, and the civil one underneath.
+ *
+ * The Hijri line is the answer and the Gregorian line is the translation, so they are set
+ * that way round and never the other — the day a hawl ends is a lunar day that happens to
+ * fall on a Gregorian one, not the reverse.
+ */
+function HawlDate({ label, hijri, date, color }: {
+  label: string; hijri: HijriDate; date: Date; color?: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="ov" style={{ flex: '0 0 68px', fontSize: 10, whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ minWidth: 0 }}>
+        <span className="mono public" style={{ fontSize: 13, color: color ?? 'var(--ink)' }}>{formatHijri(hijri)}</span>
+        <span style={{ display: 'block', fontSize: 10.5, color: 'var(--faint)' }}>
+          {date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 interface BucketHawl {
   startOn: string; startHijriText: string; dueOn: string; dueHijriText: string;
   yearsComplete: number; complete: boolean; daysRemaining: number; elapsedPct: number;
@@ -139,7 +180,7 @@ const SECTIONS: Array<{ group: EntryGroup; title: string; hint: string }> = [
 export function Zakat() {
   const { data, values: v, dm, now, balances, reminders, setReminders,
           zakatSettings: z, setZakatSettings: setLocal } = useApp();
-  const { run, live, version, running } = useLive();
+  const { run, live, version } = useLive();
   // Kept in step both ways: the screen answers immediately, the ledger records the choice.
   const setZakatSettings = (next: typeof z) => {
     setLocal(next);
@@ -297,8 +338,6 @@ export function Zakat() {
   const baseBefore = assessment?.baseBeforeDebts ?? assets;
   const due = assessment ? assessment.due : finalBase * ZAKAT_RATE;
 
-  const [correction, setCorrection] = useState<number | null>(null);
-
   /**
    * Accounts to pay out of, the fullest first.
    *
@@ -312,10 +351,6 @@ export function Zakat() {
   const [openYear, setOpenYear] = useState<string | null>(null);
   const causeName = (id: string) =>
     data.categories.find((c) => c.id === id)?.name ?? id;
-
-  /** the line of your own being written, and whether the form for it is open */
-  const [adding, setAdding] = useState(false);
-  const [ownLine, setOwnLine] = useState<Record<string, string | number>>({ group: 'counted' });
 
   const [paying, setPaying] = useState<string | null>(null);
   const [payment, setPayment] = useState({
@@ -355,6 +390,8 @@ export function Zakat() {
   const away = dates.daysAway;
   const hawlDays = Math.max(1, Math.round((dates.due.getTime() - dates.start.getTime()) / 86_400_000));
   const elapsed = Math.min(100, Math.max(0, ((hawlDays - away) / hawlDays) * 100));
+  const ringR = 52;
+  const ringC = 2 * Math.PI * ringR;
 
   const confirmed = estate?.confirmed ?? null;
 
@@ -382,7 +419,9 @@ export function Zakat() {
             <div className="mono" style={{ fontSize: 40, fontWeight: 500, letterSpacing: '-0.02em', margin: '8px 0 2px' }}>
               {dm(due)}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>2.5% of {dm(finalBase)}</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+              2.5% of <span className="figure">{dm(finalBase)}</span>
+            </div>
           </div>
           <div style={{ height: 64, width: 1, background: 'var(--hairline)' }} />
           <div style={{ flex: 1, minWidth: 300 }}>
@@ -391,7 +430,7 @@ export function Zakat() {
                   sub={deductDebts && baseBefore > finalBase
                     ? `${dm(baseBefore)} less ${dm(baseBefore - finalBase)} owed`
                     : `of ${dm(v.total)} net worth`} />
-              <Stat label="Nisab threshold" value={dm(nisab)} sub={`${nisabGrams} g ${z.basis}`} />
+              <Stat label="Nisab threshold" value={dm(nisab)} sub={`${nisabGrams} g ${z.basis}`} open />
               <Stat label="Above nisab by" value={finalBase >= nisab ? `${(finalBase / nisab).toFixed(1)}×` : '—'}
                     sub={finalBase >= nisab ? 'zakat is due' : 'below nisab · nothing is due'}
                     color={finalBase >= nisab ? 'var(--positive)' : 'var(--muted)'} />
@@ -401,7 +440,7 @@ export function Zakat() {
       </Panel>
 
       <Panel title="Your zakat date" hint="Zakat is the only part of this app that runs on the Hijri calendar. The hawl is a lunar year, about 354 days, so the date drifts roughly eleven days earlier each Gregorian year.">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 18 }}>
           <div style={{ padding: 16, borderRadius: 'var(--r-card)', background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
             <div className="ov" style={{ marginBottom: 10 }}>Anniversary</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -417,31 +456,37 @@ export function Zakat() {
               work this out — it only knows what you own now.
             </p>
           </div>
-          <div style={{ padding: 16, borderRadius: 'var(--r-card)', background: 'var(--surface)', border: '1px solid var(--hairline)' }}>
-            <div className="ov" style={{ marginBottom: 10 }}>This hawl</div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Began</div>
-            <div className="mono" style={{ fontSize: 14 }}>{formatHijri(dates.startHijri)}</div>
-            <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-              ≈ {dates.start.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+          {/* The hawl is one fact — where it started, where it stands, where it ends — so it
+              is one card. Two cards had the same year twice over: a countdown that named no
+              dates, and dates with no sense of how far through them the owner is. The ring
+              carries the fraction the bar carried before, and the dates it is a fraction of
+              sit beside it, each in the calendar the obligation is reckoned in and then in
+              the one the rest of the app runs on. */}
+          <div style={{ padding: 16, borderRadius: 'var(--r-card)', background: 'var(--surface)',
+                        border: '1px solid var(--hairline)', display: 'flex', gap: 20,
+                        alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', width: 116, height: 116, flex: '0 0 116px' }}>
+              <svg width="116" height="116" viewBox="0 0 116 116" role="img"
+                   aria-label={`${away} days to your zakat date, ${elapsed.toFixed(0)} percent of the hawl elapsed`}>
+                <circle cx="58" cy="58" r={ringR} fill="none" stroke="var(--hairline)" strokeWidth="5" />
+                <circle cx="58" cy="58" r={ringR} fill="none" stroke="var(--zakat)" strokeWidth="5"
+                        strokeLinecap="round" transform="rotate(-90 58 58)"
+                        strokeDasharray={`${(elapsed / 100) * ringC} ${ringC}`} />
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <Hilal size={19} color="var(--zakat)" />
+                <span className="mono public" style={{ fontSize: 23, fontWeight: 500, letterSpacing: '-0.02em', marginTop: 3 }}>{away}</span>
+                <span style={{ fontSize: 9.5, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--faint)' }}>
+                  days left
+                </span>
+              </div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 500, marginTop: 12 }}>Falls due</div>
-            <div className="mono" style={{ fontSize: 14, color: 'var(--zakat)' }}>{formatHijri(dates.dueHijri)}</div>
-            <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-              ≈ {dates.due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+            <div style={{ flex: 1, minWidth: 190, display: 'grid', gap: 10 }}>
+              <HawlDate label="Began" hijri={dates.startHijri} date={dates.start} />
+              <HawlDate label="Today" hijri={toHijri(now)} date={now} />
+              <HawlDate label="Falls due" hijri={dates.dueHijri} date={dates.due} color="var(--zakat)" />
             </div>
-          </div>
-          <div style={{ padding: 16, borderRadius: 'var(--r-card)',
-                        background: 'color-mix(in srgb, var(--zakat) var(--tint), transparent)',
-                        border: '1px solid color-mix(in srgb, var(--accent) 26%, transparent)' }}>
-            <div className="ov" style={{ marginBottom: 10, color: 'var(--zakat)' }}>Countdown</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span className="mono" style={{ fontSize: 32, fontWeight: 500 }}>{away}</span>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>days</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 999, background: 'var(--switch-off)', margin: '12px 0 8px' }}>
-              <span style={{ display: 'block', width: `${elapsed}%`, height: '100%', borderRadius: 999, background: 'var(--zakat)' }} />
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--faint)' }}>{elapsed.toFixed(1)}% of the hawl elapsed</div>
           </div>
         </div>
 
@@ -478,7 +523,7 @@ export function Zakat() {
         </p>
       </Panel>
 
-      <Panel title="Everything you own, and what is owed on it"
+      <Panel title="This Hawl"
              hint="One list, read straight down: what counts, what is shown and counts for nothing, and what comes off. Every line carries its sign, so nothing has to be inferred from where it sits."
              action={<Toggle on={deductDebts} onChange={setDeductDebts} label="Subtract debts" />}>
 
@@ -511,12 +556,24 @@ export function Zakat() {
           </div>
         )}
 
-        <table>
+        {/*
+          * The same card every log in the application is drawn inside.
+          *
+          * This table was written before the record table existed and kept its own bare
+          * shape: no border round it, no radius, its heading band a different weight from
+          * the one on every other screen. It cannot *be* a RecordTable — it has section
+          * headings, running totals and three summing rows at the foot, none of which a log
+          * of records has — but it can be drawn in the same card, with the same rules
+          * between rows and the same room at the ends of a row, which is all that was ever
+          * different to look at.
+          */}
+        <div className="rt-wrap">
+        <table className="rt">
           <thead>
             <tr>
-              <th style={{ width: 30 }}><span className="sr-only">Sign</span></th>
-              <th>{estate?.state === 'confirmed' ? 'The year now running' : 'What it is'}</th>
-              <th>Amount</th>
+              <th className="rt-h" style={{ width: 30 }}><span className="sr-only">Sign</span></th>
+              <th className="rt-h">{estate?.state === 'confirmed' ? 'The year now running' : 'What it is'}</th>
+              <th className="rt-h">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -532,7 +589,7 @@ export function Zakat() {
               return (
                 <Fragment key={s.group}>
                   <tr>
-                    <td colSpan={3} style={{
+                    <td className="rt-c" colSpan={3} style={{
                       padding: '14px 10px 8px',
                       borderBottom: '1px solid var(--hairline)',
                       background: 'var(--raised)',
@@ -542,64 +599,69 @@ export function Zakat() {
                           {s.title}
                         </span>
                         <span style={{ fontSize: 11, color: 'var(--faint)' }}>{s.hint}</span>
-                        <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--faint)' }}>
-                          {rows.length === 1 ? '1 line' : `${rows.length} lines`} · {dm(sum)}
+                        {/* A blur on the parent smears everything under it whatever the
+                            child asks for, so the count is not wrapped inside the figure —
+                            they sit side by side. */}
+                        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--faint)' }}>
+                          {rows.length === 1 ? '1 line' : `${rows.length} lines`} ·{' '}
+                          <span className="mono">{dm(sum)}</span>
                         </span>
                       </div>
                     </td>
                   </tr>
+                  {/*
+                    * Read, not written.
+                    *
+                    * Every line here is worked out from something that lives somewhere else —
+                    * an account, a lot of gold, a flat, a card balance — and for a while each
+                    * carried its own Save and Cancel so the figure could be overruled in
+                    * place. That made this the second place to state what a thing is worth,
+                    * and two places that answer the same question eventually disagree. What
+                    * is owned is changed where it is kept; this list says what the answer
+                    * came to. The one exception is the figures somebody types on purpose,
+                    * under "Work it out myself", where nothing is being read from anywhere.
+                    */}
                   {rows.map((e) => (
                     <EntryRow key={e.id} entry={e} dm={dm} mark={markFor(e.id, assetMarks, pile)}
                       edit={editable && e.group === 'counted'
                         ? (n) => setManualValues({ ...manualValues, [e.id]: n })
-                        : undefined}
-                      /* Every line is the owner's to state: a figure of their own over the
-                         one the ledger worked out, the line left out of the reckoning
-                         altogether, or — on a line they wrote — taken off the list. */
-                      say={live && !manual ? {
-                        onAmount: (n) => void run('zakat.entry.set',
-                          e.typed ? { entryId: e.id, amount: n } : { entryId: e.id, amount: n }),
-                        onRemove: () => void run('zakat.entry.set', { entryId: e.id, removed: true }),
-                        onRestore: () => void run('zakat.entry.clear', { entryId: e.id }),
-                        typed: !!e.typed,
-                        overridden: !!e.overridden,
-                      } : undefined} />
+                        : undefined} />
                   ))}
                 </Fragment>
               );
             })}
 
             <tr>
-              <td />
-              <td style={{ fontWeight: 600, paddingTop: 16 }}>
+              <td className="rt-c" />
+              <td className="rt-c" style={{ fontWeight: 600, paddingTop: 16 }}>
                 Everything counted
                 <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}>
                   before anything owed comes off it
                 </div>
               </td>
-              <td className="mono" style={{ fontWeight: 600, paddingTop: 16 }}>{dm(assets)}</td>
+              <td className="mono rt-c" style={{ fontWeight: 600, paddingTop: 16 }}>{dm(assets)}</td>
             </tr>
             {debts > 0 && (
               <tr>
-                <td className="mono" style={{ textAlign: 'center', fontSize: 15, fontWeight: 600,
+                <td className="mono rt-c" style={{ textAlign: 'center', fontSize: 15, fontWeight: 600,
                                               color: deductDebts ? 'var(--negative)' : 'var(--faint)' }}>
                   {deductDebts ? '−' : '·'}
                 </td>
-                <td style={{ fontWeight: 600 }}>
+                <td className="rt-c" style={{ fontWeight: 600 }}>
                   Debts
                   <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}>
                     {deductDebts ? 'subtracted, as you have asked' : 'listed above, and not subtracted'}
                   </div>
                 </td>
-                <td className="mono" style={{ fontWeight: 600,
+                <td className="mono rt-c" style={{ fontWeight: 600,
                                               color: deductDebts ? 'var(--negative)' : 'var(--faint)' }}>
                   {deductDebts ? `−${dm(debts)}` : `(${dm(debts)})`}
                 </td>
               </tr>
             )}
             <tr>
-              <td />
-              <td style={{ fontWeight: 600 }}>
+              <td className="rt-c" />
+              <td className="rt-c" style={{ fontWeight: 600 }}>
                 Zakatable
                 {estate && !estate.aboveNisab && (
                   <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}>
@@ -607,74 +669,19 @@ export function Zakat() {
                   </div>
                 )}
               </td>
-              <td className="mono" style={{ fontWeight: 600 }}>{dm(finalBase)}</td>
+              <td className="mono rt-c" style={{ fontWeight: 600 }}>{dm(finalBase)}</td>
             </tr>
             <tr>
-              <td />
-              <td style={{ fontWeight: 600 }}>Zakat owed
+              <td className="rt-c" />
+              <td className="rt-c" style={{ fontWeight: 600 }}>Zakat owed
                 <span style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}> · 2.5%</span></td>
-              <td className="mono" style={{ fontWeight: 600, fontSize: 18,
+              <td className="mono rt-c" style={{ fontWeight: 600, fontSize: 18,
                                             color: due > 0 ? 'var(--positive)' : 'var(--faint)' }}>{dm(due)}</td>
             </tr>
           </tbody>
         </table>
+        </div>
 
-        {/*
-          * A line of your own.
-          *
-          * Everything above is worked out from what the ledger holds, and the ledger does not
-          * hold everything: gold at a relative's house, a loan nobody wrote down. Adding one
-          * here counts it, and it reads on the list beside the computed lines with its own
-          * mark saying whose figure it is.
-          */}
-        {live && !manual && (
-          adding ? (
-            <div style={{
-              display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
-              marginTop: 16, padding: '14px 16px', borderRadius: 'var(--r-card)',
-              background: 'var(--raised)', border: '1px solid var(--hairline)',
-            }}>
-              <Field label="What it is">
-                <input aria-label="What this line is" placeholder="gold at my mother's"
-                       value={String(ownLine.label ?? '')}
-                       onChange={(e) => setOwnLine({ ...ownLine, label: e.target.value })} />
-              </Field>
-              <Field label="How it counts">
-                <Select ariaLabel="How this line counts" value={String(ownLine.group ?? 'counted')}
-                        onChange={(v) => setOwnLine({ ...ownLine, group: v })}
-                        options={[
-                          { value: 'counted', label: 'Counted', hint: 'wealth zakat is owed on' },
-                          { value: 'excluded', label: 'Shown, counts nothing', hint: 'listed so it can be seen to have been considered' },
-                          { value: 'debt', label: 'Comes off', hint: 'something owed' },
-                        ]} />
-              </Field>
-              <Field label="Amount">
-                <Amount value={Number(ownLine.amount ?? 0)} ariaLabel="Amount of this line"
-                        onChange={(n) => setOwnLine({ ...ownLine, amount: n })} style={{ width: 160 }} />
-              </Field>
-              <span className="btn-pair">
-                <button className="btn go sm" disabled={!ownLine.label || !(Number(ownLine.amount) > 0) || !!running}
-                        onClick={() => {
-                          void run('zakat.entry.set', {
-                            label: String(ownLine.label),
-                            group: String(ownLine.group ?? 'counted'),
-                            sign: ownLine.group === 'debt' ? -1 : ownLine.group === 'excluded' ? 0 : 1,
-                            amount: Number(ownLine.amount),
-                          }).then((out) => { if (out.ok) { setAdding(false); setOwnLine({ group: 'counted' }); } });
-                        }}>
-                  <Icon name="check" size={13} motion="none" /> Count it
-                </button>
-                <button className="btn ghost sm" onClick={() => { setAdding(false); setOwnLine({ group: 'counted' }); }}>
-                  <Icon name="close" size={13} motion="none" /> Cancel
-                </button>
-              </span>
-            </div>
-          ) : (
-            <button className="btn quiet sm" style={{ marginTop: 16 }} onClick={() => setAdding(true)}>
-              <Icon name="plus" size={12} motion="none" /> Add a line of your own
-            </button>
-          )
-        )}
       </Panel>
 
       {!manual && (
@@ -775,8 +782,6 @@ export function Zakat() {
             capability: 'zakat.year.remove',
             build: (y) => ({ yearId: y.id }),
             what: (y) => `the year to ${y.dueOn}`,
-            blocked: (y) => (y.manual ? undefined
-              : 'The lunar year behind this one has passed, so the ledger writes it down again as soon as the screen is read. Correct the figure instead.'),
           }}
           /* The arithmetic a year was struck on is a table of its own, so it waits to be
              asked for: shown under the row that was opened, and nowhere else. */
@@ -821,9 +826,16 @@ export function Zakat() {
                       onChange={(val) => setPayment({ ...payment, accountId: val })}
                       /* the same option every other account picker draws — the bank over
                          the account, its mark beside them — with what it holds on the end,
-                         since which account can cover the payment is the question here */
-                      options={payFrom.map((n) => accountOption(data, n,
-                        { currency: true, note: dm(balances[n.id] ?? 0) }))} />
+                         since which account can cover the payment is the question here.
+                         And the same last entry every source picker in the ledger ends with:
+                         zakat discharged before this ledger existed, or out of cash it never
+                         saw, still counts against the year and moves no balance. */
+                      options={[
+                        ...payFrom.map((n) => accountOption(data, n,
+                          { currency: true, note: dm(balances[n.id] ?? 0) })),
+                        { value: INITIAL_PAYMENT, label: 'Initial payment',
+                          hint: "not from any account, or one you don't remember" },
+                      ]} />
             </Field>
             <Field label="Amount">
               <Amount value={payment.amount} ariaLabel="Zakat payment amount"
@@ -839,7 +851,8 @@ export function Zakat() {
             <ActionButton capability="giving.record" disabled={!(payment.amount > 0)}
               onDone={(o) => { if (o.ok) { setPaying(null); setPayment({ ...payment, amount: 0 }); } }}
               input={() => ({
-                accountId: payAccount, amount: payment.amount, causeId: payment.causeId,
+                accountId: realAccountId(payAccount),
+                amount: payment.amount, causeId: payment.causeId,
                 isZakat: true, zakatYearId: paying,
               })}>
               Record it against this year
@@ -887,7 +900,7 @@ export function Zakat() {
           )}
           <div style={{ marginLeft: 'auto' }}>
             <div className="ov">Threshold in force</div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 500, marginTop: 4 }}>{dm(nisab)}</div>
+            <div className="mono public" style={{ fontSize: 18, fontWeight: 500, marginTop: 4 }}>{dm(nisab)}</div>
           </div>
         </div>
       </Panel>
@@ -940,57 +953,60 @@ function YearDetail({ year, dm, causeName, markOf }: {
       <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <div className="ov">The lunar year</div>
-          <div className="mono" style={{ fontSize: 13, marginTop: 3 }}>{year.startOn} → {year.dueOn}</div>
+          <div className="mono public" style={{ fontSize: 13, marginTop: 3 }}>{year.startOn} → {year.dueOn}</div>
           <div style={{ fontSize: 11, color: 'var(--faint)' }}>closed {year.dueHijri}</div>
         </div>
         <div>
           <div className="ov">Threshold then in force</div>
-          <div className="mono" style={{ fontSize: 13, marginTop: 3 }}>{dm(year.nisab)}</div>
+          <div className="mono public" style={{ fontSize: 13, marginTop: 3 }}>{dm(year.nisab)}</div>
           <div style={{ fontSize: 11, color: 'var(--faint)' }}>on the {year.basis} measure</div>
         </div>
         <div>
           <div className="ov">Prices it was struck at</div>
-          <div className="mono" style={{ fontSize: 13, marginTop: 3 }}>
+          <div className="mono public" style={{ fontSize: 13, marginTop: 3 }}>
             {year.goldPerG ? `${dm(year.goldPerG)} / g gold` : 'gold not recorded'}
           </div>
           {year.silverPerG != null && year.silverPerG > 0 && (
-            <div style={{ fontSize: 11, color: 'var(--faint)' }}>{dm(year.silverPerG)} / g silver</div>
+            <div className="public" style={{ fontSize: 11, color: 'var(--faint)' }}>{dm(year.silverPerG)} / g silver</div>
           )}
         </div>
         <div>
           <div className="ov">Confirmed</div>
-          <div className="mono" style={{ fontSize: 13, marginTop: 3 }}>{year.confirmedAt.slice(0, 10)}</div>
+          <div className="mono public" style={{ fontSize: 13, marginTop: 3 }}>{year.confirmedAt.slice(0, 10)}</div>
           {year.note && <div style={{ fontSize: 11, color: 'var(--faint)', maxWidth: 260 }}>{year.note}</div>}
         </div>
       </div>
 
-      <table>
+      {/* the same card as the list it was struck from, and as every log on the screen */}
+      <div className="rt-wrap">
+      <table className="rt">
         <thead>
           <tr>
-            <th style={{ width: 30 }}><span className="sr-only">Sign</span></th>
-            <th>How it was worked out</th>
-            <th>Amount</th>
+            <th className="rt-h" style={{ width: 30 }}><span className="sr-only">Sign</span></th>
+            <th className="rt-h">How it was worked out</th>
+            <th className="rt-h">Amount</th>
           </tr>
         </thead>
         <tbody>
           {year.entries.length === 0
-            ? <tr><td /><td colSpan={2} style={{ fontSize: 12, color: 'var(--faint)' }}>
+            ? <tr><td className="rt-c" /><td className="rt-c" colSpan={2} style={{ fontSize: 12, color: 'var(--faint)' }}>
                 No lines were kept for this year.</td></tr>
             : year.entries.map((e) => <EntryRow key={e.id} entry={e} dm={dm} mark={markOf(e.id)} />)}
           <tr>
-            <td />
-            <td style={{ fontWeight: 600 }}>Zakatable, as confirmed</td>
-            <td className="mono" style={{ fontWeight: 600 }}>{dm(year.base)}</td>
+            <td className="rt-c" />
+            <td className="rt-c" style={{ fontWeight: 600 }}>Zakatable, as confirmed</td>
+            <td className="mono rt-c" style={{ fontWeight: 600 }}>{dm(year.base)}</td>
           </tr>
           <tr>
-            <td />
-            <td style={{ fontWeight: 600 }}>Zakat owed
+            <td className="rt-c" />
+            <td className="rt-c" style={{ fontWeight: 600 }}>Zakat owed
               <span style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 400 }}> · 2.5%</span></td>
-            <td className="mono" style={{ fontWeight: 600, fontSize: 16,
+            <td className="mono rt-c" style={{ fontWeight: 600, fontSize: 16,
                                           color: 'var(--positive)' }}>{dm(year.due)}</td>
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div style={{ marginTop: 16 }}>
         <div className="ov" style={{ marginBottom: 8 }}>What was paid against it</div>
@@ -1037,16 +1053,21 @@ function YearDetail({ year, dm, causeName, markOf }: {
                     </span>
                   ) },
                 { key: 'from', label: 'Paid from', kind: 'pick',
-                  value: (p) => accountOnly(p.accountId),
+                  value: (p) => (p.accountId ? accountOnly(p.accountId) : 'No source'),
                   cell: (p) => (
                     <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                      <AccountLine id={p.accountId} />
+                      {p.accountId ? <AccountLine id={p.accountId} />
+                                   : <span style={{ color: 'var(--faint)' }}>no source</span>}
                     </span>
                   ),
                   field: (d, set) => (
-                    <Select ariaLabel="Paid from" value={String(d.accountId ?? '')}
+                    <Select ariaLabel="Paid from" value={String(d.accountId || INITIAL_PAYMENT)}
                             onChange={(v) => set({ accountId: v })}
-                            options={payable.map((n) => accountOption(data, n, { currency: true }))} />
+                            options={[
+                              ...payable.map((n) => accountOption(data, n, { currency: true })),
+                              { value: INITIAL_PAYMENT, label: 'Initial payment',
+                                hint: "not from any account, or one you don't remember" },
+                            ]} />
                   ) },
                 { key: 'to', label: 'Went to', kind: 'pick',
                   value: (p) => causeName(p.causeId),
@@ -1068,8 +1089,12 @@ function YearDetail({ year, dm, causeName, markOf }: {
               edit={{
                 capability: 'giving.correct',
                 draftOf: (p) => ({ date: p.date, amount: nativeAmount(p), currency: nativeCurrency(p),
-                                   accountId: p.accountId ?? '', causeId: p.causeId, note: p.note ?? '' }),
-                build: (d, p) => ({ givingId: p.id, accountId: d.accountId || undefined,
+                                   accountId: p.accountId ?? INITIAL_PAYMENT,
+                                   causeId: p.causeId, note: p.note ?? '' }),
+                // null rather than undefined: undefined keeps the account the payment had,
+                // and taking the source off is one of the corrections this offers.
+                build: (d, p) => ({ givingId: p.id,
+                                    accountId: realAccountId(d.accountId) ?? null,
                                     amount: Number(d.amount), currency: d.currency,
                                     causeId: d.causeId, isZakat: true,
                                     date: d.date, note: d.note ?? '' }),
@@ -1106,39 +1131,35 @@ function YearDetail({ year, dm, causeName, markOf }: {
  * The detail sits under the label rather than in columns of its own because there is no fixed
  * set of it: a flat has three dates behind it, a card balance has one, and cash has none.
  */
-function EntryRow({ entry: e, dm, edit, mark, say }: {
+/**
+ * A line's name, with any weight in it covered.
+ *
+ * Metal arrives named by what is held — "Gold — 120.0 g" — because the weight is what
+ * decides whether zakat reaches it, and there is nowhere else on the row to put it. That
+ * makes part of a name a holding, so what follows the dash is hidden with the amounts and
+ * the metal it names stays readable.
+ */
+function namePart(label: string) {
+  const cut = label.indexOf(' — ');
+  if (cut < 0 || !/\d/.test(label.slice(cut))) return label;
+  return <>{label.slice(0, cut)}{' — '}<span className="figure">{label.slice(cut + 3)}</span></>;
+}
+
+function EntryRow({ entry: e, dm, edit, mark }: {
   entry: Entry;
   dm: (n: number) => string;
   /** typed figures are the owner's own, so the amount is theirs to change */
   edit?: (n: number) => void;
   /** the icon behind a line that stands for a thing owned — absent for cash, debt and the like */
   mark?: EntryMark | null;
-  /**
-   * What the owner can say about this line, where the ledger is running.
-   *
-   * A figure of their own instead of the one worked out, the line taken out of the reckoning,
-   * or — on a line they wrote themselves — taken off the list. The controls appear when the
-   * row is pointed at, the way a record's pencil does, so a list of forty lines is not a list
-   * of forty buttons.
-   */
-  say?: {
-    onAmount: (n: number) => void;
-    onRemove: () => void;
-    onRestore: () => void;
-    typed: boolean;
-    overridden: boolean;
-  };
 }) {
-  const [saying, setSaying] = useState(false);
-  const [hover, setHover] = useState(false);
-  const [figure, setFigure] = useState(e.amount);
   return (
-    <tr onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-      <td className="mono" style={{
+    <tr>
+      <td className="mono rt-c" style={{
         fontSize: 15, fontWeight: 600, textAlign: 'center', verticalAlign: 'top',
         color: e.sign === -1 ? 'var(--negative)' : e.sign === 1 ? 'var(--positive)' : 'var(--faint)',
       }}>{e.sign === 1 ? '+' : e.sign === -1 ? '−' : '·'}</td>
-      <td>
+      <td className="rt-c">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {mark && (
             <span aria-hidden="true" style={{
@@ -1149,7 +1170,9 @@ function EntryRow({ entry: e, dm, edit, mark, say }: {
               <Mark mark={mark.icon} size={13} color={mark.color} fallback={mark.fallback} />
             </span>
           )}
-          <div style={{ fontWeight: 500, color: e.sign === 0 ? 'var(--muted)' : undefined }}>{e.label}</div>
+          <div style={{ fontWeight: 500, color: e.sign === 0 ? 'var(--muted)' : undefined }}>
+            {namePart(e.label)}
+          </div>
         </div>
         {e.detail && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{e.detail}</div>}
         {e.facts && e.facts.length > 0 && (
@@ -1162,50 +1185,10 @@ function EntryRow({ entry: e, dm, edit, mark, say }: {
             {e.note}
           </div>
         )}
-        {/* What the ledger says, under a figure that is not the ledger's. It is kept rather
-            than replaced, so the correction can always be read against what it corrected. */}
-        {e.overridden && e.computed != null && (
-          <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 3 }}>
-            yours · the ledger works it out as {dm(e.computed)}
-          </div>
-        )}
-        {say && (hover || saying) && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            {saying ? (
-              <>
-                <Amount value={figure} ariaLabel={`${e.label} as you state it`}
-                        onChange={setFigure} style={{ width: 150 }} />
-                <button className="btn go sm" onClick={() => { say.onAmount(figure); setSaying(false); }}>
-                  <Icon name="check" size={12} motion="none" /> Save
-                </button>
-                <button className="btn ghost sm" onClick={() => { setFigure(e.amount); setSaying(false); }}>
-                  <Icon name="close" size={12} motion="none" /> Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button className="btn quiet sm" onClick={() => { setFigure(e.amount); setSaying(true); }}>
-                  <Icon name="edit" size={12} motion="none" /> State it yourself
-                </button>
-                {(say.overridden || say.typed) && (
-                  <button className="btn quiet sm" onClick={say.onRestore}>
-                    <Icon name="undo" size={12} motion="none" />
-                    {say.typed ? 'Remove' : 'Back to the ledger\'s'}
-                  </button>
-                )}
-                {!say.typed && (
-                  <button className="btn quiet sm" onClick={say.onRemove}>
-                    <Icon name="close" size={12} motion="none" /> Leave it out
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </td>
       {/* A line counting nothing is bracketed rather than hidden: its value is worth seeing,
           and the brackets say it was left out on purpose. */}
-      <td className="mono" style={{
+      <td className="mono rt-c" style={{
         verticalAlign: 'top',
         color: e.sign === -1 ? 'var(--negative)' : e.sign === 0 ? 'var(--faint)' : undefined,
       }}>

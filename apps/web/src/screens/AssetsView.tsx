@@ -17,7 +17,7 @@ import { AccountLine } from '../components/AccountLine';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { IntentionPicker, HawlBar } from '../components/Intention';
 import { intentionsFor, type Intention } from '@ledger/engine';
-import { sourceAccountOptions, INITIAL_PAYMENT } from '../components/Operations';
+import { sourceAccountOptions, INITIAL_PAYMENT, realAccountId } from '../components/Operations';
 import { useModules } from '../Modules';
 import { accountOption } from '../accounts';
 
@@ -364,9 +364,14 @@ function Body() {
 
       {/* A card is as wide as the ring plus what stands beside it — 276 of circle, its own
           padding, and room for a name that is not a word. Below that the two stack, which is
-          what the card does on a phone anyway. */}
+          what the card does on a phone anyway.
+
+          The `min()` is what keeps that true on a window narrower than the card itself: a bare
+          480-pixel track cannot shrink, so at 440 the card ran fifty pixels off the edge and
+          took the page sideways with it. Asked for the smaller of 480 and the room there is,
+          the track gives up its width instead of the page giving up its edge. */}
       {tab === 'overview' && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(480px, 100%), 1fr))', gap: 20 }}>
         {owned.map((o) => {
           const { id, price, paid, unpaid, onPlan, colour, settled } = o;
           /**
@@ -416,16 +421,17 @@ function Body() {
                             onClick={() => { void saveCard(id).then(stopEditing); }}>
                       <Icon name="check" size={13} motion="none" /> Save
                     </button>
+                    {/* Only once the card is open: a bin should take the same deliberate step
+                        as the button that finishes an edit, not an idle one aimed at nothing
+                        in particular. It stands in the line rather than after Cancel, because
+                        Cancel is the way out and the way out is the end of the line. */}
+                    <ConfirmDelete what={o.name} size={13}
+                                   onConfirm={() => { void run('asset.remove', { assetId: id, restore: false })
+                                     .then(() => { stopEditing(); return loadAssets(); }); }} />
                     <button className="btn ghost sm" onClick={stopEditing}>
                       <Icon name="close" size={13} motion="none" /> Cancel
                     </button>
                   </span>
-                  {/* Subordinate to Save and Cancel, and only once the card is open: a bin
-                      should take the same deliberate step as the button that finishes an
-                      edit, not an idle one aimed at nothing in particular. */}
-                  <ConfirmDelete what={o.name} size={13}
-                                 onConfirm={() => { void run('asset.remove', { assetId: id, restore: false })
-                                   .then(() => { stopEditing(); return loadAssets(); }); }} />
                 </span>
               ) : (
                 <span style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 6,
@@ -523,10 +529,13 @@ function Body() {
                                  onPickMark={() => setPicking(picking === id ? null : id)} />
                   ) : (
                     <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      {/* a name of two long words is still a name: it wraps inside the card
+                          rather than pushing the card past the edge of the window */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                         <Mark mark={o.icon} size={18} color={colour}
                               fallback={o.icon === 'car' ? 'car' : 'building'} />
-                        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>{o.name}</h2>
+                        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, minWidth: 0,
+                                     overflowWrap: 'anywhere' }}>{o.name}</h2>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>
                         {onPlan
@@ -812,8 +821,7 @@ function Body() {
               <button className="btn add sm" disabled={!addDraft.name || !!running}
                 onClick={() => {
                   const d = addDraft;
-                  const paidFrom = d.accountId && d.accountId !== INITIAL_PAYMENT
-                    ? String(d.accountId) : undefined;
+                  const paidFrom = realAccountId(String(d.accountId ?? ''));
                   void run('asset.add', {
                     name: String(d.name),
                     kind: String(d.kind || 'other'),
@@ -1165,14 +1173,23 @@ function Body() {
             * movement that paid it first, so the money returns to the account it left and the
             * plan and the accounts never disagree — there is nothing here for a person to do
             * in two steps and get half-way through.
+            *
+            * The second answer is for the other case: the instalment really was paid and it
+            * is this row that is wrong — the same payment entered twice, once by hand and
+            * once by autopay. Reversing there would hand back money that never came back.
+            * An unpaid row moved nothing, so both answers take it and nothing else.
             */
           remove={{
             capability: 'plan.remove',
+            keep: { label: 'Just remove the record',
+                    build: (r) => ({ installmentId: r.id, reverse: false }),
+                    body: 'Removing it puts the money back in the account it was paid from. If the payment really was made and only this row is wrong, take the row off and leave the movement standing.' },
             build: (r) => ({ installmentId: r.id }),
             what: (r) => `the payment due ${r.dueOn}`,
             onDone: () => { loadSchedule(); loadAssets(); },
           }}
           clear={{ log: 'plans',
+                   movements: true,
                    what: 'every plan, every payment on one, and any autopay set up — anything bought on a plan becomes paid for outright',
                    onDone: () => { loadSchedule(); loadAssets(); } }}
         />

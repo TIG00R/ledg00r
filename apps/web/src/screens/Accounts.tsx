@@ -4,7 +4,7 @@ import { AccountLine } from '../components/AccountLine';
 import { Donut } from '../components/Donut';
 import { useApp, market } from '../AppState';
 import { money, toEgp, fromEgp, type Currency } from '@ledger/engine';
-import { Page, Panel, Chip, Row, Field, AccountName } from '../components/UI';
+import { Page, Panel, Chip, Row, Field } from '../components/UI';
 import { Icon } from '../components/Icon';
 import { OperationPanel, MoveMoney } from '../components/Operations';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
@@ -112,8 +112,13 @@ function Body() {
             <div className="mono" style={{ fontSize: 32, fontWeight: 500, letterSpacing: '-0.02em', margin: '6px 0 2px' }}>
               {dm(totalCash)}
             </div>
+            {/* A figure in a sentence is still a figure. These two are what is owed and what
+                is left after it, and privacy was passing over them because they are prose
+                rather than a column — so hiding the total above left the net beside it
+                standing in plain sight. */}
             <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-              less {dm(totalCredit)} owed on credit · net {dm(totalCash - totalCredit)}
+              less <span className="private">{dm(totalCredit)}</span> owed on credit ·
+              net <span className="private">{dm(totalCash - totalCredit)}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', flex: 1, minWidth: 280 }}>
@@ -145,8 +150,8 @@ function Body() {
         }}>
           <Icon name="warn" size={17} color="var(--gold)" />
           <div style={{ fontSize: 13, color: 'var(--muted)', flex: 1 }}>
-            These balances total <strong style={{ color: 'var(--ink)' }}>{dm(totalCash)}</strong>. Working
-            the movements forward gives <strong style={{ color: 'var(--ink)' }}>{dm(values.cash)}</strong> —
+            These balances total <strong className="private" style={{ color: 'var(--ink)' }}>{dm(totalCash)}</strong>. Working
+            the movements forward gives <strong className="private" style={{ color: 'var(--ink)' }}>{dm(values.cash)}</strong> —
             the difference is what has not been recorded.
           </div>
         </div>
@@ -364,7 +369,7 @@ function Body() {
                     </div>
                   </div>
 
-                  <span className="mono" style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  <span className="mono public" style={{ fontSize: 13, color: 'var(--muted)' }}>
                     {cur === display ? '1' : unitRate(cur).toFixed(cur === 'EGP' ? 5 : 4)}
                   </span>
 
@@ -606,6 +611,8 @@ function AccountEditor({ node, currency, held, currencies, run, isCredit, onClos
 interface Movement {
   id: string; date: string; kind: string; note: string | null;
   automatic: boolean; reversedBy?: string | null; reverses?: string | null;
+  /** the log this movement was written for, where it was written for one */
+  origin?: { log: string; label: string; recordId: string } | null;
   legs: Array<{ fromNodeId?: string | null; fromName?: string | null;
                 toNodeId?: string | null; toName?: string | null;
                 qtyFrom?: number | null; rateApplied?: number | null;
@@ -680,10 +687,6 @@ function MovementRecords() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((n) => [n.name, accountOption(data, n, { fallback: n.kind, value: n.name })]))
     .values()];
-  /** which institution a node sits at, for the second line under an account's name */
-  const bankOf = (id?: string | null) =>
-    data.institutions.find((i) => i.id === data.nodes.find((n) => n.id === id)?.parentId)?.name ?? null;
-
   /**
    * Which currency a figure in this log is counted in.
    *
@@ -895,7 +898,7 @@ function MovementRecords() {
             cell: (m) => (
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>
                 {m.note || <span style={{ color: 'var(--faint)' }}>—</span>}
-                {m.reversedBy && <span style={{ display: 'block', fontSize: 11, color: 'var(--gold)' }}>undone</span>}
+                {m.reversedBy && <span style={{ display: 'block', fontSize: 11, color: 'var(--gold)' }}>reversed</span>}
               </span>
             ),
             field: (d, set) => (
@@ -930,18 +933,52 @@ function MovementRecords() {
             amount: Number(d.amount) > 0 ? Number(d.amount) : undefined,
             note: d.note ?? '',
           }),
-          blocked: (m) => (m.reversedBy ? 'That movement has already been undone, so there is nothing to correct.'
+          /**
+           * A movement written for another log is corrected in that log.
+           *
+           * An expense is a movement and a record: the place it was spent, the destination it
+           * was spent on, the note. Amending the movement from here rewrote the money half and
+           * left the other half standing over a movement that no longer existed — the record
+           * vanished from the Expenses log, which is exactly what was reported. The row says
+           * where it lives instead, and the button beside it goes there.
+           */
+          blocked: (m) => (m.reversedBy ? 'That movement has already been reversed, so there is nothing to correct.'
                          : m.reverses ? 'That movement is itself a correction. Correct the one it replaced.'
+                         : m.origin ? `This is the money half of a record kept in ${m.origin.label}. Correcting it here would leave that record describing a movement that no longer exists, so it is corrected there.`
                          : m.legs.length > 1 ? 'That movement has more than one leg. Undo it and record the corrected one.'
                          : undefined),
           onDone: load,
         }}
+        /**
+         * Where a row actually lives.
+         *
+         * A movement written for another log is the money half of a record kept elsewhere, and
+         * the two are corrected together or not at all. Rather than refuse and leave the owner
+         * hunting for the other half, the row carries the way there.
+         */
+        trailing={(m) => (m.origin
+          ? (
+            <button className="btn quiet sm" style={{ whiteSpace: 'nowrap' }}
+                    onClick={() => { window.location.hash = `/${m.origin!.log}`; }}>
+              <Icon name="arrow" size={12} motion="none" />
+              Edit in {m.origin.label}
+            </button>
+          )
+          : null)}
+        trailingWidth="186px"
         remove={{
           capability: 'movement.undo',
           build: (m) => ({ movementId: m.id }),
           what: (m) => `the ${m.kind} of ${m.date}`,
-          blocked: (m) => (m.reversedBy ? 'That movement has already been undone.'
-                         : m.reverses ? 'That movement is itself a reversal.' : undefined),
+          // a movement that never happened is erased rather than reversed, which would
+          // otherwise leave two rows describing an event that did not occur
+          keep: { label: 'Just delete the record',
+                  build: (m) => ({ movementId: m.id, reverse: false }),
+                  body: 'Undoing it writes the opposite movement: the balance returns and the log keeps both halves, so it still says what happened and what was undone. If it never happened at all — an import run twice, a figure typed into the wrong ledger — deleting takes the row instead and the log does not claim it.' },
+          blocked: (m) => (m.reversedBy ? 'That movement has already been reversed.'
+                         : m.reverses ? 'That movement is itself a reversal.'
+                         : m.origin ? `This is the money half of a record kept in ${m.origin.label}. Removing it there takes both halves; removing it here would leave the record behind.`
+                         : undefined),
           onDone: load,
         }}
         /*

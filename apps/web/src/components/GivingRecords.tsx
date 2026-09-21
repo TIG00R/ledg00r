@@ -11,6 +11,7 @@ import { Select } from './Select';
 import { useLive } from '../Live';
 import { ledger } from '../api';
 import { accountOption } from '../accounts';
+import { INITIAL_PAYMENT, realAccountId, sourceAccountOptions, defaultAccountId } from './Operations';
 
 /**
  * Everything given, as one table.
@@ -21,6 +22,9 @@ import { accountOption } from '../accounts';
  * column, so this is one component, and the screen that shows it says which kinds it wants.
  */
 export type GivingKind = 'zakat' | 'sadaqat';
+
+/** What the table calls giving that came out of no account of yours. */
+const NO_SOURCE = 'No source';
 
 export interface GivingRow {
   id: string; date: string; kind: GivingKind; amount: number; currency: string;
@@ -53,11 +57,18 @@ export function GivingRecords({ only, search, fallback, onRows }: {
   const accountName = (id: string) => {
     const n = data.nodes.find((x) => x.id === id);
     const inst = data.institutions.find((i) => i.id === n?.parentId);
+    // Giving that named no account is not a missing figure, so it does not read as a dash.
+    // It is a real answer — money this ledger never saw leave anything — and the filter and
+    // the column say the same words for it.
+    if (!id) return NO_SOURCE;
     return n ? `${inst?.name ? `${inst.name} · ` : ''}${n.name}` : '—';
   };
   /** every account giving can leave, drawn in the filter the way the picker draws them */
-  const accountChoices = () => data.nodes.filter((n) => n.kind === 'cash')
-    .map((n) => accountOption(data, n, { value: accountName(n.id) }));
+  const accountChoices = () => [
+    ...data.nodes.filter((n) => n.kind === 'cash')
+      .map((n) => accountOption(data, n, { value: accountName(n.id) })),
+    { value: NO_SOURCE, label: NO_SOURCE },
+  ];
 
   const [live_, setLive_] = useState<GivingRow[] | null>(null);
   const loadGiving = useCallback(() => {
@@ -132,14 +143,17 @@ export function GivingRecords({ only, search, fallback, onRows }: {
             choices: accountChoices(),
             cell: (r) => (
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                <AccountLine id={r.from} />
+                {r.from ? <AccountLine id={r.from} />
+                        : <span style={{ color: 'var(--faint)' }}>no source</span>}
               </span>
             ),
+            // The same picker every other "where did this come from" question uses, so the
+            // answer for giving this ledger never saw the money leave is worded here exactly
+            // as it is worded on a metal lot or an opening balance.
             field: (d, set) => (
-            <Select ariaLabel="Paid from" value={d.accountId ?? ''}
+            <Select ariaLabel="Paid from" value={d.accountId || INITIAL_PAYMENT}
                   onChange={(v) => set({ accountId: v })}
-                  options={data.nodes.filter((n) => n.kind === 'cash')
-                    .map((n) => accountOption(data, n))} />
+                  options={sourceAccountOptions(data)} />
             ) },
           { key: 'to', label: 'Went to', kind: 'pick',
             value: (r) => cInfo(r.categoryId)?.name ?? r.categoryId,
@@ -174,10 +188,13 @@ export function GivingRecords({ only, search, fallback, onRows }: {
           label: 'Record giving',
           capability: 'giving.record',
           blank: { date: new Date().toISOString().slice(0, 10), amount: 0, currency: 'EGP',
-                 accountId: data.settings.burnAccountId, causeId: cats[0]?.id ?? '',
+                 accountId: defaultAccountId(data, data.settings.burnAccountId), causeId: cats[0]?.id ?? '',
                  isZakat: false, note: '' },
           valid: (d) => Number(d.amount) > 0 && !!d.accountId && !!d.causeId,
-          build: (d) => ({ accountId: d.accountId, amount: Number(d.amount),
+          // The sentinel is not an account id, so it is left off rather than sent: the ledger
+          // reads a record with no account as one that moved nothing.
+          build: (d) => ({ accountId: realAccountId(d.accountId),
+                       amount: Number(d.amount),
                        currency: d.currency, causeId: d.causeId,
                        isZakat: !!d.isZakat, date: d.date, note: d.note || undefined }),
           onDone: loadGiving,
@@ -185,9 +202,12 @@ export function GivingRecords({ only, search, fallback, onRows }: {
         edit={{
           capability: 'giving.correct',
           draftOf: (r) => ({ date: r.date, amount: r.amount, currency: r.currency,
-                         accountId: r.from, causeId: r.categoryId,
+                         accountId: r.from || INITIAL_PAYMENT, causeId: r.categoryId,
                          isZakat: r.kind === 'zakat', note: r.note }),
-          build: (d, r) => ({ givingId: r.id, accountId: d.accountId || undefined,
+          // null here, never undefined: undefined keeps whatever account the record had, and
+          // taking the source off is a thing a correction is allowed to do.
+          build: (d, r) => ({ givingId: r.id,
+                        accountId: realAccountId(d.accountId) ?? null,
                         amount: Number(d.amount), currency: d.currency,
                         causeId: d.causeId, isZakat: !!d.isZakat,
                         date: d.date, note: d.note ?? '' }),
@@ -206,6 +226,7 @@ export function GivingRecords({ only, search, fallback, onRows }: {
           onDone: loadGiving,
         }}
         clear={{ log: 'giving',
+                 movements: true,
                  what: 'every record of giving, zakat and sadaqat alike, and the movements behind them',
                  onDone: loadGiving }}
       />

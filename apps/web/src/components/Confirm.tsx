@@ -11,18 +11,38 @@ import { Icon } from './Icon';
  * Over the page it has to be answered: Escape and the backdrop keep, the button removes, and
  * focus starts on Keep so a stray Return does nothing.
  */
-export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onConfirm, onClose, alternative }: {
+export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onConfirm, onClose,
+                              alternative, choices, choiceLabel }: {
   open: boolean;
   title: ReactNode;
   body?: ReactNode;
   confirmLabel?: string;
-  /** absent when the thing cannot be removed at all; then the dialog only explains */
-  onConfirm?: () => void;
+  /**
+   * What the button does, given the answer picked below it.
+   *
+   * Absent when the thing cannot be removed at all; then the dialog only explains. With
+   * `choices` it is handed the value that was chosen, and it is not reachable until one has
+   * been.
+   */
+  onConfirm?: (choice?: string) => void;
   onClose: () => void;
   /** offered instead of removal — archiving, most often */
   alternative?: { label: string; onPick: () => void };
+  /**
+   * The answers a removal needs before it can be made, where there is more than one.
+   *
+   * Two buttons that both removed — one reversing the money, one leaving it — were a choice
+   * made by aiming: they sat side by side, said different things, and the more dangerous of
+   * them was the one styled to be pressed. Asked as a group under one button instead, the
+   * answer has to be given before the button exists to press, and which answer was given is
+   * on screen while it is pressed.
+   */
+  choices?: Array<{ value: string; label: string; hint?: string }>;
+  /** what the group is asking, over the options */
+  choiceLabel?: string;
 }) {
   const keep = useRef<HTMLButtonElement>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +55,15 @@ export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onCon
     return () => { document.removeEventListener('keydown', esc, true); document.body.style.overflow = had; };
   }, [open, onClose]);
 
+  // A question asked again starts unanswered. Carrying the last answer over would mean a
+  // second removal could be finished in one press, which is the thing the group exists to
+  // prevent.
+  useEffect(() => { if (!open) setPicked(null); }, [open]);
+
   if (!open) return null;
+
+  /** nothing to press until the group has been answered */
+  const blockedByChoice = !!choices?.length && picked === null;
 
   return createPortal((
     <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -66,6 +94,50 @@ export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onCon
           </div>
         </div>
 
+        {onConfirm && !!choices?.length && (
+          <div role="radiogroup" aria-label={choiceLabel ?? 'What this removal should do'}
+               style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <p className="ov" style={{ margin: 0 }}>{choiceLabel ?? 'Choose one to continue'}</p>
+            {choices.map((c) => {
+              const on = picked === c.value;
+              return (
+                <button key={c.value} type="button" role="radio" aria-checked={on}
+                        onClick={() => setPicked(c.value)}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%',
+                          padding: '9px 11px', textAlign: 'left', cursor: 'pointer',
+                          font: 'inherit', fontSize: 13, color: 'var(--ink)',
+                          borderRadius: 'var(--r-sm)',
+                          border: `1px solid ${on ? 'var(--accent)' : 'var(--control-border)'}`,
+                          background: on
+                            ? 'color-mix(in srgb, var(--accent) 10%, var(--control))'
+                            : 'var(--control)',
+                        }}>
+                  {/* the tick itself: a box that is empty until this is the answer */}
+                  <span aria-hidden="true" style={{
+                    flex: '0 0 16px', width: 16, height: 16, marginTop: 1, borderRadius: 5,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: `1px solid ${on ? 'var(--accent)' : 'var(--control-border)'}`,
+                    background: on ? 'var(--accent)' : 'transparent',
+                  }}>
+                    {on && <Icon name="check" size={11} color="var(--accent-ink)" motion="none" />}
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    {/* the answer is one line, like every other label in the application; the
+                        sentence under it is prose and wraps as prose */}
+                    <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden',
+                                   textOverflow: 'ellipsis' }}>{c.label}</span>
+                    {c.hint && (
+                      <span style={{ display: 'block', marginTop: 2, fontSize: 11.5,
+                                     lineHeight: 1.5, color: 'var(--muted)' }}>{c.hint}</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 9, marginTop: 20, justifyContent: 'flex-end' }}>
           <button ref={keep} className="btn ghost" onClick={onClose}
                   style={{ padding: '8px 14px', fontSize: 13 }}>
@@ -78,7 +150,9 @@ export function ConfirmModal({ open, title, body, confirmLabel = 'Remove', onCon
             </button>
           )}
           {onConfirm && (
-            <button className="btn danger" onClick={() => { onConfirm(); onClose(); }}
+            <button className="btn danger" disabled={blockedByChoice}
+                    title={blockedByChoice ? 'Choose what should happen to the money first' : undefined}
+                    onClick={() => { onConfirm(picked ?? undefined); onClose(); }}
                     style={{ padding: '8px 14px', fontSize: 13 }}>
               <Icon name="trash" size={13} motion="none" /> {confirmLabel}
             </button>

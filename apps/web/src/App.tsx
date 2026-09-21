@@ -60,7 +60,7 @@ function Frame() {
   /**
    * The sidebar answers to the window as well as to the button.
    *
-   * There is no width at which 224 pixels of navigation and a working screen both fit in a
+   * There is no width at which 240 pixels of navigation and a working screen both fit in a
    * phone, so below the point where they stop fitting the sidebar becomes something you open
    * — and between the two it keeps its icons and drops its words rather than eating the page.
    */
@@ -80,21 +80,33 @@ function Frame() {
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <TopBar title={title} screen={active} onRefresh={() => force((n) => n + 1)} onNavigate={setActive}
                 onMenu={mobile ? () => setDrawer(true) : undefined} />
-        {active === 'portfolio' && <Portfolio onNavigate={setActive} />}
-        {active === 'dashboards' && <Dashboards />}
-        {active === 'accounts' && <Accounts />}
-        {active === 'income' && <Income />}
-        {active === 'flow' && <Flow />}
-        {active === 'realestate' && <Assets />}
-        {active === 'gold' && <Metals />}
-        {active === 'stocks' && <Stocks />}
-        {active === 'expenses' && <ExpensesAndBudgets />}
-        {active === 'giving' && <Giving />}
-        {active === 'debts' && <Debts />}
-        {active === 'calendar' && <Calendar />}
-        {active === 'logs' && <Logs />}
-        {active === 'assistant' && <Assistant />}
-        {active.startsWith('settings') && <Settings view={active} onNavigate={setActive} />}
+        {/*
+          * What the screens are measured against.
+          *
+          * A screen's layout does not care how wide the window is; it cares how much of the
+          * window is left once the sidebar has taken its share — and that is two different
+          * numbers depending on whether the sidebar is showing its words. `work` is that
+          * remainder, declared as a container so the stylesheet can ask it directly. It is
+          * why collapsing the sidebar now gives the work the room rather than the margins:
+          * the page sees the width it actually has, not the width of the window.
+          */}
+        <div className="work">
+          {active === 'portfolio' && <Portfolio onNavigate={setActive} />}
+          {active === 'dashboards' && <Dashboards />}
+          {active === 'accounts' && <Accounts />}
+          {active === 'income' && <Income />}
+          {active === 'flow' && <Flow />}
+          {active === 'realestate' && <Assets />}
+          {active === 'gold' && <Metals />}
+          {active === 'stocks' && <Stocks />}
+          {active === 'expenses' && <ExpensesAndBudgets />}
+          {active === 'giving' && <Giving />}
+          {active === 'debts' && <Debts />}
+          {active === 'calendar' && <Calendar />}
+          {active === 'logs' && <Logs />}
+          {active === 'assistant' && <Assistant />}
+          {active.startsWith('settings') && <Settings view={active} onNavigate={setActive} />}
+        </div>
       </div>
     </div>
   );

@@ -20,8 +20,11 @@ export interface NavItem {
  * The screen is still there — somebody who does not want the calculation still records what
  * they gave — so what changes is the name over it and the mark beside it: charity rather
  * than an obligation, in the colour sadaqat already wears everywhere else.
+ *
+ * The mark is the giving hand, the same one the screen's own Giving tab carries, because
+ * sadaqat and giving are the same act under two names.
  */
-const CHARITY = { label: 'Charity', icon: 'charity' as IconName, color: 'var(--sadaqat)' };
+const CHARITY = { label: 'Charity', icon: 'hands' as IconName, color: 'var(--sadaqat)' };
 
 export const NAV: NavItem[] = [
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
@@ -103,7 +106,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggle, overlay, open
 
   const nav = (
     <nav aria-label="Sections" style={{
-      width: collapsed && !overlay ? 72 : 224, flex: `0 0 ${collapsed && !overlay ? 72 : 224}px`,
+      width: collapsed && !overlay ? 72 : 240, flex: `0 0 ${collapsed && !overlay ? 72 : 240}px`,
       background: 'var(--surface)', borderRight: '1px solid var(--hairline)',
       padding: collapsed && !overlay ? '20px 14px' : '20px 16px',
       display: 'flex', flexDirection: 'column',
@@ -148,7 +151,10 @@ export function Sidebar({ active, onNavigate, collapsed, onToggle, overlay, open
                   transition: 'background 150ms var(--ease), color 150ms var(--ease)',
                 }}>
                 {n.mascot ? <Ledg00rMascot size={18} alt="" /> : n.icon ? <Icon name={n.icon} /> : null}
-                {(!collapsed || overlay) && n.label}
+                {/* One line, always. "Expenses and budgets" is the longest word in the list
+                    and it is what the width is set by — wrapped onto two lines it makes one
+                    row taller than every other and the list stops looking like a list. */}
+                {(!collapsed || overlay) && <span style={{ whiteSpace: 'nowrap' }}>{n.label}</span>}
               </button>
             </li>
           );
@@ -346,7 +352,7 @@ function NotificationBell({ dueCount, onNavigate }: {
                     color: e.due ? 'var(--negative)' : 'var(--faint)',
                   }}>
                     <Icon name={e.kind === 'zakat' ? 'zakat' : e.kind === 'stock' ? 'stocks'
-                              : e.kind === 'sadaqah' ? 'charity' : e.kind === 'income' ? 'income'
+                              : e.kind === 'sadaqah' ? 'hands' : e.kind === 'income' ? 'income'
                               : e.kind === 'recurring' ? 'refresh'
                               // a ceiling passed is a warning, not a building
                               : e.kind === 'budget' ? 'warn' : 'building'} size={14} />
@@ -397,9 +403,16 @@ function NotificationBell({ dueCount, onNavigate }: {
   );
 }
 
+/**
+ * The time, which privacy leaves alone.
+ *
+ * It is monospaced because it is a figure, and the privacy switch used to take it for one
+ * of yours and blur it with the rest — so hiding your balances across a room also cost you
+ * the clock. `public` says this is digits, not money.
+ */
 function Clock({ now }: { now: Date }) {
   return (
-    <div style={{ textAlign: 'right' }}>
+    <div className="public" style={{ textAlign: 'right' }}>
       <div className="mono" style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.02em' }}>
         {now.toLocaleTimeString('en-US', { hour12: false })}
       </div>
@@ -420,7 +433,7 @@ export function MarketPanel() {
     ['Gold / troy oz', money(market.goldPerOz ?? 0, 'USD'), 'spot'],
   ];
   return (
-    <section className="panel" aria-label="Market rates" style={{ padding: 16 }}>
+    <section className="panel public" aria-label="Market rates" style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
         <h2 className="ov" style={{ margin: 0 }}>Market</h2>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--faint)' }}>11:35</span>
@@ -479,7 +492,7 @@ export function UpcomingPanel({ onNavigate }: { onNavigate: (id: string) => void
                 color: e.due ? 'var(--negative)' : 'var(--faint)',
               }}>
                 <Icon name={e.kind === 'zakat' ? 'zakat' : e.kind === 'stock' ? 'stocks'
-                          : e.kind === 'sadaqah' ? 'charity' : e.kind === 'income' ? 'income'
+                          : e.kind === 'sadaqah' ? 'hands' : e.kind === 'income' ? 'income'
                           : e.kind === 'recurring' ? 'refresh'
                               // a ceiling passed is a warning, not a building
                               : e.kind === 'budget' ? 'warn' : 'building'} size={14} />

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { command, query, DateOnly, Outcome } from '@ledger/contracts';
+import { command, query, DateOnly, Outcome, type Refusal } from '@ledger/contracts';
 import { schema as t } from '@ledger/db';
 import { indexRow, dropRow } from '@ledger/db';
 import { eq } from 'drizzle-orm';
@@ -80,8 +80,35 @@ const dividendOut = z.object({
 const noteOut = z.object({
   id: z.string(), ticker: z.string(), name: z.string().nullable(),
   date: z.string(), note: z.string(),
+  /** the day this note asks to be read again, null until one is set */
+  remindOn: z.string().nullable(),
+  /** whether that day is still being watched — a date kept with the reminder switched off */
+  remindEnabled: z.boolean(),
   createdAt: z.string(), updatedAt: z.string().nullable(),
 });
+
+/**
+ * The reminder half of a note, as it is given and as it is stored.
+ *
+ * Three states, and they are not the same: a date with the switch on is a reminder; a date
+ * with the switch off is a reminder kept for later; no date at all is not a reminder, and
+ * it cannot be switched on into one, so asking for that is refused rather than quietly
+ * saving a switch that watches nothing.
+ */
+function remindPatch(
+  remindOn: string | null | undefined,
+  remindEnabled: boolean | undefined,
+  had: { remindOn: string | null; remindEnabled: boolean },
+): { remindOn: string | null; remindEnabled: boolean } | Refusal {
+  const date = remindOn === undefined ? had.remindOn : remindOn;
+  const on = remindEnabled === undefined ? had.remindEnabled : remindEnabled;
+  if (on && !date) {
+    return refusal('invalid_period', 'A reminder with no date watches nothing.',
+                   'Give remindOn a day, or leave remindEnabled off.');
+  }
+  // A date taken off takes its switch with it: there is nothing left to watch.
+  return { remindOn: date, remindEnabled: date ? on : false };
+}
 
 export const notebookCaps = (ctxOf: () => AppCtx) => [
   query({
@@ -93,21 +120,25 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
       ticker: TickerIn.optional(),
       from: DateOnly.optional(),
       to: DateOnly.optional(),
+      /** only the notes that are asking to be read again, and still are */
+      remindingOnly: z.boolean().default(false),
       limit: z.number().int().positive().max(500).default(200),
     }),
     output: z.array(noteOut),
-    handler: async ({ ticker, from, to, limit }) => {
+    handler: async ({ ticker, from, to, remindingOnly, limit }) => {
       const { db } = ctxOf();
       const names = new Map(db.select().from(t.stocks).all().map((s) => [s.ticker, s.name]));
       return db.select().from(t.stockNotes).all()
         .filter((n) => (!ticker || n.ticker === norm(ticker))
                     && (!from || n.date >= from)
-                    && (!to || n.date <= to))
+                    && (!to || n.date <= to)
+                    && (!remindingOnly || (n.remindEnabled && !!n.remindOn)))
         .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
         .slice(0, limit)
         .map((n) => ({
           id: n.id, ticker: n.ticker, name: names.get(n.ticker) ?? null,
           date: n.date, note: n.note,
+          remindOn: n.remindOn ?? null, remindEnabled: !!n.remindEnabled,
           createdAt: n.createdAt, updatedAt: n.updatedAt ?? null,
         }));
     },
@@ -169,15 +200,21 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'stock.note.add',
     context: 'holdings',
-    summary: 'Write a note about a share — what you decided, and why.',
-    detail: 'Nothing is moved and nothing is held by writing one. A ticker the notebook has not seen before is added to its index, so a share can be followed long before it is ever bought.',
+    summary: 'Write a note about a share — what you decided, and why. It may also ask to be read again on a day of its own.',
+    detail: 'Nothing is moved and nothing is held by writing one. A ticker the notebook has not seen before is added to its index, so a share can be followed long before it is ever bought. A note given remindOn is raised in upcoming.list on that day, and remindEnabled is how it is silenced without the date being forgotten. The logo may be given here too, so the first note about a company can name it and mark it in one act.',
     input: z.object({
       ticker: TickerIn,
       /** the company, when you are naming it for the first time or renaming it */
       name: z.string().max(120).optional(),
+      /** the company's mark — a picture from mark.upload, or an icon name */
+      logo: z.string().max(120).optional(),
       /** the day the note is about; today when left out */
       date: DateOnly.optional(),
       note: z.string().min(1).max(8000),
+      /** the day this note should be raised again; nothing is raised without one */
+      remindOn: DateOnly.optional(),
+      /** whether that day is watched — a date with this off is kept and not raised */
+      remindEnabled: z.boolean().default(true),
     }),
     output: z.union([z.object({ id: z.string(), summary: z.string() }), Outcome]),
     handler: async (input) => {
@@ -186,28 +223,40 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
       const date = input.date ?? today(ctx);
       const now = new Date().toISOString();
 
-      remember(ctx, ticker, input.name?.trim() || undefined, now);
+      const remind = remindPatch(input.remindOn ?? null,
+                                 input.remindOn ? input.remindEnabled : false,
+                                 { remindOn: null, remindEnabled: false });
+      if ('ok' in remind) return remind;
+
+      remember(ctx, ticker, input.name?.trim() || undefined, now, input.logo?.trim() || undefined);
       const id = newId('note');
       ctx.db.insert(t.stockNotes)
-        .values({ id, ticker, date, note: input.note.trim(), createdAt: now, updatedAt: null }).run();
+        .values({ id, ticker, date, note: input.note.trim(), ...remind,
+                  createdAt: now, updatedAt: null }).run();
       indexRow(ctx.db, { kind: 'note', recordId: id, occurredOn: date,
                          title: `${ticker} note`, body: input.note });
 
-      return { id, summary: `${ticker} · note written for ${date}` };
+      const asks = remind.remindEnabled ? `, asking again on ${remind.remindOn}` : '';
+      return { id, summary: `${ticker} · note written for ${date}${asks}` };
     },
   }),
 
   command({
     name: 'stock.note.edit',
     context: 'holdings',
-    summary: 'Change a note: its wording, the day it is about, or the share it belongs to.',
-    detail: 'A note filed under the wrong ticker is moved rather than rewritten, so what was thought is kept and only where it belongs changes. What is not named keeps what it had.',
+    summary: 'Change a note: its wording, the day it is about, the share it belongs to, or the day it asks to be read again.',
+    detail: 'A note filed under the wrong ticker is moved rather than rewritten, so what was thought is kept and only where it belongs changes. What is not named keeps what it had — including its reminder, which is switched off with remindEnabled and taken off altogether by passing remindOn null.',
     input: z.object({
       noteId: z.string(),
       ticker: TickerIn.optional(),
       name: z.string().max(120).optional(),
+      logo: z.string().max(120).optional(),
       date: DateOnly.optional(),
       note: z.string().min(1).max(8000).optional(),
+      /** a new day to be reminded on; null takes the reminder off entirely */
+      remindOn: DateOnly.nullable().optional(),
+      /** switch the reminder on or off without losing the day it holds */
+      remindEnabled: z.boolean().optional(),
     }),
     output: Outcome,
     handler: async (input) => {
@@ -219,17 +268,23 @@ export const notebookCaps = (ctxOf: () => AppCtx) => [
       const date = input.date ?? row.date;
       const note = input.note?.trim() ?? row.note;
       const now = new Date().toISOString();
-      if (input.name !== undefined || ticker !== row.ticker) {
-        remember(ctx, ticker, input.name?.trim() || undefined, now);
+      const remind = remindPatch(input.remindOn, input.remindEnabled,
+                                 { remindOn: row.remindOn ?? null, remindEnabled: !!row.remindEnabled });
+      if ('ok' in remind) return remind;
+      if (input.name !== undefined || input.logo !== undefined || ticker !== row.ticker) {
+        remember(ctx, ticker, input.name?.trim() || undefined, now, input.logo?.trim() || undefined);
       }
 
-      ctx.db.update(t.stockNotes).set({ ticker, date, note, updatedAt: now })
+      ctx.db.update(t.stockNotes).set({ ticker, date, note, ...remind, updatedAt: now })
         .where(eq(t.stockNotes.id, row.id)).run();
       indexRow(ctx.db, { kind: 'note', recordId: row.id, occurredOn: date,
                          title: `${ticker} note`, body: note });
 
       const moved = ticker !== row.ticker ? `, moved from ${row.ticker}` : '';
-      return noted(`${ticker} · note for ${date} updated${moved}`);
+      const asks = remind.remindEnabled ? `, asking again on ${remind.remindOn}`
+                 : remind.remindOn ? ', its reminder switched off'
+                 : row.remindOn ? ', its reminder taken off' : '';
+      return noted(`${ticker} · note for ${date} updated${moved}${asks}`);
     },
   }),
 

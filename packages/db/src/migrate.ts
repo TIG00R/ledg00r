@@ -1068,6 +1068,26 @@ const STEPS: Step[] = [
       `);
     },
   },
+  {
+    version: 43,
+    name: 'a note can ask to be read again',
+    /**
+     * A note in the share notebook is about a day that has already happened. Some of them
+     * are also about a day that has not: the results in February, the lock-up that ends in
+     * March. That second date had nowhere to live, so it was written into the prose and
+     * never surfaced anywhere.
+     *
+     * `remind_on` is that day, and `remind_enabled` is whether it still wants to be raised.
+     * Two fields rather than one, because a reminder switched off is not the same thing as a
+     * reminder deleted: the date is what you would have to type again.
+     */
+    up: (db) => {
+      for (const col of ['remind_on TEXT', 'remind_enabled INTEGER NOT NULL DEFAULT 0']) {
+        try { db.$raw.exec(`ALTER TABLE stock_notes ADD COLUMN ${col}`); } catch { /* already there */ }
+      }
+      db.$raw.exec('CREATE INDEX IF NOT EXISTS stock_note_remind ON stock_notes(remind_on)');
+    },
+  },
 ];
 
 export function migrate(db: Db): { from: number; to: number; applied: string[] } {

@@ -26,7 +26,8 @@ export function Giving() {
   const shown: Tab = !zakatOn && tab === 'zakat' ? 'sadaqat' : tab;
   return (
     <>
-      <div style={{ padding: '16px 24px 0', maxWidth: 1440, margin: '0 auto', width: '100%' }}>
+      <div className="page-strip"
+           style={{ padding: '16px 24px 0', width: '100%' }}>
         <Segmented<Tab> value={shown} onChange={setTab}
           ariaLabel={zakatOn ? 'Zakat or sadaqat' : 'What was given'}
           options={[

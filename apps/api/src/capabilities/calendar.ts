@@ -226,6 +226,32 @@ function ledgerActivity(
     });
   }
 
+  /*
+   * The days the notebook asked for itself.
+   *
+   * A note about a share may carry a day it wants to be read again — results in February, a
+   * lock-up that ends in March — and that day was raised in what is coming and nowhere else.
+   * A calendar that leaves it out is a calendar you have to remember to check something else
+   * beside, which is the one thing a calendar is for not having to do.
+   *
+   * Only the ones still asking. A reminder switched off keeps its date and stops being a
+   * date anything raises, here as in `upcoming.list`, and the note itself is still in the
+   * notebook either way.
+   */
+  const shares = new Map(ctx.db.select().from(t.stocks).all().map((r) => [r.ticker, r]));
+  for (const n of ctx.db.select().from(t.stockNotes).all()) {
+    if (!n.remindEnabled || !n.remindOn) continue;
+    const share = shares.get(n.ticker);
+    out.push({
+      id: `note-${n.id}`, date: n.remindOn, kind: 'note',
+      title: `${n.ticker} — ${share?.name ?? 'a note to read again'}`,
+      detail: n.note.length > 200 ? `${n.note.slice(0, 197)}\u2026` : n.note,
+      // A note owes nothing. An amount here would be read as money due, and a day
+      // that says a figure is a day somebody pays.
+      icon: share?.logo ?? 'ledger',
+    });
+  }
+
   return out;
 }
 

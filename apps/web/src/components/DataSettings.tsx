@@ -21,7 +21,9 @@ import { ConfirmModal } from './Confirm';
 /** The words that have to be typed before the whole ledger goes. Matched exactly. */
 const PHRASE = 'DESTROY EVERYTHING';
 
-interface Count { log: string; label: string; what: string; count: number }
+interface Count { log: string; label: string; what: string; count: number;
+  /** whether this log's records stand on movements, so clearing it asks which is meant */
+  movements?: boolean }
 
 export function DataSettings() {
   const { live, version, run, running } = useLive();
@@ -73,7 +75,8 @@ export function DataSettings() {
                   {c.count.toLocaleString('en-US')}
                 </span>
                 <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <ClearAll log={c.log} what={c.what} count={c.count} label="Clear" onDone={load} />
+                  <ClearAll log={c.log} what={c.what} count={c.count} label="Clear"
+                            movements={c.movements ?? false} onDone={load} />
                 </span>
               </Row>
             ))}

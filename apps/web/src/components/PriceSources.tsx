@@ -81,7 +81,7 @@ export function PriceSources() {
              hint="The list of sources comes from the ledger itself, and it has not answered.">
         <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
           {problem
-            ? <>Asking for the sources failed: <span className="mono">{problem}</span>. Check that
+            ? <>Asking for the sources failed: <span className="mono public">{problem}</span>. Check that
               the ledger’s own server is the one this interface is reaching — in development the
               dev server proxies to whatever port it was pointed at, and another project answering
               there will refuse this call.</>

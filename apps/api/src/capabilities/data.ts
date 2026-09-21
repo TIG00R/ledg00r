@@ -37,6 +37,8 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
     input: z.object({}),
     output: z.array(z.object({
       log: z.string(), label: z.string(), what: z.string(), count: z.number(),
+      /** whether its records stand on movements, so clearing it has two answers */
+      movements: z.boolean(),
     })),
     handler: async () => countLogs(ctxOf().db),
   }),
@@ -45,15 +47,17 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
     name: 'records.clear',
     context: 'data',
     summary: 'Empty one record log completely. Everything in it goes, and does not come back.',
-    detail: 'Not a correction: the records are erased along with the movements they stood on, so the balances fall back to what their accounts opened with. Removing a single record reverses it instead and keeps both rows — use that where the ledger should still say what happened.',
+    detail: 'Not a correction: the records are erased rather than reversed. By default the movements they stood on go with them, so the balances fall back to what their accounts opened with. Pass movements false where the money really did move and it is the records that are wrong — an import run twice, a log kept in two places — and the rows go while every balance stands. Removing a single record offers the same two answers.',
     effect: 'irreversible',
     input: z.object({
       log: LogName,
       /** saying so deliberately; a call without it is refused rather than obeyed */
       confirm: z.literal(true),
+      /** whether the movements behind the records are erased with them */
+      movements: z.boolean().default(true),
     }),
     output: Outcome,
-    handler: async ({ log }) => {
+    handler: async ({ log, movements }) => {
       const ctx = ctxOf();
       const before = countLogs(ctx.db).find((l) => l.log === log)!;
       if (before.count === 0) return refusal('duplicate', `${LOGS[log].label} is already empty.`);
@@ -64,7 +68,7 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
         ? [...new Set(ctx.db.select().from(t.installments).all().map((i) => i.propertyId))]
         : [];
 
-      const removed = clearLog(ctx.db, log);
+      const removed = clearLog(ctx.db, log, { movements });
       if (onPlans.length) {
         ctx.db.update(t.nodes).set({ ownership: 'owned' })
           .where(inArray(t.nodes.id, onPlans)).run();
@@ -77,7 +81,8 @@ export const dataCaps = (ctxOf: () => AppCtx) => [
       // next automatic pass treat every subject as never having been looked at.
       if (log === 'prices') writePref(ctx.db, 'priceSourceLog', {});
 
-      return noted(`${LOGS[log].label} cleared — ${removed} row${removed === 1 ? '' : 's'} gone`);
+      return noted(`${LOGS[log].label} cleared — ${removed} row${removed === 1 ? '' : 's'} gone`
+        + (movements ? '' : '. The movements they recorded still stand, so no balance has changed.'));
     },
   }),
 

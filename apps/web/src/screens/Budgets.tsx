@@ -95,7 +95,7 @@ function Body() {
   return (
     <Page>
       <Sections sections={[
-        { id: 'pools', label: 'Pools', icon: 'expenses',
+        { id: 'pools', label: 'Budget Pools', icon: 'expenses',
           hint: 'What each ceiling is doing in the period it is in. Double-click one to change it.' },
         { id: 'chart', label: 'Over time', icon: 'dashboards',
           hint: 'What each destination cost, month by month, against the ceilings that watch it.' },
@@ -111,7 +111,7 @@ function Body() {
         <>
           <Panel>
             <Stats>
-              <Stat label="Pools" value={String(pools?.length ?? 0)}
+              <Stat label="Budget Pools" value={String(pools?.length ?? 0)}
                     sub={`${(pools ?? []).reduce((n, p) => n + p.members.length, 0)} destination${(pools ?? []).reduce((n, p) => n + p.members.length, 0) === 1 ? '' : 's'} covered`} />
               <Stat label="Over the ceiling" value={String(over.length)}
                     color={over.length ? 'var(--negative)' : undefined}
@@ -125,7 +125,7 @@ function Body() {
             </Stats>
           </Panel>
 
-          <Panel title="Pools"
+          <Panel title="Budget Pools"
                  hint="A ceiling over one destination or several. What they spend between them counts against one figure."
                  action={(
                    <ClearAll log="budgets" count={pools?.length ?? 0}
@@ -134,7 +134,7 @@ function Body() {
                  )}>
             {pools && pools.length === 0 ? (
               <Empty icon="budgets" title="No ceilings set"
-                     body="A pool is a ceiling over a period and the destinations it covers — one, or several sharing one figure." />
+                     body="A budget pool is a ceiling over a period and the destinations it covers — one, or several sharing one figure." />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {(pools ?? []).map((p) => (
@@ -146,7 +146,7 @@ function Body() {
 
             <AddPool cats={cats} currencies={currencies} run={run} onDone={load} />
             <p style={{ margin: '16px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.5 }}>
-              A destination may sit in more than one pool; both count it, and both say so.
+              A destination may sit in more than one budget pool; both count it, and both say so.
             </p>
           </Panel>
         </>
@@ -289,7 +289,10 @@ function PoolCard({ pool: p, cats, currencies, run, onDone }: {
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
           <div style={{ fontSize: 11, color: 'var(--faint)' }}>
-            {money(p.amount, p.currency as Currency)} {PERIOD_LABEL[p.period]} ·{' '}
+            <span className="figure">
+              {money(p.amount, p.currency as Currency)} {PERIOD_LABEL[p.period]}
+            </span>
+            {' · '}
             {p.from} to {p.to} · {p.daysLeft} day{p.daysLeft === 1 ? '' : 's'} left
           </div>
         </div>
@@ -297,14 +300,14 @@ function PoolCard({ pool: p, cats, currencies, run, onDone }: {
           <div className="mono" style={{ fontSize: 16, fontWeight: 500, color: tone }}>
             {money(p.spent, p.currency as Currency)}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--faint)' }}>
+          <div className="private" style={{ fontSize: 11, color: 'var(--faint)' }}>
             {p.remaining >= 0
               ? `${money(p.remaining, p.currency as Currency)} left`
               : `${money(-p.remaining, p.currency as Currency)} over`}
           </div>
         </div>
         <Chip tone={p.standing === 'over' ? 'bad' : p.standing === 'close' ? 'warn' : 'good'}>
-          {Math.round(p.share * 100)}%
+          <span className="figure">{Math.round(p.share * 100)}%</span>
         </Chip>
         {openable && (
           <span style={{ display: 'flex', gap: 6 }}>
@@ -318,30 +321,8 @@ function PoolCard({ pool: p, cats, currencies, run, onDone }: {
         )}
       </div>
 
-      {/* What is spent against the ceiling, as a pie rather than a bar: spent and left are
-          two parts of one figure, which is the one thing a pie says better than anything
-          else. Past the ceiling there is no "left" to draw, so the wedges become what the
-          ceiling covered and what was spent beyond it — the chart changes what it is
-          dividing rather than pretending a hundred and twenty per cent fits in a circle. */}
-      <div style={{ marginTop: 13, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Pie size={148}
-             slices={p.remaining >= 0
-               ? [{ label: 'Spent', value: p.spent, color: tone },
-                  { label: 'Left', value: p.remaining, color: 'var(--hairline-strong)' }]
-               : [{ label: 'The ceiling', value: p.amount, color: 'var(--gold)' },
-                  { label: 'Over it', value: -p.remaining, color: 'var(--negative)' }]}
-             format={(n) => money(n, p.currency as Currency)}
-             caption={
-               <span style={{ fontSize: 11, color: 'var(--faint)' }}>
-                 {p.remaining >= 0
-                   ? `${money(p.remaining, p.currency as Currency)} of ${money(p.amount, p.currency as Currency)} left`
-                   : `${money(-p.remaining, p.currency as Currency)} past ${money(p.amount, p.currency as Currency)}`}
-               </span>
-             } />
-        <span style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.6 }}>
-          It is called close at {Math.round(p.warnAt * 100)}%.
-        </span>
-      </div>
+      {/* What is spent against the ceiling, as a ring that fills. */}
+      <BudgetRing pool={p} tone={tone} />
 
       <div style={{ marginTop: 8, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
         {p.members.map((m) => (
@@ -374,6 +355,168 @@ function PoolCard({ pool: p, cats, currencies, run, onDone }: {
   );
 }
 
+/**
+ * How far a figure has come, from nothing, once.
+ *
+ * A ring that is simply drawn at its final length states a fact; a ring that arrives at it
+ * says which way the fact is going, and for a budget that direction is the whole of the
+ * news. It runs on the value rather than on the clock, so a pool whose spending changes
+ * counts again from nought rather than sliding from the old figure to the new one — the
+ * second reads as the chart correcting itself, which is not what happened.
+ *
+ * Nought to one on a cubic ease-out, and straight to one where the reader has asked for
+ * less movement.
+ */
+function useCountUp(ms: number, key: unknown) {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setT(1); return; }
+    setT(0);
+    let raf = 0;
+    const began = performance.now();
+    const step = (now: number) => {
+      const x = Math.min(1, (now - began) / ms);
+      setT(1 - Math.pow(1 - x, 3));
+      if (x < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [ms, key]);
+  return t;
+}
+
+/**
+ * What the pool has spent, as a ring that counts up.
+ *
+ * The zakat screen draws a year as a ring and counts the days down inside it; this is the
+ * same instrument turned the other way round. A hawl is a fixed length being used up, so it
+ * empties; a ceiling is a fixed length being filled, so it fills. One shape, two directions,
+ * and a reader who has learnt the first has already learnt this one.
+ *
+ * A pie stood here and said spent against left, which is true and is one fact where there
+ * are several: a pool is a ceiling over *destinations*, and the question its owner actually
+ * has is which of them is eating it. So the filled part is not one colour but one arc per
+ * destination, each in the colour that destination wears in the log, the pickers and the
+ * chips under this very card — the ring and the chips are then the same list said twice,
+ * once as ink and once as figures, and no legend is needed to join them.
+ *
+ * Past the ceiling the ring cannot say more by filling, because it is already full. The
+ * destinations then divide the whole circle between them by their share of what was spent,
+ * and the overage gets a rule of its own outside the track: how far past, drawn past. The
+ * ring stops lying about the fraction instead of winding a second lap over the first.
+ */
+function BudgetRing({ pool: p, tone }: { pool: Pool; tone: string }) {
+  const [hover, setHover] = useState<string | null>(null);
+  const t = useCountUp(900, `${p.id}:${p.spent}:${p.amount}`);
+
+  const size = 140;
+  const sw = 10;
+  const r = (size - sw - 10) / 2;
+  const c = 2 * Math.PI * r;
+  const mid = size / 2;
+
+  const over = p.amount > 0 && p.spent > p.amount;
+  /** What one whole turn of the ring stands for: the ceiling, or — past it — the spending. */
+  const whole = (over ? p.spent : p.amount) || 1;
+
+  const parts = p.members.filter((m) => m.spent > 0);
+  const gap = parts.length > 1 ? 2.5 : 0;
+  let run = 0;
+  const arcs = parts.map((m) => {
+    const share = Math.min(1, m.spent / whole) * c;
+    const arc = { m, len: Math.max(share - gap, 1) * t, offset: -run * t };
+    run += share;
+    return arc;
+  });
+
+  /** How far past the ceiling, as a fraction of it, capped at one more turn. */
+  const pastLen = over ? Math.min(1, (p.spent - p.amount) / p.amount) * c * t : 0;
+
+  const active = parts.find((m) => m.id === hover) ?? null;
+  const pct = Math.round(p.share * 100 * t);
+
+  return (
+    <div style={{ marginTop: 13, display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ position: 'relative', width: size, height: size, flex: `0 0 ${size}px` }}
+           onMouseLeave={() => setHover(null)}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
+             aria-label={`${Math.round(p.share * 100)} per cent of ${p.name} spent${
+               over ? `, ${money(p.spent - p.amount, p.currency as Currency)} past the ceiling` : ''}`}>
+          <circle cx={mid} cy={mid} r={r} fill="none" stroke="var(--hairline)" strokeWidth={sw} />
+          <g transform={`rotate(-90 ${mid} ${mid})`} fill="none">
+            {arcs.map(({ m, len, offset }) => (
+              <circle key={m.id} cx={mid} cy={mid} r={r} stroke={m.color}
+                      strokeWidth={hover === m.id ? sw + 5 : sw} strokeLinecap="butt"
+                      strokeDasharray={`${len} ${c - len}`} strokeDashoffset={offset}
+                      opacity={hover == null || hover === m.id ? 1 : 0.3}
+                      onMouseEnter={() => setHover(m.id)}
+                      style={{ transition: 'stroke-width 150ms var(--ease), opacity 150ms var(--ease)' }} />
+            ))}
+            {/* past the ceiling: a rule of its own, outside the track it has run out of */}
+            {pastLen > 0 && (
+              <circle cx={mid} cy={mid} r={r + sw / 2 + 3.5} stroke="var(--negative)" strokeWidth="3"
+                      strokeLinecap="round" fill="none"
+                      strokeDasharray={`${pastLen} ${2 * Math.PI * (r + sw / 2 + 3.5)}`} />
+            )}
+          </g>
+        </svg>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center', gap: 1,
+                      pointerEvents: 'none', textAlign: 'center', padding: sw + 12 }}>
+          {active ? (
+            <>
+              <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>{active.name}</span>
+              <span className="mono" style={{ fontSize: 14, fontWeight: 500, color: active.color }}>
+                {money(active.spent, p.currency as Currency)}
+              </span>
+              <span className="mono" style={{ fontSize: 10.5, color: 'var(--muted)' }}>
+                {p.amount > 0 ? `${Math.round((active.spent / p.amount) * 100)}% of it` : '—'}
+              </span>
+            </>
+          ) : (
+            <>
+              <Mark mark={p.icon ?? undefined} size={15} color={p.color} fallback="expenses" />
+              <span className="mono public" style={{ fontSize: 22, fontWeight: 500,
+                                                     letterSpacing: '-0.02em', marginTop: 2, color: tone }}>
+                {pct}%
+              </span>
+              <span style={{ fontSize: 9.5, letterSpacing: '0.07em', textTransform: 'uppercase',
+                             color: 'var(--faint)' }}>
+                spent
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* The figures do not stretch: a row whose label and amount sit half a card apart is
+          two facts, not one line. */}
+      <div style={{ flex: '0 1 250px', minWidth: 190, display: 'grid', gap: 8 }}>
+        <RingFigure label="The ceiling" value={money(p.amount, p.currency as Currency)} />
+        <RingFigure label="Spent" value={money(p.spent, p.currency as Currency)} color={tone} />
+        <RingFigure label={p.remaining >= 0 ? 'Left' : 'Over it'}
+                    value={money(Math.abs(p.remaining), p.currency as Currency)}
+                    color={p.remaining >= 0 ? undefined : 'var(--negative)'} />
+        <span style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.6 }}>
+          It is called close at {Math.round(p.warnAt * 100)}%.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** One figure beside the ring: what it is, and how much of it. */
+function RingFigure({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 12 }}>
+      <span style={{ flex: 1, color: 'var(--muted)' }}>{label}</span>
+      <span className="mono private" style={{ fontSize: 13, fontWeight: 500, color: color ?? 'var(--ink)' }}>
+        {value}
+      </span>
+    </span>
+  );
+}
+
 /** Adding one. The same fields, opened from a button rather than from a row. */
 function AddPool({ cats, currencies, run, onDone }: {
   cats: ReturnType<typeof useApp>['data']['categories'];
@@ -391,7 +534,7 @@ function AddPool({ cats, currencies, run, onDone }: {
       <button className="btn add sm" style={{ marginTop: 16 }}
         onClick={() => setDraft({ name: '', amount: 0, currency: 'EGP', period: 'monthly',
                                   warnAt: 0.8, members: [] })}>
-        <Icon name="plus" size={14} /> Set a ceiling
+        <Icon name="plus" size={14} /> Add a budget pool
       </button>
     );
   }

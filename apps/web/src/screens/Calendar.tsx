@@ -170,8 +170,8 @@ export function Calendar() {
             Download the file instead
           </a>
           <div style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.6 }}>
-            The address is <span className="mono" style={{ wordBreak: 'break-all' }}>{subscribeUrl}</span>.
-            If this ledger asks for a key, add <span className="mono">?key=…</span> to it — a calendar
+            The address is <span className="mono public" style={{ wordBreak: 'break-all' }}>{subscribeUrl}</span>.
+            If this ledger asks for a key, add <span className="mono public">?key=…</span> to it — a calendar
             application cannot send a header for you.
           </div>
           <div style={{ height: 1, background: 'var(--hairline)' }} />
@@ -209,7 +209,7 @@ export function Calendar() {
                     <span style={{ fontSize: 12, flex: 1, minWidth: 0, overflow: 'hidden',
                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                    color: off || empty ? 'var(--faint)' : 'var(--ink)' }}>{l.label}</span>
-                    <span className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>{l.count}</span>
+                    <span className="mono public" style={{ fontSize: 11, color: 'var(--faint)' }}>{l.count}</span>
                   </button>
                   {!empty && (
                     <button className="btn quiet" style={{ padding: '4px 7px', fontSize: 10 }}
@@ -319,7 +319,7 @@ export function Calendar() {
                       opacity: outside ? 0.45 : 1,
                     }}>
                     <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
-                      <span className="mono" style={{ fontSize: 13, fontWeight: isToday ? 700 : 500 }}>
+                      <span className="mono public" style={{ fontSize: 13, fontWeight: isToday ? 700 : 500 }}>
                         {d.getDate()}
                       </span>
                     </span>
@@ -419,7 +419,7 @@ export function Calendar() {
                     startEdit(x.id);
                   }}>
                   <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                    <span className="mono" style={{ fontSize: 12 }}>
+                    <span className="mono public" style={{ fontSize: 12 }}>
                       {new Date(`${x.date}T12:00:00`).toLocaleDateString('en-GB',
                         { day: 'numeric', month: 'short', year: 'numeric' })}
                     </span>
@@ -498,7 +498,7 @@ function EventRow({ e, dm, showDate, onEdit, onDone, onRemove }: {
       } : undefined}>
       {showDate && (
         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-          <span className="mono" style={{ fontSize: 12 }}>
+          <span className="mono public" style={{ fontSize: 12 }}>
             {new Date(`${e.date}T12:00:00`).toLocaleDateString('en-GB',
               { day: 'numeric', month: 'short', year: 'numeric' })}
           </span>

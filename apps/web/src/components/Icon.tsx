@@ -142,7 +142,7 @@ export const ICON_FAMILY: Record<string, IconName[]> = {
   spending: ['plane', 'beach', 'groceries', 'restaurant', 'health', 'fuel', 'gift',
              'education', 'phone', 'person', 'tools', 'shirt', 'pet', 'ticket', 'expenses'],
   income: ['income', 'salary', 'briefcase', 'person', 'gift'],
-  giving: ['hands', 'charity', 'gift', 'person', 'health', 'education', 'groceries', 'building'],
+  giving: ['hands', 'causes', 'charity', 'gift', 'person', 'health', 'education', 'groceries', 'building'],
 };
 
 export const VIEW_TONE: Record<string, { icon: IconName; color: string }> = {

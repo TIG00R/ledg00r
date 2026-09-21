@@ -298,7 +298,7 @@ function Reminders() {
                 justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--hairline)',
               }}>
                 <Icon name={r.subject === 'zakat' ? 'zakat' : r.subject === 'stock' ? 'stocks'
-                          : r.subject === 'sadaqah' ? 'charity' : 'building'} size={15}
+                          : r.subject === 'sadaqah' ? 'hands' : 'building'} size={15}
                       color={r.enabled ? 'var(--accent)' : 'var(--faint)'} />
               </span>
               <div>

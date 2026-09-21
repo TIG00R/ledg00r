@@ -4,7 +4,16 @@ import { nextInstallment } from './accrual.js';
 import { nextOccurrence, isRunning, type RecurringTemplate } from './recurring.js';
 import { zakatDates, type ZakatSettings } from './zakat.js';
 
-export type ReminderSubject = 'installment' | 'zakat' | 'sadaqah' | 'stock' | 'income' | 'recurring' | 'budget';
+/**
+ * What an upcoming item is about.
+ *
+ * `budget` and `note` are the two that no `Reminder` row ever carries: a ceiling warns
+ * because of where its spending stands, and a notebook note warns because of a date written
+ * on the note itself. Both are still upcoming items — they belong in the same panel, sorted
+ * against the same horizon — so they are kinds here without being subjects anybody sets.
+ */
+export type ReminderSubject =
+  | 'installment' | 'zakat' | 'sadaqah' | 'stock' | 'income' | 'recurring' | 'budget' | 'note';
 
 export interface Reminder {
   id: string;

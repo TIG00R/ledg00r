@@ -86,8 +86,8 @@ first), or cannot be undone from here.
 | `ledger` | Institutions, accounts, movements. `accounts.list`, `movements.list`, `ledger.search`, `movement.transfer`, `movement.amend`, `movement.undo`, `account.correctBalance`. |
 | `spending` | Expenses and the destinations they are recorded against. `expense.record`, `expense.list`, `expense.statistics`, `expense.correct`, `destinations.list`, `destination.update`. An expense may leave the account out: the destination's usual account answers for it, and the ledger's own default after that. |
 | `planning` | Income, standing charges, reminders, the calendar, what is coming. `income.record`, `recurring.add`, `upcoming.list`, `calendar.events`, `reminder.set`. |
-| `holdings` | Assets, property plans, metals, shares. `assets.list`, `installments.list`, `installments.due`, `installment.pay`, `plan.upsert`, `metal.buy`, `metal.sell`, `order.log`, `positions.list`, `property.expense`. |
-| `giving` | What has been given away, and zakat. `giving.record`, `giving.list`, `zakat.assessment`, `zakat.configure`. |
+| `holdings` | Assets, property plans, metals, shares, the share notebook, and the exchanges a book is kept on. `assets.list`, `installments.list`, `installments.due`, `installment.pay`, `plan.upsert`, `metal.buy`, `metal.sell`, `order.log`, `positions.list`, `property.expense`, `exchange.list`, `exchange.add`, `exchange.rename`, `exchange.archive`, `exchange.remove`, `stock.notes.list`, `stock.note.add`, `stock.note.edit`, `stock.note.remove`. |
+| `giving` | What has been given away, and zakat. `giving.record`, `giving.list`, `giving.correct`, `zakat.assessment`, `zakat.configure`. Giving may name no account at all, for what was given before this ledger existed. |
 | `budgets` | Ceilings on spending, each over a period and covering one destination or a pool of them. `budgets.list`, `budget.add`, `budget.update`, `budget.remove`, `budget.series`, `budget.check`. |
 | `actions` | Everything the ledger was asked to do, whether or not it moved money. `actions.list`, `actions.summary`, `action.read`. |
 | `debts` | Money lent and money borrowed. `debts.list`, `debts.summary`, `debt.record`, `debt.settle`, `debt.writeOff`. |
@@ -192,6 +192,13 @@ and usually a `remedy` saying what would make the same call succeed. The codes a
   otherwise refuse and tell you to archive. `debt.remove` reverses everything a debt moved and
   takes the record with it — which is not `debt.writeOff`, where the loan was real and you have
   stopped expecting it back.
+- `exchange.remove` is the one deletion that takes history with it, so it is the one to be
+  most careful with. It erases a second exchange, every order placed on it, both of its
+  wallets and **every movement those wallets were part of** — including the transfers that
+  funded it, so an account that paid money into that broker afterwards reads as never having
+  paid it. It takes `confirm: true`, and it refuses on the first exchange, which every
+  capability that means "the book" without naming one defaults to. `exchange.archive` is the
+  answer nearly every time: the book stays readable and only leaves the pickers.
 
 **Clearing and destroying are not corrections, and are never your idea.** `records.clear` empties
 one log, `records.clearAll` empties every log, and `data.destroy` empties every table in the
@@ -349,12 +356,41 @@ warning saying so.
 The note is where the reasoning goes. Ask for it once, briefly, when none was given: *"anything
 to note about why?"* — and record without it if the answer is no.
 
+### A note in the share notebook
+
+`stock.note.add` — `ticker`, `note`, and optionally `name`, `logo`, `date`, `remindOn`,
+`remindEnabled`.
+
+The notebook is not the order log. Nothing here moves money or changes a position: it is the
+reasoning — why a share was passed over, what the thesis was, what has since aged badly. A
+ticker the notebook has never seen is added to its index by writing about it, so a share can
+be followed for years before it is ever bought; `name` and `logo` are how the company behind
+a new ticker is named and marked, and they belong to the ticker rather than to the note, so
+they only need giving once.
+
+`remindOn` is a second date, and it is not the note's own date. The note's `date` is the day
+it is about, which has usually passed; `remindOn` is a day it should be raised again —
+results in February, a lock-up that ends in March — and a note with one turns up in
+`upcoming.list` on that day, as kind `note`. `remindEnabled` switches that off without
+throwing the date away, which is the difference between "not now" and "never". Asking for a
+reminder with no date is refused rather than quietly saved. On `stock.note.edit`, passing
+`remindOn: null` takes the reminder off altogether; leaving the field out keeps what the
+note had.
+
 ### A charity receipt
 
 `giving.record` — `accountId`, `amount`, `causeId`, `isZakat`, `date`, `note`.
 
 The cause is a destination in the `charity` domain: read `destinations.list { domain:
 'charity' }` rather than offering the expense ones.
+
+`accountId` may be left out. A record with no account is giving this ledger never saw the
+money leave — discharged before the ledger existed, or out of cash it has no account for. It
+moves nothing and changes no balance, exactly like an opening figure, and it still counts
+against the zakat year it names. Do not reach for it to avoid asking which account paid:
+offer it only when the owner says the money did not come out of anything here. `giving.correct`
+takes `accountId: null` to strip a source off a record that had one, undoing the movement it
+made, and naming an account on a sourceless record gives it one.
 
 **Always ask whether it was zakat or sadaqah.** The distinction is the whole point of the
 record: zakat counts against an obligation and sadaqah is given freely and owed by nobody.

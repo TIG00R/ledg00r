@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { Select, type Option } from './Select';
 import { DateField } from './DateField';
@@ -187,7 +187,11 @@ export interface RecordTableProps<T> {
    * a row and belongs where that one is reachable. `log` is the name `records.clear` knows it
    * by; the count comes from the rows the table was given.
    */
-  clear?: { log: string; what: string; onDone?: () => void };
+  clear?: {
+    log: string; what: string; onDone?: () => void;
+    /** whether these records stand on movements, so emptying the log asks which is meant */
+    movements?: boolean;
+  };
   /**
    * A line of its own under the row.
    *
@@ -276,8 +280,21 @@ export function RecordTable<T>({
    * and the browser is free to give a column more when its contents ask for more. What it
    * may never do is give it less than it needs and hide the difference.
    */
-  const WIDTH: Partial<Record<FilterKind, number>> = {
+  const ROOMY: Partial<Record<FilterKind, number>> = {
     date: 138, amount: 108, money: 176, pick: 112, none: 64,
+  };
+  /**
+   * The same columns, asked to make do.
+   *
+   * Every width above is what a column wants, not what it needs, and a table that insists on
+   * what it wants in a window that has not got it does the one thing nobody asked for:
+   * scrolls sideways while the panel around it sits in its own space. These are the widths
+   * at which a date, an amount and a picker are still whole — tighter on the padding and on
+   * the room a currency picker keeps beside a number, and nothing is cut. They are used only
+   * when the roomy set does not fit the space the table was actually given.
+   */
+  const TIGHT: Partial<Record<FilterKind, number>> = {
+    date: 112, amount: 86, money: 128, pick: 92, none: 52,
   };
   /**
    * A column of words has no natural width; this is the floor below which it stops being
@@ -285,8 +302,8 @@ export function RecordTable<T>({
    * and stating it lower only decides when the table starts to scroll instead of crushing
    * every column beside it.
    */
-  const WORDS = 144;
-  const widthOf = (c: Column<T>) => c.width ?? (WIDTH[kindOf(c)] ? `${WIDTH[kindOf(c)]}px` : undefined);
+  const ROOMY_WORDS = 144;
+  const TIGHT_WORDS = 104;
   /**
    * Which columns hold a sentence rather than a value.
    *
@@ -309,8 +326,65 @@ export function RecordTable<T>({
     const n = w ? parseInt(w, 10) : NaN;
     return Number.isFinite(n) ? n : null;
   };
-  const floor = columns.reduce((n, c) => n + (px(widthOf(c)) ?? WORDS), 0)
-    + (trailing ? px(trailingWidth) ?? 0 : 0) + (actions ? actionsWidth : 0);
+  /**
+   * A width a screen stated for itself, squeezed.
+   *
+   * Most of the widths in this file are the table's own, and the tight set answers for
+   * those — but a log that knows its own columns states them, and on those screens the
+   * tight set has nothing to shrink. Twelve per cent off, and never below the width of a
+   * short value: enough to close the gap on the two widest logs, small enough that a
+   * column which was holding its contents at rest still holds them.
+   */
+  const squeeze = (n: number) => Math.max(96, Math.round(n * 0.88));
+  const statedOf = (c: Column<T>, tighten: boolean) => {
+    const n = px(c.width);
+    return n == null ? null : tighten ? squeeze(n) : n;
+  };
+  const floorWith = (set: Partial<Record<FilterKind, number>>, words: number, tighten: boolean) => {
+    const trail = trailing ? px(trailingWidth) ?? 0 : 0;
+    return columns.reduce((n, c) => n + (statedOf(c, tighten) ?? set[kindOf(c)] ?? words), 0)
+      + (trail && tighten ? squeeze(trail) : trail)
+      + (actions ? actionsWidth : 0);
+  };
+
+  /**
+   * Which of the two width sets this table is drawn with.
+   *
+   * The window narrowing does not tell you whether a particular table fits: the same window
+   * holds a four-column log comfortably and an eight-column one not at all, and a screen
+   * with a panel beside the work gives its tables three hundred pixels less than a screen
+   * without one. So the table asks the only thing that actually answers the question — how
+   * wide is the box I was given — and takes the tighter widths when the roomy ones would
+   * have sent it sideways.
+   *
+   * `room` is the scrolling box's own width, which is set by the panel around it and never
+   * by the table inside it, so this settles in one pass and cannot oscillate: the decision
+   * is made against `ROOMY` whichever set is currently in use.
+   */
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(0);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setRoom(el.clientWidth));
+    ro.observe(el);
+    setRoom(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const roomy = floorWith(ROOMY, ROOMY_WORDS, false);
+  const tight = room > 0 && roomy > room;
+  const WIDTH = tight ? TIGHT : ROOMY;
+  const WORDS = tight ? TIGHT_WORDS : ROOMY_WORDS;
+  const widthOf = (c: Column<T>) => {
+    const stated = statedOf(c, tight);
+    if (stated != null) return `${stated}px`;
+    return WIDTH[kindOf(c)] ? `${WIDTH[kindOf(c)]}px` : undefined;
+  };
+  const trailWidth = (() => {
+    const n = px(trailingWidth);
+    return n != null && tight ? `${squeeze(n)}px` : trailingWidth;
+  })();
+  const floor = tight ? floorWith(TIGHT, TIGHT_WORDS, true) : roomy;
 
   const shown = useMemo(() => {
     const kept = rows.filter((row) => columns.every((c) => {
@@ -364,13 +438,13 @@ export function RecordTable<T>({
           {clear && clearable && (
             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <ClearAll log={clear.log} what={clear.what} count={rows.length}
-                        onDone={clear.onDone} />
+                        movements={clear.movements} onDone={clear.onDone} />
             </span>
           )}
         </div>
       )}
 
-      <div className="rt-wrap" style={{ overflowX: 'auto' }}>
+      <div className="rt-wrap" ref={wrapRef} style={{ overflowX: 'auto' }}>
         {/*
           * Automatic layout, not fixed.
           *
@@ -384,10 +458,10 @@ export function RecordTable<T>({
           <colgroup>
             {columns.map((c) => (
               <col key={c.key}
-                   style={{ width: c.width
-                     ?? (wraps(c) ? `${Math.floor(100 / wrapping)}%` : widthOf(c)) }} />
+                   style={{ width: statedOf(c, tight) != null ? widthOf(c)
+                     : wraps(c) ? `${Math.floor(100 / wrapping)}%` : widthOf(c) }} />
             ))}
-            {trailing && <col style={{ width: trailingWidth }} />}
+            {trailing && <col style={{ width: trailWidth }} />}
             {actions && <col style={{ width: `${actionsWidth}px` }} />}
           </colgroup>
           <thead>
@@ -402,7 +476,7 @@ export function RecordTable<T>({
                          starve a column that wraps in favour of ones that cannot, which left
                          a note four characters wide beside six comfortable columns. */
                       style={{ textAlign: c.align ?? 'left', verticalAlign: 'top',
-                               minWidth: c.width ?? (wraps(c) ? `${WORDS}px` : widthOf(c)) }}>
+                               minWidth: widthOf(c) ?? `${WORDS}px` }}>
                     <button
                       onClick={() => setSort((s) => (s?.key === c.key
                         ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
@@ -549,10 +623,14 @@ export function RecordTable<T>({
                         ? <span className="rt-field">{c.field(editDraft, (patch) => setEditDraft({ ...editDraft, ...patch }), row)}</span>
                         : (
                           /* A column of dates wears a calendar, so a date is recognisable as
-                             one at a glance rather than by its shape. */
+                             one at a glance rather than by its shape.
+
+                             It is also `public`: privacy hides what a row is worth, not when
+                             it happened, and a table of blurred dates is a table nobody can
+                             find anything in. */
                           <span className={[
                             'rt-cell',
-                            kindOf(c) === 'date' ? 'rt-date' : '',
+                            kindOf(c) === 'date' ? 'rt-date public' : '',
                             // a sentence wraps; a value is read whole, on one line
                             wraps(c) ? 'rt-cell-wrap' : '',
                           ].filter(Boolean).join(' ')}>
@@ -652,11 +730,14 @@ export function RecordTable<T>({
 /**
  * The line under a row being added, corrected, duplicated or removed.
  *
- * Save (or Add) and Cancel come first, in that order, the same pair everywhere in the
- * application. Duplicate and Remove — where the row is open enough to offer them — sit apart
- * from that pair rather than beside it, pushed to the far end of the same line: a bin never
- * shares a corner with Save, and a stray click aimed at finishing an edit does not land on
- * the one action that cannot be undone.
+ * Every button an open row has sits together at the left, in one order everywhere in the
+ * application: Save (or Add), then Duplicate, then Remove, and Cancel last. Remove used to
+ * be pushed to the far end of the line, away from Save, on the grounds that a bin should not
+ * share a corner with it — which bought that safety by putting the row's own buttons in two
+ * places and leaving a gap of nothing between them on a narrow window. The bin is guarded by
+ * the question it asks over the page, not by how far the mouse has to travel, so it stands in
+ * the line with the rest. Cancel is last because it is the way out, and the way out is the
+ * far end of a row of choices.
  *
  * `confirm` is absent for a row that is open only for its bin or its duplicate, not for
  * correction — a movement with more than one leg, say — and `note` says why in its place.
@@ -668,7 +749,7 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
   busy: boolean;
   /** why this row has no Save to press, shown in its place */
   note?: string;
-  /** offered once the row is open, subordinate to Save and Cancel */
+  /** offered once the row is open, in the line between Save and Cancel */
   duplicate?: { onClick?: () => void; blocked?: string };
   remove?: {
     onClick?: () => void; blocked?: string;
@@ -689,39 +770,36 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
           {busy ? 'Saving…' : confirm.label}
         </button>
       ) : note && <span style={{ fontSize: 12, color: 'var(--faint)' }}>{note}</span>}
+
+      {duplicate && (duplicate.onClick ? (
+        <button className="btn quiet sm" onClick={duplicate.onClick}
+                aria-label={`Duplicate ${named}`} title="Duplicate">
+          <Icon name="duplicate" size={13} motion="none" /> Duplicate
+        </button>
+      ) : (
+        <span title={duplicate.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                                   padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
+          <Icon name="duplicate" size={13} motion="none" /> Duplicate
+        </span>
+      ))}
+      {remove && (remove.onClick ? (
+        <button className="btn quiet sm" onClick={() => setAsking(true)}
+                aria-label={`Remove ${named}`} title="Remove" style={{ color: 'var(--negative)' }}>
+          <Icon name="trash" size={13} motion="none" /> Remove
+        </button>
+      ) : (
+        <span title={remove.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                                padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
+          <Icon name="trash" size={13} motion="none" /> Remove
+        </span>
+      ))}
+
       <button className="btn ghost sm" onClick={cancel}>
         <Icon name="close" size={13} motion="none" /> Cancel
       </button>
 
-      {(duplicate || remove) && (
-        <span style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          {duplicate && (duplicate.onClick ? (
-            <button className="btn quiet sm" onClick={duplicate.onClick}
-                    aria-label={`Duplicate ${named}`} title="Duplicate">
-              <Icon name="duplicate" size={13} motion="none" /> Duplicate
-            </button>
-          ) : (
-            <span title={duplicate.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
-                                                       padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
-              <Icon name="duplicate" size={13} motion="none" /> Duplicate
-            </span>
-          ))}
-          {remove && (remove.onClick ? (
-            <button className="btn quiet sm" onClick={() => setAsking(true)}
-                    aria-label={`Remove ${named}`} title="Remove" style={{ color: 'var(--negative)' }}>
-              <Icon name="trash" size={13} motion="none" /> Remove
-            </button>
-          ) : (
-            <span title={remove.blocked} style={{ display: 'flex', alignItems: 'center', gap: 6,
-                                                    padding: '0 8px', fontSize: 12, color: 'var(--disabled)' }}>
-              <Icon name="trash" size={13} motion="none" /> Remove
-            </span>
-          ))}
-        </span>
-      )}
-
-      {/* the question is asked over the page, not on this line: a bin beside Save and Cancel
-          is answered by aim rather than by reading */}
+      {/* the question is asked over the page, not on this line: what stops a bin being
+          pressed by accident is having to read and answer it, not where the button stands */}
       {remove && (
         <ConfirmModal open={asking} onClose={() => setAsking(false)}
           title={`Remove ${named}?`}
@@ -729,11 +807,24 @@ function Buttons({ confirm, cancel, busy, note, duplicate, remove, what }: {
             ? (remove.keep.body
               ?? 'Removing it puts the money back where it came from. If the money really did move and only this record is wrong, take the record off and leave the movement standing.')
             : 'This cannot be undone from here.'}
-          confirmLabel={remove.keep ? 'Remove and put the money back' : 'Remove'}
-          onConfirm={remove.onClick}
-          alternative={remove.keep
-            ? { label: remove.keep.label, onPick: () => { setAsking(false); remove.keep!.onClick(); } }
-            : undefined} />
+          confirmLabel="Delete"
+          /*
+           * One button, and above it the answer it needs. A record standing on a movement has
+           * two honest removals and no default between them — which is why neither is the
+           * button's own label any more, and why the button does nothing until the question
+           * under it has been answered.
+           */
+          choiceLabel={remove.keep ? 'Choose what happens to the money' : undefined}
+          choices={remove.keep
+            ? [{ value: 'keep', label: 'Only delete the record',
+                 hint: 'The movement stands and no balance changes.' },
+               { value: 'reverse', label: 'Delete and reverse the transaction',
+                 hint: 'The money goes back where it came from.' }]
+            : undefined}
+          onConfirm={(choice) => {
+            if (remove.keep && choice === 'keep') { remove.keep.onClick(); return; }
+            remove.onClick?.();
+          }} />
       )}
     </span>
   );

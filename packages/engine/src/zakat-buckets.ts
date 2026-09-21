@@ -183,25 +183,6 @@ export function bucketState(closedOn: string | null, confirmed: boolean): Bucket
   return closedOn ? 'draft' : 'running';
 }
 
-/**
- * The correction an owner made, written as a line of its own.
- *
- * Confirming a year with a different figure is allowed — the app knows what it recorded, the
- * owner knows what they held. But replacing the total silently would leave a list that does
- * not add up to its own answer, so the difference is put on the list where it can be seen.
- */
-export function correctionEntry(computed: number, corrected: number): ZakatEntry | null {
-  const diff = Math.round((corrected - computed) * 100) / 100;
-  if (diff === 0) return null;
-  return {
-    id: 'correction',
-    label: 'Your correction',
-    detail: 'the figure you confirmed, against the one worked out here',
-    sign: diff > 0 ? 1 : -1,
-    amount: Math.abs(diff),
-  };
-}
-
 export interface ZakatTotals {
   /** confirmed years only: what is actually owed, what is paid, what is left */
   base: number;

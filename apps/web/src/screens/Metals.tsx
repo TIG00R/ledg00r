@@ -13,7 +13,7 @@ import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { ActionButton, useLive } from '../Live';
 import { ledger } from '../api';
 import {
-  OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, RowLine, Problems, Balance,
+  OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, realAccountId, RowLine, Problems, Balance,
   QuantityBalance, defaultAccountId,
 } from '../components/Operations';
 import { accountOption } from '../accounts';
@@ -134,7 +134,7 @@ function Body() {
           ]} />
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>
           {perGram
-            ? <>valued at <span className="mono" style={{ color: tone }}>{money(perGram, 'EGP')}</span> a gram</>
+            ? <>valued at <span className="mono public" style={{ color: tone }}>{money(perGram, 'EGP')}</span> a gram</>
             : 'no price recorded for this metal yet'}
         </span>
       </div>
@@ -198,14 +198,14 @@ function Body() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <Chip tone={line?.included ? 'good' : undefined}>
-                      {line ? `${holdingG.toFixed(1)} g held` : 'nothing held'}
+                      <span className="figure">{line ? `${holdingG.toFixed(1)} g held` : 'nothing held'}</span>
                     </Chip>
                     <span className="mono" style={{ fontSize: 13 }}>
                       {line?.included ? dm(line.counted) : 'counts nothing yet'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <Chip>{wornG.toFixed(1)} g worn</Chip>
+                    <Chip><span className="figure">{wornG.toFixed(1)} g worn</span></Chip>
                     <span style={{ fontSize: 12, color: 'var(--faint)' }}>outside zakat</span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--faint)', lineHeight: 1.55 }}>
@@ -299,7 +299,7 @@ function Body() {
               // weight multiplies it — buying it is spent, selling it is taken off — so the
               // preview while adding or correcting a row has to run the same formula the
               // capability does, or the figure shown here would disagree with what gets saved.
-              field: (d, set, row) => {
+              field: (d, _set, row) => {
                 const direction = row?.direction ?? d.direction ?? 'buy';
                 const grams = Number(d.grams) || 0;
                 const price = Number(d.pricePerGram) || 0;
@@ -424,6 +424,7 @@ function Body() {
                     body: 'Removing it puts the weight and the money back where they came from. If the metal really was bought or sold and only this record is wrong, take the record off and leave what it moved standing.' },
           }}
           clear={{ log: 'metals',
+                   movements: true,
                    what: 'every gold and silver lot, and the movements behind them',
                    onDone: load }}
         />
@@ -487,7 +488,17 @@ function MetalTrade({ metal, perGram, held, onDone }: {
   // Which account this actually means, nothing chosen yet defaults to — worked out fresh on
   // every render rather than baked into `trade`'s initial state, since that state can freeze
   // at whatever the ledger held (often nothing at all) the instant this screen first mounted.
-  const accountIdOrDefault = trade.accountId || defaultAccountId(data, data.settings.burnAccountId);
+  /*
+   * Which account this actually means. The sentinel is not one.
+   *
+   * Only a buy offers "Initial payment", and a buy that chose it never reaches here — it is
+   * the starting-weight panel above. A sale does not offer it at all, so the sentinel arrives
+   * here exactly one way: it was chosen on the buy side and the side was then switched. The
+   * picker below reads this same value, so stripping it here keeps what is shown and what is
+   * sent in agreement rather than sending a sentinel the ledger refuses on a regex.
+   */
+  const accountIdOrDefault = realAccountId(trade.accountId)
+    ?? defaultAccountId(data, data.settings.burnAccountId);
 
   // The account named is where the money comes from on a buy, and where it lands on a sale.
   const acct = accounts.find((n) => n.id === accountIdOrDefault);

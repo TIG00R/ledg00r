@@ -268,7 +268,7 @@ function Connect() {
                 <Icon name="download" size={14} /> Download SKILL.md
               </a>
               <span style={{ fontSize: 12, color: 'var(--faint)' }}>
-                for Claude Code, <span className="mono">.claude/skills/ledg00r/SKILL.md</span>
+                for Claude Code, <span className="mono public">.claude/skills/ledg00r/SKILL.md</span>
               </span>
             </div>
           </Step>
@@ -339,7 +339,7 @@ function Provider() {
                 background: on ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))' : 'var(--surface)',
               }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>{p.model}</div>
+              <div className="mono public" style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>{p.model}</div>
               <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>{p.docs}</div>
             </button>
           );
@@ -377,7 +377,7 @@ function Provider() {
       {status.provider === 'local' && (
         <p style={{ margin: '20px 0 0', fontSize: 12, color: 'var(--faint)', lineHeight: 1.6 }}>
           A local server usually speaks the OpenAI shape on its own port — Ollama at
-          <span className="mono"> :11434</span>, LM Studio at <span className="mono">:1234</span>.
+          <span className="mono public"> :11434</span>, LM Studio at <span className="mono public">:1234</span>.
           Nothing leaves your machine, which for a ledger is the point.
         </p>
       )}

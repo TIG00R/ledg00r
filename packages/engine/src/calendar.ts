@@ -22,7 +22,9 @@ export type CalendarKind =
   | 'installment' | 'paid' | 'zakat' | 'reminder'
   | 'sadaqah' | 'income' | 'recurring' | 'stock' | 'own'
   // what has already happened, which is half of what a calendar is for
-  | 'expense' | 'giving' | 'metal' | 'order' | 'transfer' | 'debt';
+  | 'expense' | 'giving' | 'metal' | 'order' | 'transfer' | 'debt'
+  // a day the notebook asked for itself, which is the one dated thing nothing else owns
+  | 'note';
 
 /**
  * A colour per kind, so a month reads at a glance.
@@ -46,6 +48,7 @@ export const CALENDAR_COLORS: Record<CalendarKind, string> = {
   order: '#4E7FA8',
   transfer: '#7C6FA8',
   debt: '#8A6552',
+  note: '#8C6F8F',
 };
 
 export const CALENDAR_LABELS: Record<CalendarKind, string> = {
@@ -64,6 +67,7 @@ export const CALENDAR_LABELS: Record<CalendarKind, string> = {
   order: 'Order',
   transfer: 'Moved between your own',
   debt: 'Debt',
+  note: 'A note to read again',
 };
 
 /**
@@ -90,6 +94,7 @@ export const CALENDAR_ICONS: Record<CalendarKind, string> = {
   order: 'chartline',
   transfer: 'flow',
   debt: 'debts',
+  note: 'ledger',
 };
 
 export interface CalendarEvent {

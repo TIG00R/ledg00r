@@ -251,7 +251,7 @@ function Body() {
                     {money(d.outstanding, d.currency, d.currency === 'EGP' ? 0 : 2)}
                   </span>
                   {d.repaid > 0.005 && !d.settled && (
-                    <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                    <span className="private" style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
                       {money(d.repaid, d.currency, 0)} back
                     </span>
                   )}
@@ -372,11 +372,20 @@ function Body() {
             */
           remove={{
             capability: 'debt.remove',
+            /*
+             * The second answer keeps the account the debt was held in, archived. It is one
+             * end of every movement the debt made, and those movements are the thing being
+             * kept — so it stays where the log can name it and leaves the pickers instead.
+             */
+            keep: { label: 'Only delete the record',
+                    build: (d) => ({ debtId: d.id, reverse: false }),
+                    body: 'Removing it reverses everything this debt moved — the money it lent out or brought in, and every repayment against it. If all of that really happened and only this record is wrong, take the record off and leave the movements standing.' },
             build: (d) => ({ debtId: d.id }),
             what: (d) => (isLent ? `the loan to ${d.counterparty}` : `what you owe ${d.counterparty}`),
             onDone: load,
           }}
           clear={{ log: 'debts',
+                   movements: true,
                    what: 'everything lent out and everything owed, with the movements behind them',
                    onDone: load }}
         />

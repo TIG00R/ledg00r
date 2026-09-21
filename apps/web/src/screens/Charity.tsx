@@ -10,8 +10,7 @@ import { ActionButton, useLive } from '../Live';
 import { Manager } from '../components/Manager';
 import { Icon } from '../components/Icon';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
-import { OperationPanel } from '../components/Operations';
-import { accountOption } from '../accounts';
+import { OperationPanel, SourceAccountSelect, realAccountId, defaultAccountId } from '../components/Operations';
 
 /** Sadaqat: giving that is owed to nobody. Money out of a named account, like any other. */
 export function Charity() {
@@ -25,7 +24,7 @@ function Body() {
   const { run } = useLive();
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
   const [draft, setDraft] = useState({
-    accountId: data.settings.burnAccountId, amount: 0,
+    accountId: defaultAccountId(data, data.settings.burnAccountId), amount: 0,
     causeId: data.categories.find((c) => c.domain === 'charity')?.id ?? '', note: '',
   });
 
@@ -67,11 +66,12 @@ function Body() {
       <OperationPanel title="Give something"
         hint="It leaves a named account on the day you record it, so net worth moves with it.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* The last entry is "Initial payment", the same as every other source picker in
+              the ledger: sadaqat given before this ledger existed, or out of cash it never
+              saw, is a real record and moves no balance. */}
           <Field label="Paid from">
-            <Select ariaLabel="Source account" value={draft.accountId}
-                    onChange={(v) => setDraft({ ...draft, accountId: v })}
-                    options={data.nodes.filter((n) => n.kind === 'cash')
-                      .map((n) => accountOption(data, n))} />
+            <SourceAccountSelect ariaLabel="Source account" value={draft.accountId}
+                                 onChange={(v) => setDraft({ ...draft, accountId: v })} />
           </Field>
           <Field label="Amount">
             <Amount value={draft.amount} ariaLabel="Amount" onChange={(n) => setDraft({ ...draft, amount: n })} />
@@ -91,7 +91,8 @@ function Body() {
             style={{ background: 'var(--sadaqat)', color: 'var(--canvas)' }}
             onDone={(o) => { if (o.ok) setDraft({ ...draft, amount: 0, note: '' }); }}
             input={() => ({
-              accountId: draft.accountId, amount: draft.amount, causeId: draft.causeId,
+              accountId: realAccountId(draft.accountId),
+              amount: draft.amount, causeId: draft.causeId,
               isZakat: false, date: logDate, note: draft.note || undefined,
             })}>
             Record it

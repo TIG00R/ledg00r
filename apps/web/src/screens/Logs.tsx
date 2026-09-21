@@ -131,7 +131,7 @@ function Body() {
                 { key: 'capability', label: 'What', kind: 'pick',
                   value: (a) => a.capability,
                   cell: (a) => (
-                    <span className="mono" style={{ fontSize: 12 }}>{a.capability}</span>
+                    <span className="mono public" style={{ fontSize: 12 }}>{a.capability}</span>
                   ) },
 
                 { key: 'subject', label: 'To what', kind: 'pick',
@@ -155,7 +155,7 @@ function Body() {
                 { key: 'movement', label: 'Movement', kind: 'none', width: '112px',
                   value: (a) => a.movementId ?? '',
                   cell: (a) => (a.movementId
-                    ? <span className="mono" style={{ fontSize: 11, color: 'var(--faint)' }}>{a.movementId}</span>
+                    ? <span className="mono public" style={{ fontSize: 11, color: 'var(--faint)' }}>{a.movementId}</span>
                     : <span style={{ fontSize: 11, color: 'var(--faint)' }}>moved nothing</span>) },
               ]}
             />

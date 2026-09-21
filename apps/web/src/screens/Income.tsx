@@ -160,7 +160,7 @@ function Body() {
           <Stat label="Occasional, this year" value={dm(occasionalEgp)}
                 sub={`${occasionalThisYear.length} payment${occasionalThisYear.length === 1 ? '' : 's'} recorded`} />
           <Stat label="Income accrued since the snapshot" value={dm(values.accrual.income)} sub={`${values.accrual.months.toFixed(2)} months`} />
-          <Stat label="Scheduled income ends" value="30 Jun 2028" sub="21 months of salary left" />
+          <Stat label="Scheduled income ends" value="30 Jun 2028" sub="21 months of salary left" open />
         </Stats>
         <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--hairline)' }}>
           <CurrencySplits label="Scheduled income, by the currency it is paid in"
@@ -480,6 +480,9 @@ function Body() {
           }}
           remove={{
             capability: 'movement.undo',
+            keep: { label: 'Just delete the record',
+                    build: (l) => ({ movementId: l.id, reverse: false }),
+                    body: 'Undoing it writes the opposite movement, so the account gives the money back and the log keeps both halves. If the income never arrived at all, deleting takes the row instead.' },
             build: (l) => ({ movementId: l.id }),
             what: (l) => `${l.source} on ${l.date}`,
             blocked: (l) => (l.id.startsWith('tx-') ? undefined

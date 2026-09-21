@@ -7,6 +7,7 @@ import type { Order as EngineOrder } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, undoMovement, atomically, DryRun, nameOf,
          sourceReading, SOURCE_FIELDS } from './shared.js';
+import { dropRow } from '@ledger/db';
 import { nextSeq } from './spending.js';
 import { readMarket } from '../read.js';
 
@@ -366,6 +367,62 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
       ctx.db.update(t.exchanges).set({ archived: true }).where(eq(t.exchanges.id, exchangeId)).run();
       ctx.db.update(t.nodes).set({ archived: true }).where(inArray(t.nodes.id, wallets)).run();
       return noted(`${row.name} archived — its book stays readable, and it is off the pickers`);
+    },
+  }),
+
+  command({
+    name: 'exchange.remove',
+    context: 'holdings',
+    summary: 'Delete an exchange and everything recorded against it — its orders, its wallets, and the movements those wallets were in. Nothing is kept.',
+    detail: 'This is not exchange.archive. Archiving keeps the book readable and only takes it off the pickers; this erases it. Every order placed on it goes, both of its wallets go, and every movement either wallet was part of is deleted outright — including the transfers that funded it, which means money moved in from a bank account reads as never having left that account. The first exchange cannot be deleted, because every capability that means "the book" without naming one defaults to it. Use archive unless the book was a mistake.',
+    effect: 'irreversible',
+    input: z.object({
+      exchangeId: z.string().min(1),
+      /**
+       * Said out loud, because the summary of what is about to go is the whole decision.
+       *
+       * Every other removal in this ledger takes one thing away. This takes a book and its
+       * history together, so it asks the caller to say so rather than inferring consent from
+       * the name of the capability.
+       */
+      confirm: z.literal(true),
+    }),
+    output: Outcome,
+    handler: async ({ exchangeId }) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.exchanges).where(eq(t.exchanges.id, exchangeId)).get();
+      if (!row) return refusal('not_found', `${exchangeId} is not an exchange in this ledger.`);
+      if (exchangeId === DEFAULT_EXCHANGE_ID) {
+        return refusal('immutable', `${row.name} is the book every other capability defaults to.`,
+                       'Archive it, or delete a second exchange instead.');
+      }
+
+      const wallets = [row.walletNodeId, row.cloudsNodeId];
+      const orders = ctx.db.select().from(t.orders).where(eq(t.orders.exchangeId, exchangeId)).all();
+      // Every movement either wallet was ever part of, whichever side of it they were on.
+      const movements = [...new Set([
+        ...ctx.db.select().from(t.legs).all()
+          .filter((l) => wallets.includes(l.fromNodeId ?? '')
+                      || wallets.includes(l.toNodeId ?? '')
+                      || wallets.includes(l.feeNodeId ?? ''))
+          .map((l) => l.transactionId),
+        ...orders.map((o) => o.movementId).filter((m): m is string => !!m),
+      ])];
+
+      return atomically(ctx, () => {
+        for (const o of orders) dropRow(ctx.db, 'order', o.id);
+        for (const id of movements) {
+          dropRow(ctx.db, 'movement', id);
+          // legs carry ON DELETE CASCADE from their transaction
+          ctx.db.delete(t.legs).where(eq(t.legs.transactionId, id)).run();
+          ctx.db.delete(t.transactions).where(eq(t.transactions.id, id)).run();
+        }
+        ctx.db.delete(t.orders).where(eq(t.orders.exchangeId, exchangeId)).run();
+        ctx.db.delete(t.exchanges).where(eq(t.exchanges.id, exchangeId)).run();
+        ctx.db.delete(t.nodes).where(inArray(t.nodes.id, wallets)).run();
+        return noted(`${row.name} deleted — ${orders.length} order${orders.length === 1 ? '' : 's'}, `
+                   + `${movements.length} movement${movements.length === 1 ? '' : 's'} and both its wallets went with it`);
+      });
     },
   }),
 
@@ -902,6 +959,37 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
             }).run();
           },
         });
+      });
+    },
+  }),
+
+  command({
+    name: 'order.remove',
+    context: 'holdings',
+    summary: 'Remove an order from the book, reversing the movement behind it — or take the record off and leave the cash and the shares where they went.',
+    detail: 'Reversing is the usual answer: the cash comes back to the wallet it left, the position gives up the shares it took, and the log keeps both the order and its reversal, since nothing is erased. Pass reverse false where the trade really did go through and only this record of it is wrong — an order the broker and the ledger both wrote down. The row goes and the balances stand. An order that never executed moved nothing either way, so its record simply goes.',
+    effect: 'irreversible',
+    input: z.object({
+      orderId: z.string(),
+      /** whether the movement behind it is reversed, putting the cash and the shares back */
+      reverse: z.boolean().default(true),
+    }),
+    output: Outcome,
+    handler: async ({ orderId, reverse }) => {
+      const ctx = ctxOf();
+      const row = ctx.db.select().from(t.orders).where(eq(t.orders.id, orderId)).get();
+      if (!row) return refusal('not_found', 'There is no such order.');
+
+      return atomically(ctx, () => {
+        if (reverse) undoMovement(ctx, row.movementId);
+        ctx.db.delete(t.orders).where(eq(t.orders.id, orderId)).run();
+        const what = `${row.side} ${row.shares} ${row.ticker}`;
+        // An order that never executed has no movement under it, so there is no second
+        // answer to give about money: both choices take the row and nothing else.
+        if (!row.movementId) return noted(`${what} taken off the book. It never executed, so nothing moved.`);
+        return noted(reverse
+          ? `${what} removed, and the cash is back in the wallet it left`
+          : `${what} taken off the book. The movement it recorded still stands, so no balance has changed.`);
       });
     },
   }),
@@ -1575,24 +1663,31 @@ export const holdingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'plan.remove',
     context: 'holdings',
-    summary: 'Take a payment off a plan.',
-    detail: 'An unpaid payment was only an intention, so it simply goes. One that was already made is a movement as well as a row: the movement is reversed first — the money returns to the account it left — and then the row goes with it, so the plan and the accounts never disagree.',
+    summary: 'Take a payment off a plan, reversing what it paid — or take the record off and leave the money where it went.',
+    detail: 'An unpaid payment was only an intention, so it simply goes. One that was already made is a movement as well as a row: reversing is the usual answer, the money returns to the account it left and the row goes with it, so the plan and the accounts never disagree. Pass reverse false where the payment really was made and only this row is wrong — one instalment written down twice. The row goes and the balances stand.',
     effect: 'irreversible',
-    input: z.object({ installmentId: z.string() }),
+    input: z.object({
+      installmentId: z.string(),
+      /** whether the movement behind a paid instalment is reversed, putting the money back */
+      reverse: z.boolean().default(true),
+    }),
     output: Outcome,
-    handler: async ({ installmentId }) => {
+    handler: async ({ installmentId, reverse }) => {
       const ctx = ctxOf();
       const row = ctx.db.select().from(t.installments).where(eq(t.installments.id, installmentId)).get();
       if (!row) return refusal('not_found', 'There is no such payment on that plan.');
 
       return atomically(ctx, () => {
         const paid = !!row.paidAt;
-        if (paid) undoMovement(ctx, row.movementId);
+        if (paid && reverse) undoMovement(ctx, row.movementId);
         ctx.db.delete(t.installments).where(eq(t.installments.id, installmentId)).run();
         const done = settleOwnership(ctx.db, row.propertyId);
         const warnings = done === 'owned'
           ? ['Nothing is left to pay, so it is now owned outright.'] : [];
-        return noted(paid ? 'Taken off the plan, and the payment reversed' : 'Taken off the plan',
+        if (!paid) return noted('Taken off the plan', warnings);
+        return noted(reverse
+          ? 'Taken off the plan, and the payment reversed'
+          : 'Taken off the plan. The movement it recorded still stands, so no balance has changed.',
                      warnings);
       });
     },

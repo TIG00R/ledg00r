@@ -4,7 +4,7 @@ import { useApp, market } from '../AppState';
 import { Select, opts } from '../components/Select';
 import { computedPositions, brokerageCash, fmt, money, intentionsFor, intentionLabel,
          type Intention } from '@ledger/engine';
-import { Page, Panel, Stat, Stats, Chip, Field, Empty } from '../components/UI';
+import { Page, Panel, Stat, Stats, Chip, Field, Toggle } from '../components/UI';
 import { Donut } from '../components/Donut';
 import { Icon } from '../components/Icon';
 import { Mark, MarkPicker } from '../components/Mark';
@@ -12,8 +12,9 @@ import { ActionButton, useLive } from '../Live';
 import { ledger } from '../api';
 import { DateField } from '../components/DateField';
 import { RecordTable } from '../components/RecordTable';
-import { OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, RowLine, Problems, Balance, defaultAccountId } from '../components/Operations';
+import { OperationPanel, SourceAccountSelect, INITIAL_PAYMENT, realAccountId, RowLine, Problems, Balance, defaultAccountId } from '../components/Operations';
 import { Segmented } from '../components/Segmented';
+import { ConfirmModal } from '../components/Confirm';
 import { SectionProvider, Sections, useSection } from '../components/Sections';
 import { useModules } from '../Modules';
 import { accountOption } from '../accounts';
@@ -145,18 +146,38 @@ interface OrderRow {
  * way. "Another exchange" sits beside it, since opening the second one is how the switch
  * comes to have anything to switch between.
  */
-function ExchangeBar({ exchanges, exchangeId, onChange, onAdded, onChanged }: {
+function ExchangeBar({ exchanges, exchangeId, onChange, onAdded, onChanged, onRemoved }: {
   exchanges: ExchangeRow[]; exchangeId: string; onChange: (id: string) => void;
   onAdded: (row: ExchangeRow) => void;
   onChanged: (row: ExchangeRow) => void;
+  onRemoved: (id: string) => void;
 }) {
   const { run, running } = useLive();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [name, setName] = useState('');
 
   const open = exchanges.find((e) => e.id === exchangeId);
+  /**
+   * The first book cannot go.
+   *
+   * Every capability that reads or writes the share book defaults to it when no exchange is
+   * named, so there has to be one for them to mean. The ledger refuses it too; saying so on
+   * the button is better than letting somebody read the warning, answer it, and be refused.
+   */
+  const deletable = !!open && open.id !== 'main' && exchanges.length > 1;
+
+  const submitRemove = async () => {
+    if (!open || !deletable) return;
+    const res = await run('exchange.remove', { exchangeId: open.id, confirm: true });
+    if (res.ok) {
+      setEditing(false);
+      setName('');
+      onRemoved(open.id);
+    }
+  };
 
   const submitNew = async () => {
     const trimmed = name.trim();
@@ -249,6 +270,16 @@ function ExchangeBar({ exchanges, exchangeId, onChange, onAdded, onChanged }: {
             <button type="button" className="btn ghost sm" onClick={() => { setEditing(false); setName(''); }}>
               <Icon name="close" size={13} motion="none" /> Cancel
             </button>
+            {/* Deleting a book is done from the same row that renames it, because that row is
+                where somebody who has opened the wrong exchange goes first. It is the third
+                button rather than the first, and it asks before it does anything. */}
+            <button type="button" className="btn danger sm" disabled={!deletable || !!running}
+                    title={deletable
+                      ? `Delete ${open.name} and everything recorded against it`
+                      : 'The first exchange is the one every capability defaults to, so it cannot be deleted'}
+                    onClick={() => setRemoving(true)}>
+              <Icon name="trash" size={13} motion="none" /> Delete
+            </button>
           </span>
         )}
 
@@ -280,6 +311,23 @@ function ExchangeBar({ exchanges, exchangeId, onChange, onAdded, onChanged }: {
                     onChange={(mark) => { void setMark(mark); }}
                     onClose={() => setPicking(false)} />
       )}
+
+      {/* Everything that goes, said before it goes. The wording is the ledger's own: this is
+          not archiving, and the movements that funded the book go with it, which means an
+          account that paid money into this broker reads afterwards as never having paid it. */}
+      <ConfirmModal open={removing && !!open}
+        onClose={() => setRemoving(false)}
+        title={`Delete ${open?.name ?? 'this exchange'} and everything in it?`}
+        confirmLabel="Delete everything"
+        body={(
+          <>
+            Every order placed on it, both of its wallets, and every movement those wallets
+            were part of are erased — including the transfers that funded it, so an account
+            that paid money in will read as though it never did. This cannot be undone, and
+            nothing is kept. Archive it instead if you only want it off the pickers.
+          </>
+        )}
+        onConfirm={() => { void submitRemove(); }} />
     </div>
   );
 }
@@ -476,7 +524,15 @@ function Body() {
       {live && exchanges.length > 0 && (
         <ExchangeBar exchanges={exchanges} exchangeId={exchangeId} onChange={setExchangeId}
           onAdded={(row) => { setExchanges((rows) => [...rows, row]); setExchangeId(row.id); }}
-          onChanged={(row) => setExchanges((rows) => rows.map((r) => (r.id === row.id ? row : r)))} />
+          onChanged={(row) => setExchanges((rows) => rows.map((r) => (r.id === row.id ? row : r)))}
+          onRemoved={(id) => {
+            setExchanges((rows) => rows.filter((r) => r.id !== id));
+            // whatever is left, and the default book first: the screen must not keep reading
+            // against an exchange that is no longer there
+            setExchangeId((current) => (current === id
+              ? exchanges.find((r) => r.id !== id)?.id ?? 'main'
+              : current));
+          }} />
       )}
 
       {/*
@@ -498,8 +554,10 @@ function Body() {
                             <Icon name={pl >= 0 ? 'arrow' : 'arrowdown'} size={11} motion="none"
                                   color={pl >= 0 ? 'var(--positive)' : 'var(--negative)'}
                                   style={pl >= 0 ? { transform: 'rotate(-90deg)' } : undefined} />
-                            {cost > 0 ? `${Math.abs((pl / cost) * 100).toFixed(1)}%` : '—'}
-                            {' · '}{pl >= 0 ? '+' : '−'}{dm(Math.abs(pl))}
+                            <span className="figure">
+                              {cost > 0 ? `${Math.abs((pl / cost) * 100).toFixed(1)}%` : '—'}
+                              {' · '}{pl >= 0 ? '+' : '−'}{dm(Math.abs(pl))}
+                            </span>
                           </span>
                         } />
       </div>
@@ -549,7 +607,8 @@ function Body() {
               {slices.filter((s) => s.value > 0).map((s) => (
                 <span key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--muted)' }}>
                   <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color }} />
-                  {s.label} {drawn > 0 ? `${((s.value / drawn) * 100).toFixed(1)}%` : '—'}
+                  {s.label}{' '}
+                  <span className="figure">{drawn > 0 ? `${((s.value / drawn) * 100).toFixed(1)}%` : '—'}</span>
                 </span>
               ))}
             </div>
@@ -561,14 +620,15 @@ function Body() {
               */}
             {wallet < 0 && (
               <p style={{ margin: '14px 0 0', fontSize: 12, color: 'var(--negative)', lineHeight: 1.45 }}>
-                The wallet is {dm(Math.abs(wallet))} overdrawn — more has been spent on orders
+                The wallet is <span className="figure">{dm(Math.abs(wallet))}</span> overdrawn — more has been spent on orders
                 than was ever paid into the book. Fund the book, or correct the orders that
                 were logged as executed.
               </p>
             )}
             {uncovered > 0 && (
               <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.45 }}>
-                Pending buys come to {dm(committed)}, which is {dm(uncovered)} more than the
+                Pending buys come to <span className="figure">{dm(committed)}</span>, which is{' '}
+                <span className="figure">{dm(uncovered)}</span> more than the
                 wallet holds.
               </p>
             )}
@@ -581,9 +641,13 @@ function Body() {
         * really about this panel — it was the only way records had a pencil at all. A record
         * opens for correction on its own row now (see `RecordTable`), so funding the book no
         * longer has anything to step aside for.
+        *
+        * It grows once it has wrapped. At a basis of 380 and no grow it stayed 380 wide on a
+        * line 536 wide, a panel stopping a third of the way short of the edge on exactly the
+        * narrow window that made it wrap in the first place.
         */}
       {tab === 'book' && (
-        <div style={{ flex: '0 1 380px', minWidth: 300 }}>
+        <div style={{ flex: '1 1 380px', minWidth: 300 }}>
           <OperationPanel title="Fund the book"
             hint="The wallet is the raw cash sitting at the broker. It has to arrive from somewhere, and buying a position later moves it again — out of the wallet and into the holding.">
             <BookTransfer exchangeId={usingScoped ? exchangeId : undefined} exchanges={exchanges} />
@@ -638,7 +702,7 @@ function Body() {
             { key: 'price', label: 'Price now', kind: 'amount',
               value: (p2) => p2.price,
               cell: (p2) => (
-                <span className="mono" style={{ color: market.prices[p2.ticker] == null ? 'var(--faint)' : undefined }}>
+                <span className="mono public" style={{ color: market.prices[p2.ticker] == null ? 'var(--faint)' : undefined }}>
                   {market.prices[p2.ticker] != null ? p2.price.toFixed(2) : 'none set'}
                 </span>
               ) },
@@ -849,14 +913,24 @@ function Body() {
                                 intention: zakatOn && d.intention ? d.intention : undefined,
                                 status: d.status, date: d.date, note: d.note ?? '' }),
           }}
+          /*
+           * The order log removes its own rows rather than reaching for the movement under
+           * one. `movement.undo` takes both halves when it reverses, but it refuses outright
+           * to erase a movement an order stands on — so going through it there was only ever
+           * one answer available on a screen where the other one is the whole point: a trade
+           * the broker and the ledger each wrote down is a record to take off, not money to
+           * put back.
+           */
           remove={{
-            capability: 'movement.undo',
-            build: (o) => ({ movementId: (o as { movementId?: string }).movementId }),
+            capability: 'order.remove',
+            keep: { label: 'Just remove the record',
+                    build: (o) => ({ orderId: o.id, reverse: false }),
+                    body: 'Removing it puts the cash back in the wallet and gives up the shares it bought. If the trade really did go through and only this record of it is wrong, take the record off and leave the book standing.' },
+            build: (o) => ({ orderId: o.id }),
             what: (o) => `${o.side} ${o.shares} ${o.ticker}`,
-            blocked: (o) => ((o as { movementId?: string }).movementId ? undefined
-              : 'This order predates the movement log, so there is nothing to reverse.'),
           }}
           clear={{ log: 'orders',
+                   movements: true,
                    what: 'every order logged, and the movements behind them' }}
         />
       </Panel>
@@ -915,9 +989,17 @@ function TickerPick({ draft, set, known, owned, existing }: {
   known: string[]; owned: string[]; existing?: string;
 }) {
   const selling = draft.side === 'SELL';
-  const [writing, setWriting] = useState(false);
-  const [pickingLogo, setPickingLogo] = useState(false);
   const choices = [...new Set([...(selling ? owned : known), ...(existing ? [existing] : [])])].sort();
+  /**
+   * A picker with nothing in it is not a picker.
+   *
+   * On a fresh ledger every buy is the first buy of a share it has never seen, so the list
+   * opens with one entry — the one that says the list is not enough — and choosing it is a
+   * step that exists only because the control started in the wrong mode. It starts in the
+   * other one instead when there is nothing to pick.
+   */
+  const [writing, setWriting] = useState(() => !selling && choices.length === 0);
+  const [pickingLogo, setPickingLogo] = useState(false);
 
   /**
    * Switching a draft to a sale can leave it naming a share there is none of. The draft
@@ -995,9 +1077,112 @@ function TickerPick({ draft, set, known, owned, existing }: {
   );
 }
 
+/**
+ * The ticker of a note, whether or not this ledger has ever heard of it.
+ *
+ * Two things are being asked at once and they are not the same question. Nine times out of
+ * ten the share is one the notebook already knows, and the answer is a pick off a list —
+ * which is what a list is for, and what a bare text box with a datalist under it is not: a
+ * datalist shows nothing until something is typed, so a field holding every ticker you follow
+ * looked exactly like a field holding none, and the way to see what you already had was to
+ * guess at its first letter.
+ *
+ * So the list is a real dropdown, the same one every other picker in this application uses,
+ * and the last entry in it is the tenth case: a share nobody here has traded. Choosing it
+ * opens the box to type one, because the first note about a company is written long before
+ * the first order is, and that has to be reachable without already knowing it is allowed.
+ *
+ * A ticker that is not in the index is called new, in words, and offered the one thing that
+ * has nowhere else to be asked for — the company's mark, which every later note about the
+ * same ticker already knows. The name is asked for in the column beside this one, where
+ * renaming a known company is asked for too, because they are the same edit to the same row.
+ */
+const NEW_TICKER = '__new_ticker__';
+
+function NewOrKnownTicker({ draft, set, known }: {
+  draft: Record<string, any>;
+  set: (patch: Record<string, any>) => void;
+  known: string[];
+}) {
+  const [pickingLogo, setPickingLogo] = useState(false);
+  const typed = String(draft.ticker ?? '').trim();
+  const fresh = typed.length > 0 && !known.includes(typed);
+  /*
+   * Typing stays open once it is open.
+   *
+   * The box is shown for a ticker the index does not hold — but it also has to stay shown
+   * while one is being typed, and half of a new ticker is very often the whole of an old one
+   * (NVDA on the way to NVDAX). Keyed off `fresh` alone the box would vanish mid-word and
+   * throw the caret back into a dropdown.
+   */
+  const [typing, setTyping] = useState(fresh);
+  /*
+   * A notebook with nothing in it has nothing to pick between, so it does not ask. The list
+   * would hold one entry — "a new ticker" — and make somebody choose it before they could
+   * type, which is the same wrong answer the datalist gave, one click further along.
+   */
+  const open = typing || fresh || known.length === 0;
+
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {known.length > 0 && (
+        <Select ariaLabel={open ? 'Which ticker' : 'Ticker'} style={{ width: 132 }}
+                value={open ? NEW_TICKER : typed}
+                options={[
+                  ...known.map((t2) => ({ value: t2, label: t2 })),
+                  { value: NEW_TICKER, label: 'A new ticker…',
+                    hint: 'one this notebook has not seen' },
+                ]}
+                onChange={(v) => {
+                  if (v === NEW_TICKER) { setTyping(true); set({ ticker: '' }); return; }
+                  setTyping(false);
+                  set({ ticker: v, tickerName: '', tickerLogo: '' });
+                }} />
+      )}
+      {/* Whichever control is holding the answer is the one called Ticker, so the field has
+          that name whether it is being picked from or typed into. */}
+      {open && (
+        <input aria-label="Ticker" list="notebook-tickers" value={draft.ticker ?? ''}
+               placeholder="NVDA" style={{ width: 132, textTransform: 'uppercase' }}
+               onChange={(e) => set({ ticker: e.target.value.toUpperCase() })} />
+      )}
+      {open && typed && !TICKER.test(typed) && (
+        <span style={{ fontSize: 11, color: 'var(--negative)' }}>letters and digits, twelve at most</span>
+      )}
+      {fresh && TICKER.test(typed) && (
+        <>
+          <span style={{ fontSize: 11, color: 'var(--faint)', lineHeight: 1.45 }}>
+            new — {typed} joins the notebook with this note
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+            <span style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+                           display: 'flex', alignItems: 'center', justifyContent: 'center',
+                           background: 'var(--raised)', border: '1px solid var(--hairline)' }}>
+              <Mark mark={draft.tickerLogo || undefined} size={14} fallback="stocks" />
+            </span>
+            <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 8px' }}
+                    onClick={() => setPickingLogo(true)}>
+              {draft.tickerLogo ? 'Change logo' : 'Add a logo'}
+            </button>
+            {pickingLogo && (
+              <MarkPicker value={draft.tickerLogo || undefined} family="stocks"
+                          label={`Logo for ${typed}`}
+                          onChange={(mark) => set({ tickerLogo: mark })}
+                          onClose={() => setPickingLogo(false)} />
+            )}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 interface Note {
   id: string; ticker: string; name: string | null;
-  date: string; note: string; createdAt: string; updatedAt: string | null;
+  date: string; note: string;
+  /** the day this note asks to be read again, and whether it still is */
+  remindOn: string | null; remindEnabled: boolean;
+  createdAt: string; updatedAt: string | null;
 }
 
 interface Followed {
@@ -1142,16 +1327,17 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
                 </span>
               ),
               field: (d, set) => <DateField value={d.date} onChange={(v) => set({ date: v })} ariaLabel="Date" /> },
-            // Typed rather than picked: a note about a share you have never bought is the
-            // whole point, and a picker can only offer the ones you have.
+            // The same picker the order log uses, for the same reason: a note about a share
+            // this ledger has never seen is the whole point of a notebook, and it is the one
+            // place a company can be named and marked as it is first written down. A bare
+            // text box did allow a new ticker, and said nothing about it — so the way to
+            // follow a share you do not own was a thing you had to already know.
             { key: 'ticker', label: 'Ticker', kind: 'pick',
               value: (n) => n.ticker,
               choices: suggestions,
               cell: (n) => <span style={{ fontWeight: 600 }}>{n.ticker}</span>,
               field: (d, set) => (
-                <input aria-label="Ticker" list="notebook-tickers" value={d.ticker}
-                       placeholder="NVDA" style={{ width: 110, textTransform: 'uppercase' }}
-                       onChange={(e) => set({ ticker: e.target.value.toUpperCase() })} />
+                <NewOrKnownTicker draft={d} set={set} known={suggestions} />
               ) },
             // The company belongs to the ticker, not to the note: naming it here names it
             // everywhere the ticker appears, which is what renaming one means.
@@ -1176,21 +1362,72 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
                 <textarea aria-label="Note" rows={4} placeholder="what you decided, and why"
                           value={d.note} onChange={(e) => set({ note: e.target.value })} />
               ) },
+            /*
+             * The day the note points at, which is not the day it is about.
+             *
+             * Half of what gets written in a notebook is a date in the future wearing a
+             * sentence — results in February, a lock-up that ends in March — and prose is
+             * not a date anything can raise. Given one, the note turns up in what is coming
+             * on that day. The switch beside it is what makes that survivable: a reminder
+             * you have dealt with is silenced without losing the date, which is the part you
+             * would otherwise have to type again.
+             */
+            { key: 'remind', label: 'Remind me', kind: 'date', width: '180px',
+              value: (n) => n.remindOn ?? '',
+              cell: (n) => (n.remindOn ? (
+                <span className="mono" style={{ fontSize: 12,
+                                                color: n.remindEnabled ? 'var(--ink)' : 'var(--faint)' }}>
+                  {n.remindOn}
+                  {!n.remindEnabled && (
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>off</span>
+                  )}
+                </span>
+              ) : <span style={{ color: 'var(--faint)' }}>—</span>),
+              field: (d, set) => (
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <DateField value={String(d.remindOn ?? '')} ariaLabel="Remind me on"
+                             onChange={(v) => set({ remindOn: v, remindEnabled: v ? d.remindEnabled : false })} />
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Toggle label="Remind me about this note"
+                            on={!!d.remindEnabled && !!d.remindOn}
+                            onChange={(v) => set({ remindEnabled: v })} />
+                    <span style={{ fontSize: 11, color: 'var(--faint)' }}>
+                      {d.remindOn ? (d.remindEnabled ? 'will be raised' : 'kept, not raised')
+                                  : 'give it a day first'}
+                    </span>
+                  </span>
+                </span>
+              ) },
           ]}
           add={{
             label: 'Write a note',
             capability: 'stock.note.add',
-            blank: { date: new Date().toISOString().slice(0, 10), ticker: '', name: '', note: '' },
+            blank: { date: new Date().toISOString().slice(0, 10), ticker: suggestions[0] ?? '',
+                     name: '', note: '', tickerName: '', tickerLogo: '',
+                     remindOn: '', remindEnabled: true },
             valid: (d) => !!String(d.ticker).trim() && !!String(d.note).trim(),
+            // The company can be named in either of two places — the picker, when the ticker
+            // is one this ledger has never seen, or the column, when a known one is being
+            // renamed — and they are the same field to the ledger.
             build: (d) => ({ ticker: d.ticker, date: d.date, note: d.note,
-                             name: String(d.name).trim() || undefined }),
+                             name: String(d.tickerName || d.name).trim() || undefined,
+                             logo: String(d.tickerLogo || '').trim() || undefined,
+                             remindOn: String(d.remindOn || '') || undefined,
+                             remindEnabled: !!d.remindOn && !!d.remindEnabled }),
             onDone: load,
           }}
           edit={{
             capability: 'stock.note.edit',
-            draftOf: (n) => ({ date: n.date, ticker: n.ticker, name: n.name ?? '', note: n.note }),
+            draftOf: (n) => ({ date: n.date, ticker: n.ticker, name: n.name ?? '', note: n.note,
+                               tickerName: '', tickerLogo: '',
+                               remindOn: n.remindOn ?? '', remindEnabled: n.remindEnabled }),
+            // An empty date is `null` rather than left off: off means "keep what it had",
+            // and clearing the box is how a reminder is taken away altogether.
             build: (d, n) => ({ noteId: n.id, ticker: d.ticker, date: d.date, note: d.note,
-                                name: String(d.name).trim() || undefined }),
+                                name: String(d.tickerName || d.name).trim() || undefined,
+                                logo: String(d.tickerLogo || '').trim() || undefined,
+                                remindOn: String(d.remindOn || '') || null,
+                                remindEnabled: !!d.remindOn && !!d.remindEnabled }),
             onDone: load,
           }}
           remove={{
@@ -1243,7 +1480,7 @@ function Notebook({ knownTickers }: { knownTickers: string[] }) {
               ) },
             { key: 'year', label: 'Year', kind: 'amount', width: '90px',
               value: (d) => d.year,
-              cell: (d) => <span className="mono">{d.year}</span>,
+              cell: (d) => <span className="mono public">{d.year}</span>,
               field: (d, set) => (
                 <Amount value={d.year} ariaLabel="Year" style={{ width: 80 }}
                         onChange={(n) => set({ year: n })} />
@@ -1377,7 +1614,17 @@ function BookTransfer({ exchangeId, exchanges }: { exchangeId?: string; exchange
    * option. Working the default out fresh on every render, and using it everywhere the raw
    * state would otherwise read as unset, keeps what is shown and what is held in agreement.
    */
-  const accountIdOrDefault = accountId || defaultAccountId(data, data.settings.burnAccountId);
+  /*
+   * Which account this actually means. The sentinel is not one.
+   *
+   * "Initial payment" is offered on the way in and out of an account, and a transfer that
+   * chose it never reaches here — it is the starting-value panel above. It arrives here one
+   * way only: chosen on the way in, and then the direction switched, or the source switched
+   * to a dividend and back. The pickers below read this same value, so stripping it here is
+   * what keeps the control and the submission saying the same thing.
+   */
+  const accountIdOrDefault = realAccountId(accountId)
+    ?? defaultAccountId(data, data.settings.burnAccountId);
   const acct = data.nodes.find((n) => n.id === accountIdOrDefault);
   const held = acct ? balances[acct.id] ?? acct.openingQty : 0;
 

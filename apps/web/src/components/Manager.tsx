@@ -301,19 +301,19 @@ export function Manager({
                       onClick={() => { void save(row); }}>
                       <Icon name="check" size={13} motion="none" /> Save
                     </button>
+                    {/* In the line, between Save and Cancel, the same order `RecordTable`
+                        uses. Only offered once the row is open: what keeps a bin from being
+                        pressed by accident is the question it asks, not its distance from
+                        the button that finishes an edit. */}
+                    {canDelete && onDelete && (
+                      <ConfirmDelete what={name} blocked={row.blocked} size={13}
+                                     onConfirm={() => { void onDelete(row.id); }}
+                                     onArchive={onArchive ? () => { void onArchive(row.id); } : undefined} />
+                    )}
                     <button className="btn ghost sm" onClick={closeRow}>
                       <Icon name="close" size={13} motion="none" /> Cancel
                     </button>
                   </span>
-                  {/* Subordinate to Save and Cancel — after them, smaller, and its own icon
-                      rather than part of that pair, so a bin never shares a corner with the
-                      button that finishes an edit. Only offered once the row is open, the
-                      same as `RecordTable`'s. */}
-                  {canDelete && onDelete && (
-                    <ConfirmDelete what={name} blocked={row.blocked} size={13}
-                                   onConfirm={() => { void onDelete(row.id); }}
-                                   onArchive={onArchive ? () => { void onArchive(row.id); } : undefined} />
-                  )}
                 </>
               ) : (
                 /* At rest this paints nothing — `.rt-hint` (tokens.css) keeps it invisible

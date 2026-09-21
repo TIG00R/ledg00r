@@ -45,7 +45,7 @@ export function Dashboards() {
 
 function Body() {
   const { tab } = useSection();
-  const { dm } = useApp();
+  const { dm, privacy } = useApp();
   const { live, version } = useLive();
   const [period, setPeriod] = useState<Period>('month');
   const [report, setReport] = useState<Report | null>(null);
@@ -193,7 +193,11 @@ function Body() {
                                 color: tallest ? 'var(--ink)' : 'var(--faint)' }}>
                           {s2.amount >= 1000 ? `${Math.round(s2.amount / 1000)}k` : Math.round(s2.amount)}
                         </span>
-                        <div title={`${s2.bucket}: ${dm(s2.amount)} over ${s2.count} record${s2.count === 1 ? '' : 's'}`}
+                        {/* the browser paints a tooltip outside the page, where no blur
+                            reaches it — so with privacy on it names the bucket alone */}
+                        <div title={privacy
+                          ? s2.bucket
+                          : `${s2.bucket}: ${dm(s2.amount)} over ${s2.count} record${s2.count === 1 ? '' : 's'}`}
                              style={{ width: '100%', height: Math.max(4, (s2.amount / peak) * PLOT),
                                       borderRadius: '5px 5px 2px 2px', flex: '0 0 auto',
                                       background: tallest ? tone : `color-mix(in srgb, ${tone} 52%, transparent)`,
@@ -210,9 +214,13 @@ function Body() {
                               borderTop: '1px solid var(--hairline)', flexWrap: 'wrap' }}>
                   <Stat label={`Busiest ${period === 'all' ? 'year' : 'month'}`}
                         value={dm(peak)} color={tone}
-                        sub={busiest ? (busiest.bucket.length > 4
-                          ? `${MONTHS[Number(busiest.bucket.slice(5, 7)) - 1]} ${busiest.bucket.slice(0, 4)}`
-                          : busiest.bucket) : ''} />
+                        sub={busiest ? (
+                          <span className="public">
+                            {busiest.bucket.length > 4
+                              ? `${MONTHS[Number(busiest.bucket.slice(5, 7)) - 1]} ${busiest.bucket.slice(0, 4)}`
+                              : busiest.bucket}
+                          </span>
+                        ) : ''} />
                   <Stat label="Average" value={dm(report.total / report.series.length)}
                         sub={`over ${report.series.length} ${period === 'all' ? 'years' : 'months'}`} />
                 </div>

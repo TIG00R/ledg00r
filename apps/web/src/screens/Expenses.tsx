@@ -18,6 +18,7 @@ import { RecordTable } from '../components/RecordTable';
 import { Mark } from '../components/Mark';
 import { Budgets } from './Budgets';
 import { accountOption } from '../accounts';
+import { defaultAccountId } from '../components/Operations';
 
 export function Expenses() {
   return (
@@ -59,7 +60,8 @@ export function ExpensesAndBudgets() {
 
   return (
     <>
-      <div style={{ maxWidth: 1440, margin: '0 auto', width: '100%', padding: '20px 24px 0' }}>
+      <div className="page-strip"
+           style={{ width: '100%', padding: '20px 24px 0' }}>
         <Segmented value={half} ariaLabel="Expenses or budgets"
           onChange={(v) => { window.location.hash = `/${v}`; }}
           options={[
@@ -97,9 +99,16 @@ function Body() {
    * The destination's own answer, then the ledger's one default. A person picks what they
    * spent on before they think about which card it was on, so the destination is what
    * decides — and the account stays a field they can override on the row.
+   *
+   * Whatever those two say is checked against the accounts that actually exist before it is
+   * handed to a picker. Neither is reliable: a destination carries no account until somebody
+   * gives it one, and the living-burn setting is empty on a ledger nobody has configured it
+   * for. An empty id seeded into the form left the draft naming no account while the control
+   * showed its first option, so the row read as ready and Add stayed disabled with nothing
+   * on screen to say why.
    */
   const usualAccount = (destinationId: string) =>
-    cInfo(destinationId)?.accountId ?? data.settings.burnAccountId;
+    defaultAccountId(data, cInfo(destinationId)?.accountId ?? data.settings.burnAccountId);
   /** an account as one line of text: the bank, then what is held there */
   const accountName = (id?: string) => {
     const n = data.nodes.find((x) => x.id === id);
@@ -338,6 +347,7 @@ function Body() {
                     build: (e) => ({ expenseId: e.id, reverse: false }) },
           }}
           clear={{ log: 'expenses',
+                   movements: true,
                    what: 'every expense recorded, and the movements behind them' }}
         />
       </Panel>

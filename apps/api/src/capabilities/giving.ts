@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { command, query, DateOnly, NodeId, CategoryId, Outcome, type Refusal } from '@ledger/contracts';
-import { schema as t } from '@ledger/db';
+import { schema as t, indexRow } from '@ledger/db';
 import { desc, eq } from 'drizzle-orm';
 import { zakatDates, zakatDebts, zakatReceivables, nisabEgp, formatHijri, HIJRI_MONTHS,
-         NISAB_GOLD_G, NISAB_SILVER_G, ZAKAT_RATE, bucketDue, correctionEntry, zakatYearId,
+         NISAB_GOLD_G, NISAB_SILVER_G, ZAKAT_RATE, bucketDue, zakatYearId,
          zakatTotals, hijriTextOfIso, type ZakatSettings, type ZakatEntry } from '@ledger/engine';
 import type { AppCtx } from '../context.js';
 import { post, noted, refusal, today, newId, DryRun, undoMovement, atomically,
@@ -78,9 +78,12 @@ function bucketSources(ctx: AppCtx): BucketSources {
 export function closeDueYears(ctx: AppCtx): string[] {
   const written: string[] = [];
   const src = bucketSources(ctx);
+  /** years the owner has deleted; writing them again would be arguing with them */
+  const forgotten = new Set(readPref<string[]>(ctx.db, 'zakatYearsRemoved') ?? []);
   for (const bucket of zakatBuckets(ctx.db, src)) {
     if (!bucket.closedOn || bucket.confirmed) continue;
     const id = zakatYearId(bucket.id, bucket.closedOn);
+    if (forgotten.has(id)) continue;
     if (ctx.db.select().from(t.zakatYears).where(eq(t.zakatYears.id, id)).get()) continue;
     const prices = pricesNow(ctx);
     ctx.db.insert(t.zakatYears).values({
@@ -208,10 +211,11 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'giving.record',
     context: 'giving',
-    summary: 'Record money given away, out of a named account, as zakat or as sadaqat.',
-    detail: 'The distinction matters: zakat counts against the obligation, sadaqat is given freely and owed by nobody.',
+    summary: 'Record money given away, as zakat or as sadaqat — out of a named account, or out of none.',
+    detail: 'The distinction between the two matters: zakat counts against the obligation, sadaqat is given freely and owed by nobody. The account is what the money left, and it may be left out: giving done before this ledger existed, or out of cash it never saw, is recorded with no source at all. Nothing moves then and no balance changes — the record stands on its own, exactly like an opening figure, and it still counts against the zakat year it names.',
     input: z.object({
-      accountId: NodeId,
+      /** the account it left; leave it out for giving this ledger never saw the money for */
+      accountId: NodeId.optional(),
       amount: z.number().positive(),
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       causeId: CategoryId,
@@ -224,8 +228,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
     output: Outcome,
     handler: async (input) => {
       const ctx = ctxOf();
-      const acct = ctx.ledger().node(input.accountId);
-      if (!acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
+      const acct = input.accountId ? ctx.ledger().node(input.accountId) : undefined;
+      if (input.accountId && !acct) return refusal('unknown_node', `${input.accountId} is not an account in this ledger.`);
       const cause = ctx.db.select().from(t.categories).where(eq(t.categories.id, input.causeId)).get();
       if (!cause) return refusal('not_found', `${input.causeId} is not a cause.`, 'Call destinations.list with domain "charity".');
 
@@ -233,15 +237,42 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       if ('ok' in year) return year;
 
       const date = input.date ?? today(ctx);
-      const currency = input.currency ?? acct.currency ?? 'EGP';
+      const currency = input.currency ?? acct?.currency ?? 'EGP';
       const id = newId('give');
+
+      /**
+       * Given out of nothing this ledger holds.
+       *
+       * The same shape a metal lot that was already held takes: a record with no movement
+       * behind it. There is no account to take the money from, so taking it from one would
+       * be a lie about a balance — the row is written on its own, the log says so, and
+       * correcting or removing it later finds no movement to reverse and reverses nothing.
+       */
+      if (!acct) {
+        if (input.dryRun) {
+          return noted(`${input.amount} ${currency} to ${cause.name}, as ${input.isZakat ? 'zakat' : 'sadaqat'}, `
+                     + 'from no source — nothing would move');
+        }
+        const rate = currency === 'EGP' ? 1 : rateFor(ctx.db, currency);
+        ctx.db.insert(t.charity).values({
+          id, seq: nextSeq(ctx.db, 'charity'), date, egp: input.amount * rate,
+          usd: currency === 'USD' ? input.amount : null, currency,
+          accountId: null, categoryId: input.causeId,
+          note: input.note ?? null, isZakat: input.isZakat,
+          zakatYearId: year.id, movementId: null,
+        }).run();
+        indexRow(ctx.db, { kind: 'giving', recordId: id, occurredOn: date,
+                           title: cause.name, body: input.note ?? '' });
+        return noted(`${input.amount} ${currency} to ${cause.name}, as ${input.isZakat ? 'zakat' : 'sadaqat'}, `
+                   + 'from no source — nothing moved');
+      }
 
       // what the account actually loses, in what the account is held in
       const leaves = inAccountQty(ctx.db, input.amount, currency, acct.currency);
 
       return post(ctx, {
         date, kind: 'giving', note: input.note,
-        legs: [{ fromNodeId: input.accountId, qtyFrom: leaves, categoryId: input.causeId }],
+        legs: [{ fromNodeId: input.accountId!, qtyFrom: leaves, categoryId: input.causeId }],
       }, `${input.amount} ${currency} to ${cause.name}, as ${input.isZakat ? 'zakat' : 'sadaqat'}`,
       {
         dryRun: input.dryRun,
@@ -251,7 +282,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
           db.insert(t.charity).values({
             id, seq: nextSeq(db, 'charity'), date, egp: input.amount * rate,
             usd: currency === 'USD' ? input.amount : null, currency,
-            accountId: input.accountId, categoryId: input.causeId,
+            accountId: input.accountId ?? null, categoryId: input.causeId,
             note: input.note ?? null, isZakat: input.isZakat,
             zakatYearId: year.id, movementId,
           }).run();
@@ -264,10 +295,11 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
     name: 'giving.correct',
     context: 'giving',
     summary: 'Correct something given — the amount, the account it came out of, the cause, whether it was zakat, the date, the note.',
-    detail: 'The movement is reversed and written again, so the balances follow and the log keeps both. Whether it counted as zakat is part of what can be corrected, because that is the thing most easily recorded wrongly.',
+    detail: 'The movement is reversed and written again, so the balances follow and the log keeps both. Whether it counted as zakat is part of what can be corrected, because that is the thing most easily recorded wrongly. A record with no source moves nothing, so correcting one rewrites the row in place; naming an account gives it one, and passing accountId null takes it back off and undoes the movement it had.',
     input: z.object({
       givingId: z.string(),
-      accountId: NodeId.optional(),
+      /** the account it left; null takes the source off and leaves the record standing alone */
+      accountId: NodeId.nullable().optional(),
       amount: z.number().positive().optional(),
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       causeId: CategoryId.optional(),
@@ -284,7 +316,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       if (!row) return refusal('not_found', 'There is no such record of giving.');
 
       const next = {
-        accountId: input.accountId ?? row.accountId,
+        accountId: input.accountId === undefined ? row.accountId : input.accountId,
         amount: input.amount ?? (row.currency === 'EGP' ? row.egp : (row.usd ?? row.egp)),
         currency: input.currency ?? row.currency ?? 'EGP',
         causeId: input.causeId ?? row.categoryId,
@@ -292,7 +324,6 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         date: input.date ?? row.date,
         note: input.note ?? row.note ?? undefined,
       };
-      if (!next.accountId) return refusal('unknown_node', 'That record names no account it came out of.');
       const cause = ctx.db.select().from(t.categories).where(eq(t.categories.id, next.causeId)).get();
       if (!cause) return refusal('not_found', `${next.causeId} is not a cause.`);
 
@@ -306,9 +337,9 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         : resolveZakatYear(ctx, named, next.isZakat);
       if ('ok' in year) return year;
 
-      const acct = ctx.ledger().node(next.accountId);
-      if (!acct) return refusal('unknown_node', `${next.accountId} is not an account in this ledger.`);
-      const leaves = inAccountQty(ctx.db, next.amount, next.currency, acct.currency);
+      const acct = next.accountId ? ctx.ledger().node(next.accountId) : undefined;
+      if (next.accountId && !acct) return refusal('unknown_node', `${next.accountId} is not an account in this ledger.`);
+      const leaves = acct ? inAccountQty(ctx.db, next.amount, next.currency, acct.currency) : 0;
 
       /**
        * A correction that moves no money does not move any.
@@ -323,6 +354,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
         || next.currency !== row.currency
         || next.date !== row.date;
       if (!moved) {
+        // a record with no source has no legs and no movement note to follow
         ctx.db.update(t.charity).set({
           categoryId: next.causeId, note: next.note ?? null,
           isZakat: next.isZakat, zakatYearId: year.id,
@@ -334,6 +366,31 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
             .where(eq(t.transactions.id, row.movementId)).run();
         }
         return noted(`Updated. Nothing moved — the account, the amount and the date are as they were.`);
+      }
+
+      /**
+       * Corrected into a record with no source.
+       *
+       * Whatever it moved before is undone, and nothing takes its place: the row is written
+       * back as a gift this ledger holds no account for. The same branch covers a record
+       * that never had a source and is only changing its amount or its date, where there was
+       * never a movement for undoMovement to find.
+       */
+      if (!acct) {
+        return atomically(ctx, () => {
+          undoMovement(ctx, row.movementId);
+          const rate = next.currency === 'EGP' ? 1 : rateFor(ctx.db, next.currency);
+          ctx.db.update(t.charity).set({
+            date: next.date, egp: next.amount * rate,
+            usd: next.currency === 'USD' ? next.amount : null, currency: next.currency,
+            accountId: null, categoryId: next.causeId, note: next.note ?? null,
+            isZakat: next.isZakat, zakatYearId: year.id, movementId: null,
+          }).where(eq(t.charity.id, input.givingId)).run();
+          indexRow(ctx.db, { kind: 'giving', recordId: input.givingId, occurredOn: next.date,
+                             title: cause.name, body: next.note ?? '' });
+          return noted(`corrected to ${next.amount} ${next.currency} to ${cause.name}, `
+                     + `as ${next.isZakat ? 'zakat' : 'sadaqat'}, from no source`);
+        });
       }
 
       return atomically(ctx, () => {
@@ -365,7 +422,7 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
     name: 'giving.remove',
     context: 'giving',
     summary: 'Remove a record of giving, reversing the movement behind it — or take the record off and leave the money given.',
-    detail: 'Reversing is the usual answer: the money returns to the account it left and the log keeps both halves, since nothing is erased. Pass reverse false where the money really was given and only this record of it is wrong — the same gift entered twice, say. The record goes and the balance stands.',
+    detail: 'Reversing is the usual answer: the money returns to the account it left and the log keeps both halves, since nothing is erased. Pass reverse false where the money really was given and only this record of it is wrong — the same gift entered twice, say. The record goes and the balance stands. A record with no source moved nothing, so there is nothing to reverse either way and only the record goes.',
     effect: 'irreversible',
     input: z.object({
       givingId: z.string(),
@@ -379,6 +436,9 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       if (!row) return refusal('not_found', 'There is no such record of giving.');
       if (reverse) undoMovement(ctx, row.movementId);
       ctx.db.delete(t.charity).where(eq(t.charity.id, givingId)).run();
+      if (!row.movementId) {
+        return noted('Taken off the record. It named no account, so no balance has changed.');
+      }
       return noted(reverse
         ? 'Taken off the record, and the money returned to the account it left'
         : 'Taken off the record. The movement it recorded still stands, so no balance has changed.');
@@ -680,8 +740,8 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
   command({
     name: 'zakat.year.remove',
     context: 'giving',
-    summary: 'Take a year off the record.',
-    detail: 'A year the ledger closed for itself will close again the next time it is asked, since the lunar year it stands on has still passed — removing one is for the years typed in by hand. Payments booked against it keep their record and lose the year they were paying.',
+    summary: 'Take a year off the record, and keep it off.',
+    detail: 'Any year can be removed — one typed in by hand, and one the ledger closed for itself. A year it closed would otherwise be written again the moment the screen was next read, since the lunar year behind it has still passed, so the removal is remembered and it stays gone until it is asked for again with zakat.year.restore. Payments booked against it keep their record and lose the year they were paying.',
     effect: 'irreversible',
     input: z.object({ yearId: z.string() }),
     output: Outcome,
@@ -692,86 +752,39 @@ export const givingCaps = (ctxOf: () => AppCtx) => [
       ctx.db.update(t.charity).set({ zakatYearId: null })
         .where(eq(t.charity.zakatYearId, yearId)).run();
       ctx.db.delete(t.zakatYears).where(eq(t.zakatYears.id, yearId)).run();
+      /**
+       * A removal the ledger will not argue with.
+       *
+       * Years close themselves, which is right — but it means deleting one that the ledger
+       * worked out is a request the next read would undo: the lunar year behind it has still
+       * passed, so it would simply be written again. An owner deleting the same row three
+       * times is being told no by something that looks like a yes. The removal is written
+       * down instead, and `closeDueYears` reads it before it writes anything.
+       */
+      if (!(row as { manual?: boolean }).manual) {
+        const gone = readPref<string[]>(ctx.db, 'zakatYearsRemoved') ?? [];
+        if (!gone.includes(yearId)) writePref(ctx.db, 'zakatYearsRemoved', [...gone, yearId]);
+      }
       return noted(`${row.label} for ${row.dueOn} taken off the record`);
     },
   }),
 
   command({
-    name: 'zakat.entry.set',
+    name: 'zakat.year.restore',
     context: 'giving',
-    summary: 'State a line of the reckoning yourself: correct one the ledger worked out, leave one out, or add one it cannot see.',
-    detail: 'Naming an entry corrects that line — the ledger\'s own figure is kept beside yours and the correction can be taken back. Naming none adds a line of your own, which is how wealth the app has never been told about is counted: gold at a relative\'s, a loan nobody wrote down.',
-    input: z.object({
-      /** the computed line being corrected; left out, this is a line of your own */
-      entryId: z.string().optional(),
-      /** what to call a line of your own */
-      label: z.string().min(1).max(80).optional(),
-      /** which section it is read under */
-      group: z.enum(['counted', 'excluded', 'debt']).optional(),
-      /** 1 counts towards the base, -1 comes off it, 0 is shown and counts nothing */
-      sign: z.union([z.literal(1), z.literal(-1), z.literal(0)]).optional(),
-      amount: z.number().min(0).optional(),
-      /** whether to leave the line out of the reckoning altogether */
-      removed: z.boolean().optional(),
-      note: z.string().max(300).optional(),
-    }),
+    summary: 'Ask the ledger to work out a year it was told to forget.',
+    detail: 'The opposite of removing a year it closed for itself: the removal is forgotten, and the year is written again from the lines and prices it would have been closed on. A year typed in by hand has nothing to restore — nothing worked it out.',
+    input: z.object({ yearId: z.string() }),
     output: Outcome,
-    handler: async (input) => {
+    handler: async ({ yearId }) => {
       const ctx = ctxOf();
-      if (!input.entryId && !input.label) {
-        return refusal('invalid_period', 'A line of your own needs a name.',
-                       'Give a label, or name the entry you meant to correct.');
+      const gone = readPref<string[]>(ctx.db, 'zakatYearsRemoved') ?? [];
+      if (!gone.includes(yearId)) {
+        return refusal('not_found', 'That year was not one the ledger was told to forget.');
       }
-      if (!input.entryId && input.amount == null) {
-        return refusal('invalid_period', 'A line of your own needs an amount.');
-      }
-
-      const existing = input.entryId
-        ? ctx.db.select().from(t.zakatEntries).all()
-            .find((r) => r.bucket === ESTATE && r.entryId === input.entryId)
-        : undefined;
-
-      if (existing) {
-        ctx.db.update(t.zakatEntries).set({
-          amount: input.amount ?? existing.amount,
-          removed: input.removed ?? existing.removed,
-          note: input.note ?? existing.note,
-        }).where(eq(t.zakatEntries.id, existing.id)).run();
-        return noted(input.removed ? 'That line is left out of the reckoning' : 'That line now reads as you stated it');
-      }
-
-      const id = newId('zent');
-      ctx.db.insert(t.zakatEntries).values({
-        id, bucket: ESTATE, entryId: input.entryId ?? null,
-        label: input.label ?? null, grp: input.group ?? 'counted',
-        sign: input.sign ?? (input.group === 'debt' ? -1 : input.group === 'excluded' ? 0 : 1),
-        amount: input.amount ?? null,
-        removed: input.removed ?? false,
-        note: input.note ?? null,
-        createdAt: ctx.now.toISOString(),
-      }).run();
-      return noted(input.entryId
-        ? (input.removed ? 'That line is left out of the reckoning' : 'That line now reads as you stated it')
-        : `${input.label} counted in the reckoning`);
-    },
-  }),
-
-  command({
-    name: 'zakat.entry.clear',
-    context: 'giving',
-    summary: 'Take back what you said about a line: the ledger\'s own figure stands again, or a line of your own goes.',
-    input: z.object({
-      /** the computed line to restore, or the id of a line of your own to delete */
-      entryId: z.string(),
-    }),
-    output: Outcome,
-    handler: async ({ entryId }) => {
-      const ctx = ctxOf();
-      const row = ctx.db.select().from(t.zakatEntries).all()
-        .find((r) => r.bucket === ESTATE && (r.entryId === entryId || r.id === entryId));
-      if (!row) return refusal('not_found', 'Nothing has been said about that line.');
-      ctx.db.delete(t.zakatEntries).where(eq(t.zakatEntries.id, row.id)).run();
-      return noted(row.entryId ? 'The ledger\'s own figure stands again' : `${row.label ?? 'That line'} removed`);
+      writePref(ctx.db, 'zakatYearsRemoved', gone.filter((id) => id !== yearId));
+      closeDueYears(ctx);
+      return noted('That year is worked out again');
     },
   }),
 

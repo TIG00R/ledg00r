@@ -46,6 +46,23 @@ export const defaultAccountId = (d: DataSet, preferred?: string | null): string 
  */
 export const INITIAL_PAYMENT = '__initial_payment__';
 
+/**
+ * The account a draft actually names, if it names one at all.
+ *
+ * The sentinel is not an id and no capability will take it: `NodeId` is a pattern, and
+ * `__initial_payment__` does not match it, so a submission carrying it comes back as "the
+ * input does not match what this capability takes" — a refusal about a regex, for a question
+ * the person answered correctly.
+ *
+ * Every screen that offers the option therefore has to strip it on the way out, and every
+ * screen that writes that check out longhand is a screen that can forget one branch of it.
+ * The leak is never the branch anybody is looking at: it is a picker on one tab holding the
+ * sentinel while a *different* tab, which never offered it, submits whatever the state says.
+ * So the stripping is one function, called wherever a draft turns into a call.
+ */
+export const realAccountId = (id: string | null | undefined): string | undefined =>
+  (!id || id === INITIAL_PAYMENT) ? undefined : id;
+
 /** The account list every source picker offers, plus the one option that names no account. */
 export const sourceAccountOptions = (d: DataSet) => [
   ...accountOptions(d),
@@ -69,12 +86,18 @@ export function SourceAccountSelect({ value, onChange, ariaLabel, style }: {
 /**
  * Operations sit beside the thing they act on. Money never appears or vanishes — it comes
  * out of a named account, so every panel here starts by asking which one.
+ *
+ * The panel is `reveal`: privacy does not reach into it. Everything in here is an amount
+ * you are in the middle of typing and the arithmetic the ledger is doing back at you —
+ * what arrives, what the fee takes, what the balance becomes. Blurring that hides nothing
+ * from the room that the page behind it has not already hidden, and it hides the answer
+ * from the one person entitled to it.
  */
 export function OperationPanel({ title, hint, children }: {
   title: string; hint?: string; children: React.ReactNode;
 }) {
   return (
-    <section className="panel" style={{ padding: 20 }}>
+    <section className="panel reveal" style={{ padding: 20 }}>
       <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h2>
       {hint && <p style={{ margin: '5px 0 16px', fontSize: 11, color: 'var(--faint)', lineHeight: 1.5 }}>{hint}</p>}
       {children}
